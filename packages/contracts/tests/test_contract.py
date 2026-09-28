@@ -12,8 +12,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 
-from bidoc_contracts import (PLACEHOLDER, ContractError, Limits, content_sha256, embed_manifest,  # noqa: E402
-                             load_schema, locate_manifest, validate_artifact, validate_manifest)
+from bidoc_contracts import (PLACEHOLDER, ContractError, Limits, ScopeError, adf_scope, content_sha256,  # noqa: E402
+                             embed_manifest, load_schema, locate_manifest, power_bi_scope, scope_key,
+                             validate_artifact, validate_manifest)
 import build_fixtures  # noqa: E402
 
 FIX = HERE / "fixtures"
@@ -143,6 +144,38 @@ class ManifestRuleTests(unittest.TestCase):
 
     def test_section_text_limit(self):
         self.assertCode("CONTRACT_VIOLATION", limits=Limits(section_text_bytes=10))
+
+
+class ScopeTests(unittest.TestCase):
+    def test_power_bi_modes(self):
+        self.assertEqual(scope_key("power_bi", power_bi_scope("combined")), "model_and_report")
+        self.assertEqual(scope_key("power_bi", power_bi_scope("semantic-only")), "model")
+        self.assertEqual(scope_key("power_bi", power_bi_scope("report-only")), "report")
+        with self.assertRaises(ScopeError):
+            power_bi_scope("partial")
+
+    def test_adf_factory_and_selection_are_different_streams(self):
+        factory = scope_key("adf", adf_scope(True))
+        sel = scope_key("adf", adf_scope(False, ["pipeline/PL_B", "pipeline/PL_A", "pipeline/PL_A"]))
+        self.assertEqual(factory, "factory")
+        self.assertRegex(sel, r"^selection-[0-9a-f]{16}$")
+        self.assertEqual(sel, scope_key("adf", adf_scope(False, ["pipeline/PL_A", "pipeline/PL_B"])))
+        self.assertNotEqual(sel, scope_key("adf", adf_scope(False, ["pipeline/PL_A"])))
+
+    def test_non_canonical_or_invalid_selection_rejected(self):
+        with self.assertRaises(ScopeError):
+            scope_key("adf", {"kind": "selection", "resources": ["pipeline/B", "pipeline/A"]})
+        with self.assertRaises(ScopeError):
+            adf_scope(False, ["notebook/X"])
+        with self.assertRaises(ScopeError):
+            adf_scope(False, [])
+
+    def test_manifest_scope_key_must_match_descriptor(self):
+        m = build_fixtures.power_bi() | {"content_sha256": "a" * 64}
+        m["publication"]["scope_key"] = "model"
+        self.assertEqual(code_of(validate_manifest, m), "CONTRACT_VIOLATION")
+        m["publication"]["scope_descriptor"] = {"kind": "everything"}
+        self.assertEqual(code_of(validate_manifest, m), "CONTRACT_VIOLATION")
 
 
 class ArtifactTests(unittest.TestCase):

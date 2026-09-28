@@ -1,4 +1,6 @@
-# Object identity and endpoint bindings v1 (B02 draft)
+# Object identity and endpoint bindings v1
+
+Status: frozen for B03 (pre-release).
 
 Engine revisions surveyed: pbi-doc-gen `a7d5565`, adf-doc-gen `7c8cfe5` (see `docs/b01/BASELINE.md` §5). IDs are scoped to a `document_id`. The algorithms below are versioned by `identity_version`; any change is a new version with a migration and a manual-link review report.
 
@@ -12,6 +14,8 @@ Engine revisions surveyed: pbi-doc-gen `a7d5565`, adf-doc-gen `7c8cfe5` (see `do
 | source | `pbi:source:{connector}:{server}:{port}:{database}:{schema}.{object}` from **raw** values, percent-encoding `:` | physical location, independent of page usage | Split logical sources from per-page usage rows in `sourceObjects` (§17.2) |
 | page (section only) | section anchor, not an object | report page `id` (e.g. `ReportSection1`) | — |
 
+**Implemented in B03:** pbi-doc-gen 0.2.0 surfaces `lineageTag` from TMDL and BIM. Source IDs use raw endpoint values, with `:` and `%` percent-encoded.
+
 **Fallback without `lineageTag`** (older BIM, legacy extracts): `pbi:table:name:{name}` and `pbi:measure:name:{table}/{name}`, with the sidecar mapping file persisting them. A rename without a durable tag is a new object and triggers Needs review; there is never fuzzy matching. Copied PBIX files share lineage tags. That is harmless because IDs are scoped per `document_id`, and a copy gets a new stream only by explicit choice.
 
 ## `adf-identity/1`
@@ -19,7 +23,7 @@ Engine revisions surveyed: pbi-doc-gen `a7d5565`, adf-doc-gen `7c8cfe5` (see `do
 | Kind | object_id | Basis |
 |---|---|---|
 | pipeline / trigger / dataset / linked_service / dataflow | `adf:{kind}:{name}` | ADF resource names are unique per factory and kind |
-| activity | `adf:activity:{pipeline}/{container path}/{activity}` | Activity names are unique within a pipeline, but nested containers (ForEach/If/Switch/Until) need the path; `parent_object_id` = the pipeline |
+| activity | `adf:activity:{pipeline}/{activity}` | ADF requires activity names to be unique within a pipeline, nested containers included, so no container path is needed; `parent_object_id` = the pipeline |
 | file/table endpoint | not an object; endpoints live in bindings | — |
 
 ## Bindings
@@ -39,7 +43,12 @@ One binding per (object, operation, endpoint). An activity that reads A and writ
 ## Endpoint normalization `endpoint-norm/1` (to be implemented in `packages/relationships`, B03/B06)
 
 - `endpoint` keeps raw values exactly. `normalized_endpoint` is the comparison form.
-- Host: lowercase DNS name, strip scheme and `tcp:`; **keep port and instance** as separate fields (`sql1,1444` → server `sql1`, port 1444). No default-port inference: an unknown port stays `null` and makes an exact match impossible unless both sides are `null` with an explicit same-connector rule.
+- Host: lowercase DNS name, strip scheme and `tcp:`; **keep port and instance** as separate fields (`sql1,1444` → server `sql1`, port 1444).
+- Connector rule (B03): for SQL Server-family systems, a host with no port and no named instance uses the default port 1433, so `normalized_endpoint.port` is 1433. `sql1` and `sql1,1433` compare equal, while `sql1,1444` is a different server. Other connectors get no default: an unknown port stays `null`.
 - SQL database/schema/object: **case preserved** (collation unknown); comparison may treat case-only differences as `possible`, never `exact_static`.
 - Storage account/container: lowercase (Azure-defined case-insensitive). Path: case preserved, percent-encoding preserved (no decoding of `%2F`).
-- The adf-doc-gen engine currently strips ports and lowercases SQL names inside `common.physical_key`. B03 must fix that in the engine, because a bridge-only fix cannot separate merged entities.
+- Fixed in adf-doc-gen 0.2.0 (B03): `common.physical_key` keeps non-default SQL ports and SQL letter case, and the bridge no longer treats deletes as producers, folds path case, or calls a folder prefix exact.
+
+## Identity sidecar
+
+`<source name>.bidoc-identity.json` beside the source, never inside it: ADF reads every JSON file in an input folder. It records the path it was created for. If a source is copied or moved, the generator stops with `IDENTITY_DECISION_REQUIRED` until the user chooses `existing` or `new`. When the source's folder is not writable, the mapping is kept in the generator's local mapping folder. The environment label is normalised to `environment_key` (`prod` → `production`, and so on) and is part of the stream.

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi-doc-generator"
+dynamic = ["version"]
+description = "BI Documentation Platform generator: command line (desktop shell follows in B08)."
+requires-python = ">=3.11"
+# Local packages bi-doc-contracts and bi-doc-engines are installed first (requirements.txt).
+dependencies = []
+
+[project.scripts]
+bidoc = "bidoc_generator.cli:main"
+
+[tool.setuptools]
+packages = ["bidoc_generator"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bidoc_generator.__version__" }

@@ -7,8 +7,9 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | ID | Status | Notes |
 |---|---|---|
 | B01 | Done except Windows packaging spike (blocked: no Windows host) | Findings: `docs/b01/BASELINE.md`; scripts: `spikes/b01/` |
-| B02 | In progress | Envelope v1 schema, validator, hash and golden fixtures done; identity/binding mappings drafted. Remaining: ADF scope descriptors, legacy-import native-schema mapping, freeze review |
-| B03–B16 | Not started | |
+| B02 | Done | Envelope v1, scope keys, projection and identity specs frozen (pre-release): `docs/contracts/` |
+| B03 | Done (PBIX via bidoc deferred to B08) | Engines 0.2.0 fixes; `packages/engines` adapters, projection, identity; `bidoc` CLI; real-input checks in CI |
+| B04–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -50,7 +51,40 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Identity/binding draft `docs/contracts/identity-and-bindings-v1.md`. Found: TMDL reader and BIM path both drop `lineageTag` (B03 engine change).
 - Added Linux CI for the contracts package (fails on skipped tests).
 
+### 2026-09-28 — PRs merged; B02 completed
+- Merged at the owner's instruction: bi-doc-platform #1, pbi-doc-gen #2, adf-doc-gen #2. Branches restarted from the new `main`.
+- Scope keys: `bidoc_contracts.scope` derives `scope_key` from the descriptor; the validator rejects mismatches (29 contract tests OK).
+- `docs/contracts/projection-v1.md`: shared projection with the code-field inventory found by marker seeding, always-on
+  credential/URL/entered-data/machine-path rules, and the A29 gate. DAX stays (not query code).
+- Snapshot rule: the envelope is attached only to a complete snapshot; ADF skipped files mean local-only output.
+- Envelope, projection and identity specs marked frozen (pre-release).
+
+### 2026-09-28 — B03 completed
+- **Engine fixes** (PRs: pbi-doc-gen [#3](https://github.com/Ntmashaba/pbi-doc-gen/pull/3), adf-doc-gen [#3](https://github.com/Ntmashaba/adf-doc-gen/pull/3); both 0.2.0):
+  - PBI keeps `lineageTag` (TMDL and BIM). Both engines escape `<`, `>` and `&` in the embedded `DATA`.
+  - ADF keeps non-default SQL ports and SQL letter case in lineage keys, using the connector rule: SQL Server with no port = 1433.
+  - The bridge: deletes are never producers; paths keep their case and encoding; a folder prefix is only `possible`.
+  - Documented expectation change: the bridge test's `Enriched` goes from `exact` to `possible` (A22).
+  - Suites: PBI 170 OK, ADF 34 OK. Also repaired the ADF `.gitignore` line I broke in the packaging PR.
+- **Platform adapters** `packages/engines` (`bi-doc-engines`), with engines pinned by commit:
+  - Power BI and ADF adapters: objects, bindings with raw and normalized endpoints, sections, navigation registry.
+  - `shared-projection/1`, `endpoint-norm/1`, identity sidecar, and `generate(request, progress, cancellation)`.
+- **`bidoc` CLI** (`apps/generator`): `generate` and `doctor`, with the handoff exit codes (`docs/generator.md`).
+- **Tests:** contracts 29, engines 24, CLI 4, all OK.
+- **Real inputs, also run in CI:**
+  - 29 real Microsoft reports pre-extracted by pbi-tools: 58 valid artifacts; HTML median 1.7 MB (max 7.3 MB); search text median 5.4 KB (max 14.4 KB), inside the ~20.5 KB budget.
+  - All 95 templates in Microsoft's Azure-DataFactory repository: 190 valid artifacts; HTML median 129 KB (max 550 KB).
+  - No M/SQL in any shared artifact; local artifacts keep it.
+- **Problems found and fixed during B03** (each now has a test):
+  - Shared output leaked SQL that uses a function call in the select list, SQL embedded in activity `detail` via `pre-copy:`, SQL built in ADF expressions, and data-flow `query:` options.
+  - The projection first over-withheld: DAX calculated tables (557 in the real reports) and partition source locations/descriptions (175). Those fields are now classified by content. DAX, prose and source locations stay in shared output.
+  - The identity sidecar inside an ADF folder was read as factory input; it now lives beside the source.
+  - The B02 Power BI scope mapping used the wrong engine mode names; corrected.
+- **Deviation:** PBIX generation through `bidoc` is not wired (it needs Windows and pbi-tools to verify). `doctor` reports it as unavailable and points to `pbi-doc-gen --pbix`. Moved to B08.
+- **Observation for the owner:** real reports reference source files under personal paths (e.g. `C:\Users\<name>\OneDrive…`). These are source locations, not generator machine paths, so shared output keeps them as documentation. Say if they should be treated as sensitive.
+
 ### Next
-- B02: ADF scope descriptors (factory vs. selection), native-schema mapping for legacy import (`pbi-doc-gen/2`, `adf-doc-gen/2`), then freeze.
-- B03: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
+- Merge engine PRs #3; re-pin `packages/engines/pyproject.toml` to the merge commits.
+- B04: local catalogue/artifact repositories (SQLite), migrations, immutable revisions and crash-safe publication.
+- Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.

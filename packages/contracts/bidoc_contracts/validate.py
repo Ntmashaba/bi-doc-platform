@@ -15,6 +15,7 @@ from html.parser import HTMLParser
 from importlib import resources
 
 from .manifest import PLACEHOLDER, ManifestLocationError, content_sha256, locate_manifest
+from .scope import ScopeError, scope_key
 
 MIB = 1024 * 1024
 SUPPORTED_SCHEMA_VERSIONS = (1,)
@@ -148,6 +149,12 @@ def validate_manifest(manifest, *, limits: Limits = Limits(), view_ids=None, all
                             [{"path": p, "message": m} for p, m in issues])
 
     problems = []
+    pub = manifest["publication"]
+    try:
+        if scope_key(manifest["document_type"], pub["scope_descriptor"]) != pub["scope_key"]:
+            problems.append(("/publication/scope_key", "does not match the scope descriptor"))
+    except ScopeError as exc:
+        problems.append(("/publication/scope_descriptor", str(exc)))
     if "assets" in manifest and not allow_assets:
         problems.append(("/assets", "assets are only allowed in the ZIP profile"))
     section_ids = [s["id"] for s in manifest["sections"]]
