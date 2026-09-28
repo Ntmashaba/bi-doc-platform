@@ -22,11 +22,11 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Legacy import spike: native payload recoverable from existing HTML without script execution.
 - Windows packaging spike: **not run** (no Windows host) — explicit open gate.
 
-### Open decisions for the product owner
-1. Keep default withholding of Power BI M/SQL text for R1, or fund an M sanitizer? (See BASELINE §3, §9.)
-2. Confirm pbi-tools stays an external prerequisite (not bundled); confirm its licence.
-3. Provide a Windows machine or Windows CI runner for the packaging spike.
-4. Add upstream `pyproject.toml` packaging to both engines (recommended), or vendor them as pinned git dependencies?
+### Owner decisions (resolved — see `docs/decisions/0001-b01-owner-decisions.md`)
+1. Query code: local keeps raw M/SQL; shared publication has an explicit *Include query code* option, off by default, removing code from payload and search index when off.
+2. pbi-tools: separate prerequisite for R1. Licence verified upstream (main and tag 1.2.0): AGPL-3.0.
+3. Windows: W1 packaging build on Windows CI and W2 real PBIX extraction on the owner's machine, reported separately.
+4. Engines get `pyproject.toml`; platform consumes versioned engine packages.
 
 ### Next
 - B02: envelope JSON Schema, hash implementation and golden fixtures; engine ID mappings (check PBI `lineageTag`); binding/endpoint schema.
