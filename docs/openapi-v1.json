@@ -675,6 +675,7 @@
      "input": {
       "enum": [
        "envelope",
+       "zip",
        "legacy"
       ],
       "title": "Input",

@@ -27,6 +27,9 @@ class Limits:
     html_bytes: int = 25 * MIB
     manifest_bytes: int = 16 * MIB
     section_text_bytes: int = 4 * MIB
+    zip_bytes: int = 100 * MIB           # ZIP profile: compressed size
+    zip_expanded_bytes: int = 250 * MIB  # ZIP profile: total uncompressed size
+    zip_entries: int = 2000
 
 
 @dataclass
@@ -222,8 +225,11 @@ def _strict_json(text: str):
     return json.loads(text, object_pairs_hook=pairs, parse_constant=no_constants)
 
 
-def validate_artifact(html: bytes, *, limits: Limits = Limits(), view_ids=None) -> dict:
-    """Validate a self-contained HTML artifact and return its manifest. Never executes content."""
+def validate_artifact(html: bytes, *, limits: Limits = Limits(), view_ids=None, allow_assets: bool = False) -> dict:
+    """Validate a self-contained HTML artifact and return its manifest. Never executes content.
+
+    allow_assets is set only for document.html inside the ZIP profile (validate_zip).
+    """
     if len(html) > limits.html_bytes:
         raise ContractError("ARTIFACT_TOO_LARGE", f"The document exceeds the {limits.html_bytes}-byte limit.")
     try:
@@ -239,7 +245,7 @@ def validate_artifact(html: bytes, *, limits: Limits = Limits(), view_ids=None) 
     except (UnicodeDecodeError, ValueError) as exc:
         raise ContractError("MANIFEST_INVALID_JSON", f"The manifest is not valid JSON: {exc}") from None
 
-    validate_manifest(manifest, limits=limits, view_ids=view_ids)
+    validate_manifest(manifest, limits=limits, view_ids=view_ids, allow_assets=allow_assets)
 
     if content_sha256(html) != manifest["content_sha256"]:
         raise ContractError("HASH_MISMATCH", "content_sha256 does not match the document bytes.")
