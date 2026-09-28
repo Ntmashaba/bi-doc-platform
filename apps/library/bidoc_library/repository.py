@@ -27,13 +27,20 @@ retries, so a decision is never committed on stale inputs.
         # create (expected_etag None) or replace; advances the sequence; audits
     manual_audit(relationship_id) -> list[{audit_id, relationship_id, action, subject,
                                            occurred_at, before, after}]  (before/after JSON text)
+
+Publishing tokens and releases (B11; rules in publishing.py):
+
+    token_put(record) / token_get(token_id) / token_list() / token_update(record)
+    token_audit_add(token_id, action, subject) / token_audit(token_id)
+    release_put(record, data) -> bool (False when the version exists) / release_get(version)
+    release_list() / release_update(record) / release_read(record) -> bytes
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from .errors import conflict
+from .errors import LibraryError, conflict
 
 MANUAL_FIELDS = ("relationship_id", "source_document_id", "source_revision_id", "source_object_id",
                  "target_document_id", "target_revision_id", "target_object_id", "kind", "reason",
@@ -187,3 +194,89 @@ class LocalRepository:
         with self._db() as conn:
             return [dict(r) for r in conn.execute("SELECT * FROM relationship_audit WHERE relationship_id=? "
                                                   "ORDER BY audit_id", (relationship_id,))]
+
+    # ---- publishing tokens and releases (B11) --------------------------------------------
+
+    TOKEN_FIELDS = ("token_id", "subject", "label", "token_hash", "scopes", "created_at", "expires_at",
+                    "revoked_at", "revoked_by", "last_used_at")
+    RELEASE_FIELDS = ("version", "platform", "filename", "sha256", "size_bytes", "release_notes", "prerequisites",
+                      "signed", "label", "created_at", "created_by", "approved_at", "approved_by")
+
+    @staticmethod
+    def _token(row) -> dict:
+        d = dict(row)
+        d["scopes"] = json.loads(d["scopes"])
+        return d
+
+    def token_put(self, record) -> None:
+        with self._db() as conn, self._tx(conn):
+            conn.execute(f"INSERT INTO publish_tokens ({', '.join(self.TOKEN_FIELDS)}) VALUES "
+                         f"({', '.join('?' * len(self.TOKEN_FIELDS))})",
+                         [json.dumps(record[f]) if f == "scopes" else record.get(f) for f in self.TOKEN_FIELDS])
+
+    def token_get(self, token_id):
+        with self._db() as conn:
+            row = conn.execute("SELECT * FROM publish_tokens WHERE token_id=?", (token_id,)).fetchone()
+        return self._token(row) if row else None
+
+    def token_list(self) -> list[dict]:
+        with self._db() as conn:
+            return [self._token(r) for r in conn.execute("SELECT * FROM publish_tokens ORDER BY created_at")]
+
+    def token_update(self, record) -> None:
+        with self._db() as conn, self._tx(conn):
+            conn.execute("UPDATE publish_tokens SET revoked_at=?, revoked_by=?, last_used_at=? WHERE token_id=?",
+                         (record.get("revoked_at"), record.get("revoked_by"), record.get("last_used_at"),
+                          record["token_id"]))
+
+    def token_audit_add(self, token_id, action, subject) -> None:
+        with self._db() as conn, self._tx(conn):
+            conn.execute("INSERT INTO publish_token_audit (token_id, action, subject, occurred_at) VALUES (?,?,?,?)",
+                         (token_id, action, subject, self.now()))
+
+    def token_audit(self, token_id) -> list[dict]:
+        with self._db() as conn:
+            return [dict(r) for r in conn.execute("SELECT * FROM publish_token_audit WHERE token_id=? "
+                                                  "ORDER BY audit_id", (token_id,))]
+
+    @staticmethod
+    def _release(row) -> dict:
+        d = dict(row)
+        d["prerequisites"], d["signed"] = json.loads(d["prerequisites"]), bool(d["signed"])
+        return d
+
+    def release_put(self, record, data: bytes) -> bool:
+        folder = Path(self.root) / "releases" / record["version"]
+        with self._db() as conn, self._tx(conn):
+            if conn.execute("SELECT 1 FROM releases WHERE version=?", (record["version"],)).fetchone():
+                return False
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / record["filename"]
+            tmp = path.with_suffix(".partial")
+            tmp.write_bytes(data)
+            tmp.replace(path)
+            conn.execute(f"INSERT INTO releases ({', '.join(self.RELEASE_FIELDS)}) VALUES "
+                         f"({', '.join('?' * len(self.RELEASE_FIELDS))})",
+                         [json.dumps(record[f]) if f == "prerequisites" else
+                          (1 if record[f] else 0) if f == "signed" else record.get(f) for f in self.RELEASE_FIELDS])
+        return True
+
+    def release_get(self, version):
+        with self._db() as conn:
+            row = conn.execute("SELECT * FROM releases WHERE version=?", (version,)).fetchone()
+        return self._release(row) if row else None
+
+    def release_list(self) -> list[dict]:
+        with self._db() as conn:
+            return [self._release(r) for r in conn.execute("SELECT * FROM releases")]
+
+    def release_update(self, record) -> None:
+        with self._db() as conn, self._tx(conn):
+            conn.execute("UPDATE releases SET approved_at=?, approved_by=? WHERE version=?",
+                         (record.get("approved_at"), record.get("approved_by"), record["version"]))
+
+    def release_read(self, record) -> bytes:
+        try:
+            return (Path(self.root) / "releases" / record["version"] / record["filename"]).read_bytes()
+        except OSError:
+            raise LibraryError("ARTIFACT_CORRUPT", "the installer file is missing", 500) from None

@@ -6,12 +6,13 @@ missing or invalid identity and 403 for an insufficient role.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
 from typing import Any, Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, Path, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from importlib import resources as _resources
@@ -27,6 +28,7 @@ from .config import Settings
 from .derived import Derived
 from .errors import LibraryError
 from .manual import ManualLinks
+from .publishing import MAX_INSTALLER_BYTES, Publishing, require_transport
 from .search import search as run_search
 from .store import LocalStore
 
@@ -327,6 +329,92 @@ class Capabilities(BaseModel):
     relationship_schema_version: str
 
 
+class TokenRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=100, description="e.g. the machine the generator runs on")
+    expires_in_days: int = Field(ge=1, le=30)
+
+
+class TokenInfo(BaseModel):
+    token_id: str
+    subject: str
+    label: str
+    scopes: list[str]
+    created_at: str
+    expires_at: str
+    revoked_at: Optional[str]
+    revoked_by: Optional[str]
+    last_used_at: Optional[str]
+    state: Literal["active", "expired", "revoked"]
+
+
+class IssuedToken(TokenInfo):
+    token: str = Field(description="Shown once. Store it in the generator; the library keeps only a hash")
+
+
+class TokenList(BaseModel):
+    items: list[TokenInfo]
+
+
+class SubjectRequest(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+
+
+class PublishingCapabilities(BaseModel):
+    version: str
+    manifest_versions: list[int]
+    limits: dict
+    query_code_options: list[str]
+    subject: str
+
+
+class PublishingDocument(BaseModel):
+    document_id: str
+    document_type: str
+    title: str
+    current_revision_id: str
+    etag: str
+    publication: dict
+
+
+class PublishingResult(BaseModel):
+    import_id: str
+    document_id: str
+    revision_id: str
+    current_revision_id: str
+    title: str
+    artifact_sha256: Optional[str]
+    catalogue_sequence: Optional[int]
+    duplicate: bool
+
+
+class Release(BaseModel):
+    version: str
+    platform: str
+    filename: str
+    sha256: str
+    size_bytes: int
+    release_notes: str
+    prerequisites: list[str]
+    signed: bool
+    label: str
+    created_at: str
+    approved: bool
+    approved_at: Optional[str]
+    download_url: Optional[str]
+
+
+class ReleaseList(BaseModel):
+    items: list[Release]
+
+
+def _release_out(r: dict) -> dict:
+    approved = bool(r.get("approved_at"))
+    return {**{k: r[k] for k in ("version", "platform", "filename", "sha256", "size_bytes", "release_notes",
+                                 "prerequisites", "signed", "label", "created_at")},
+            "approved": approved, "approved_at": r.get("approved_at"),
+            "download_url": f"{PREFIX}/releases/{r['version']}/download" if approved else None}
+
+
 ERRORS = {code: {"model": ErrorResponse} for code in (400, 401, 403, 404, 409, 413, 422, 428)}
 
 
@@ -372,6 +460,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     policy = AccessPolicy(settings, session_secret)
     derived = Derived(store)
     manual = ManualLinks(store, derived)
+    publishing = Publishing(store)
 
     def refresh_derived() -> str:
         """Bring search/relationships up to date after a committed change; never fails the change."""
@@ -397,7 +486,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request.state.request_id = str(uuid.uuid4())
-        if request.method == "POST" and request.url.path == f"{PREFIX}/imports":
+        if request.method == "POST" and request.url.path in (f"{PREFIX}/imports", f"{PREFIX}/publishing/imports"):
             length = request.headers.get("content-length")
             if length is None:
                 return error(request, 411, "LENGTH_REQUIRED", "uploads must declare Content-Length")
@@ -450,6 +539,11 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
             raise forbidden("publisher role required")
         return p
 
+    def admin(p: Principal = Depends(principal)) -> Principal:
+        if not p.can("admin"):
+            raise forbidden("administrator role required")
+        return p
+
     # ---- library shell (static, no inline script) ----------------------------------
 
     static = _resources.files("bidoc_library").joinpath("static")
@@ -496,7 +590,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                                {"engine": "adf", "input_types": ["adf_git", "adf_arm", "adf_resources"],
                                 "available": False,
                                 "reason": "Hosted processing is not available (optional R3); use the generator."}],
-                "worker_status": None, "installer_available": False, "search_available": True,
+                "worker_status": None, "installer_available": bool(publishing.releases()), "search_available": True,
                 "can_manage_relationships": p.can("publish"), "relationship_schema_version": "rel-rules/1"}
 
     # ---- documents --------------------------------------------------------------
@@ -609,11 +703,16 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                                                           max_length=200),
                             if_match: Optional[str] = Header(None, alias="If-Match"),
                             p: Principal = Depends(publisher)):
+        return await run_import(file, p.subject, idempotency_key, if_match, target_document_id, query_code,
+                                legacy_metadata)
+
+    async def run_import(file, subject, idempotency_key, if_match, target_document_id, query_code, legacy_metadata):
+        """One import path for browser and direct publishing: the same validation and commit."""
         data = await file.read(limits.html_bytes + 1)
         if len(data) > limits.html_bytes:
             raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {limits.html_bytes}-byte limit", 413)
         outcome = await run_in_threadpool(
-            store.publish, data, subject=p.subject, idempotency_key=idempotency_key,
+            store.publish, data, subject=subject, idempotency_key=idempotency_key,
             expected_etag=_if_match(if_match), target_document_id=str(target_document_id) if target_document_id else None,
             query_code=query_code, legacy_metadata=legacy_metadata)
         indexing = await run_in_threadpool(refresh_derived)
@@ -726,14 +825,131 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     def manual_audit(relationship_id: uuid.UUID, p: Principal = Depends(publisher)):
         return {"items": manual.audit(str(relationship_id))}
 
-    # ---- releases (installer distribution arrives in B11) ---------------------------
+    # ---- publishing tokens (browser identity; B11) -------------------------------------
 
-    @app.get(f"{PREFIX}/releases/latest", tags=["releases"], responses=ERRORS)
+    @app.post(f"{PREFIX}/publish-tokens", status_code=201, response_model=IssuedToken, tags=["publishing"],
+              responses=ERRORS)
+    def issue_token(body: TokenRequest, p: Principal = Depends(publisher)):
+        """A publishing token for the desktop generator. The secret is returned once and never stored."""
+        return publishing.issue(p.subject, body.label, body.expires_in_days)
+
+    @app.get(f"{PREFIX}/publish-tokens", response_model=TokenList, tags=["publishing"], responses=ERRORS)
+    def list_tokens(all: bool = False, p: Principal = Depends(publisher)):
+        if all and not p.can("admin"):
+            raise forbidden("only administrators can list every token")
+        return {"items": publishing.list(p.subject, everyone=all)}
+
+    @app.delete(f"{PREFIX}/publish-tokens/{{token_id}}", status_code=204, tags=["publishing"], responses=ERRORS)
+    def revoke_token(token_id: str = Path(..., pattern=r"^[0-9a-f]{16}$"), p: Principal = Depends(publisher)):
+        publishing.revoke(token_id, p)
+        return Response(status_code=204)
+
+    @app.post(f"{PREFIX}/publish-tokens/revoke-subject", tags=["publishing"], responses=ERRORS)
+    def revoke_subject(body: SubjectRequest, p: Principal = Depends(admin)):
+        """Revoke all of a subject's tokens, e.g. when their publisher role is removed."""
+        return {"revoked": publishing.revoke_subject(body.subject, p)}
+
+    # ---- direct publishing namespace: publishing tokens only (handoff 17.5) ------------
+
+    def token_principal(request: Request) -> Principal:
+        require_transport(request, settings, policy.proxies)
+        if settings.auth_mode == "local" and (request.headers.get("host") or "").lower() not in policy.local_hosts:
+            raise forbidden("requests must address the loopback host")
+        return publishing.authenticate(request.headers.get("authorization"))
+
+    def own_import(import_id, p):
+        imp = store.get_import(import_id)
+        if imp["subject"] != p.subject:
+            raise LibraryError("NOT_FOUND", "import not found", 404)
+        return imp
+
+    @app.get(f"{PREFIX}/publishing/capabilities", response_model=PublishingCapabilities, tags=["publishing"],
+             responses=ERRORS)
+    def publishing_capabilities(p: Principal = Depends(token_principal)):
+        return {"version": __version__, "manifest_versions": [1], "limits": {"html_bytes": limits.html_bytes},
+                "query_code_options": ["withheld", "included"], "subject": p.subject}
+
+    @app.get(f"{PREFIX}/publishing/documents/{{document_id}}", response_model=PublishingDocument,
+             tags=["publishing"], responses=ERRORS)
+    def publishing_document(document_id: uuid.UUID, response: Response, p: Principal = Depends(token_principal)):
+        """The current ETag of one explicitly requested document, to publish a new version of it."""
+        doc = store.get_document(str(document_id))
+        if doc["archived"]:
+            raise LibraryError("NOT_FOUND", "document not found", 404)
+        response.headers["ETag"] = _etag_header(doc["etag"])
+        return {"document_id": doc["document_id"], "document_type": doc["document_type"], "title": doc["title"],
+                "current_revision_id": doc["current_revision_id"], "etag": doc["etag"],
+                "publication": doc["publication"]}
+
+    @app.post(f"{PREFIX}/publishing/imports", response_model=ImportOutcome, status_code=201, tags=["publishing"],
+              responses={200: {"model": ImportOutcome, "description": "Duplicate of an earlier import"},
+                         411: {"model": ErrorResponse}, **ERRORS})
+    async def publishing_import(file: UploadFile = File(..., description="Envelope-v1 HTML artifact"),
+                                target_document_id: Optional[uuid.UUID] = Form(None),
+                                query_code: Literal["withheld", "included"] = Form("withheld"),
+                                idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1,
+                                                              max_length=200),
+                                if_match: Optional[str] = Header(None, alias="If-Match"),
+                                p: Principal = Depends(token_principal)):
+        return await run_import(file, p.subject, idempotency_key, if_match, target_document_id, query_code, None)
+
+    @app.get(f"{PREFIX}/publishing/imports/{{import_id}}", response_model=ImportStatus, tags=["publishing"],
+             responses=ERRORS)
+    def publishing_import_status(import_id: uuid.UUID, p: Principal = Depends(token_principal)):
+        return own_import(str(import_id), p)
+
+    @app.get(f"{PREFIX}/publishing/results/{{import_id}}", response_model=PublishingResult, tags=["publishing"],
+             responses=ERRORS)
+    def publishing_result(import_id: uuid.UUID, p: Principal = Depends(token_principal)):
+        """Safe readback of an own committed import: what the library now holds."""
+        imp = own_import(str(import_id), p)
+        if imp["state"] != "committed":
+            raise LibraryError("IMPORT_INCOMPLETE", "the import has not committed", 409, {"state": imp["state"]})
+        doc = store.get_document(imp["document_id"])
+        rev = next((r for r in store.list_revisions(imp["document_id"], limit=200)["items"]
+                    if r["revision_id"] == imp["revision_id"]), None)
+        return {"import_id": imp["import_id"], "document_id": imp["document_id"], "revision_id": imp["revision_id"],
+                "current_revision_id": doc["current_revision_id"], "title": doc["title"],
+                "artifact_sha256": rev["artifact_sha256"] if rev else None,
+                "catalogue_sequence": imp["catalogue_sequence"], "duplicate": imp["duplicate"]}
+
+    # ---- installer releases (B11) ---------------------------------------------------------
+
+    @app.get(f"{PREFIX}/releases", response_model=ReleaseList, tags=["releases"], responses=ERRORS)
+    def list_releases(p: Principal = Depends(reader)):
+        """Approved releases; administrators also see ones awaiting approval."""
+        return {"items": [_release_out(r) for r in publishing.releases(include_unapproved=p.can("admin"))]}
+
+    @app.post(f"{PREFIX}/releases", status_code=201, response_model=Release, tags=["releases"],
+              responses={411: {"model": ErrorResponse}, **ERRORS})
+    async def add_release(file: UploadFile = File(...), version: str = Form(...), sha256: str = Form(...),
+                          release_notes: str = Form(""), prerequisites: str = Form("[]"),
+                          label: str = Form("development build (unsigned)"), signed: bool = Form(False),
+                          platform: Literal["windows-x64"] = Form("windows-x64"), p: Principal = Depends(admin)):
+        try:
+            prereq = json.loads(prerequisites)
+        except ValueError:
+            raise LibraryError("INVALID_REQUEST", "prerequisites must be a JSON list") from None
+        data = await file.read(MAX_INSTALLER_BYTES + 1)
+        record = await run_in_threadpool(
+            publishing.add_release, version=version, platform=platform, filename=file.filename or "",
+            data=data, sha256=sha256, release_notes=release_notes, prerequisites=prereq, label=label,
+            signed=signed, subject=p.subject)
+        return _release_out(record)
+
+    @app.post(f"{PREFIX}/releases/{{version}}/approve", response_model=Release, tags=["releases"], responses=ERRORS)
+    def approve_release(version: str, p: Principal = Depends(admin)):
+        return _release_out(publishing.approve(version, p.subject))
+
+    @app.get(f"{PREFIX}/releases/latest", response_model=Release, tags=["releases"], responses=ERRORS)
     def latest_release(platform: Literal["windows-x64"] = "windows-x64", p: Principal = Depends(reader)):
-        raise LibraryError("NO_APPROVED_RELEASE", "no approved installer release is available yet", 404)
+        return _release_out(publishing.latest(platform))
 
     @app.get(f"{PREFIX}/releases/{{version}}/download", tags=["releases"], responses=ERRORS)
     def release_download(version: str, p: Principal = Depends(reader)):
-        raise LibraryError("NO_APPROVED_RELEASE", "no approved installer release is available yet", 404)
+        record, data = publishing.download(version)
+        return Response(data, media_type="application/vnd.microsoft.portable-executable", headers={
+            "Content-Disposition": f'attachment; filename="{record["filename"]}"',
+            "Content-Security-Policy": DOWNLOAD_CSP, "X-Checksum-SHA256": record["sha256"]})
 
     return app

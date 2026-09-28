@@ -39,7 +39,7 @@ from ..store import SimulatedCrash, _cursor_decode, _cursor_encode, _now, _sha25
 from ..repository import StaleSequence
 from .backends import Conflict, NotFound
 
-DOCS, IMPORTS, GENERATIONS = "documents", "imports", "generations"
+DOCS, IMPORTS, GENERATIONS, TOKENS, RELEASES = "documents", "imports", "generations", "tokens", "releases"
 FAR = 10 ** 12                         # descending sequence keys: FAR - seq
 MAX_COMMIT_ATTEMPTS = 20
 REPLAY_STATUS = {"CONTRACT_INVALID": 422, "UNSUPPORTED_SAFE_PROJECTION": 422, "PAYLOAD_TOO_LARGE": 413,
@@ -367,7 +367,8 @@ class AzureStore:
         if row is None:
             raise not_found("import")
         val = lambda k: row.get(k) or None  # noqa: E731
-        return {"import_id": row["import_id"], "state": row["state"], "document_id": val("document_id"),
+        return {"import_id": row["import_id"], "subject": row["subject"], "state": row["state"],
+                "document_id": val("document_id"),
                 "revision_id": val("revision_id"), "duplicate": bool(row.get("duplicate_of")),
                 "catalogue_sequence": row.get("catalogue_sequence") if row.get("catalogue_sequence") != "" else None,
                 "committed_event_id": row.get("committed_event_id") if row.get("committed_event_id") != "" else None,
@@ -659,6 +660,76 @@ class AzureStore:
         return [{"audit_id": r["audit_id"], "relationship_id": r["relationship_id"], "action": r["action"],
                  "subject": r["subject"], "occurred_at": r["occurred_at"], "before": r["before"] or None,
                  "after": r["after"] or None} for r in self.tables.query(DOCS, f"maudit:{relationship_id}:")]
+
+    # ---- publishing tokens and releases (B11) -----------------------------------------
+
+    @staticmethod
+    def _plain(row, json_fields=()):
+        out = {k: v for k, v in row.items() if k not in ("RowKey", "PartitionKey", "etag", "Timestamp")}
+        for k in json_fields:
+            out[k] = json.loads(out[k])
+        return {k: (None if v == "" else v) for k, v in out.items()}
+
+    def token_put(self, record) -> None:
+        entity = {"RowKey": "tok:" + record["token_id"],
+                  **{k: ("" if v is None else json.dumps(v) if k == "scopes" else v) for k, v in record.items()}}
+        self.tables.transact(TOKENS, [("create", entity)])
+
+    def token_get(self, token_id):
+        row = self.tables.get(TOKENS, "tok:" + str(token_id))
+        return self._plain(row, ("scopes",)) if row else None
+
+    def token_list(self) -> list[dict]:
+        return sorted((self._plain(r, ("scopes",)) for r in self.tables.query(TOKENS, "tok:")),
+                      key=lambda t: t["created_at"])
+
+    def token_update(self, record) -> None:
+        row = self.tables.get(TOKENS, "tok:" + record["token_id"])
+        for k in ("revoked_at", "revoked_by", "last_used_at"):
+            row[k] = record.get(k) or ""
+        self.tables.transact(TOKENS, [("upsert", row)])
+
+    def token_audit_add(self, token_id, action, subject) -> None:
+        now = self.now()
+        self.tables.transact(TOKENS, [("create", {"RowKey": f"audit:{token_id}:{now}:{uuid.uuid4().hex[:8]}",
+                                                  "token_id": token_id, "action": action, "subject": subject,
+                                                  "occurred_at": now})])
+
+    def token_audit(self, token_id) -> list[dict]:
+        return [{"token_id": r["token_id"], "action": r["action"], "subject": r["subject"],
+                 "occurred_at": r["occurred_at"]} for r in self.tables.query(TOKENS, f"audit:{token_id}:")]
+
+    def release_put(self, record, data: bytes) -> bool:
+        if self.tables.get(RELEASES, "rel:" + record["version"]):
+            return False
+        key = f"releases/{record['version']}/{record['filename']}"
+        if not self.blobs.create(key, data) and self.blobs.read(key) != data:
+            return False
+        entity = {"RowKey": "rel:" + record["version"],
+                  **{k: ("" if v is None else json.dumps(v) if k == "prerequisites" else v) for k, v in record.items()}}
+        try:
+            self.tables.transact(RELEASES, [("create", entity)])
+        except Conflict:
+            return False
+        return True
+
+    def release_get(self, version):
+        row = self.tables.get(RELEASES, "rel:" + str(version))
+        return self._plain(row, ("prerequisites",)) if row else None
+
+    def release_list(self) -> list[dict]:
+        return [self._plain(r, ("prerequisites",)) for r in self.tables.query(RELEASES, "rel:")]
+
+    def release_update(self, record) -> None:
+        row = self.tables.get(RELEASES, "rel:" + record["version"])
+        row["approved_at"], row["approved_by"] = record.get("approved_at") or "", record.get("approved_by") or ""
+        self.tables.transact(RELEASES, [("replace", row, row["etag"])])
+
+    def release_read(self, record) -> bytes:
+        try:
+            return self.blobs.read(f"releases/{record['version']}/{record['filename']}")
+        except NotFound:
+            raise LibraryError("ARTIFACT_CORRUPT", "the installer file is missing", 500) from None
 
     # ---- operations -------------------------------------------------------------------
 

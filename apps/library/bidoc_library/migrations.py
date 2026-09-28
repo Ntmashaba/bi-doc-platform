@@ -156,6 +156,24 @@ MIGRATIONS = [
     );
     CREATE INDEX metadata_audit_by_document ON metadata_audit (document_id, audit_id)
     """),
+    (4, "publishing tokens and installer releases", """
+    CREATE TABLE publish_tokens (                 -- secrets are never stored: token_hash only
+        token_id TEXT PRIMARY KEY, subject TEXT NOT NULL, label TEXT NOT NULL, token_hash TEXT NOT NULL,
+        scopes TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+        revoked_at TEXT, revoked_by TEXT, last_used_at TEXT
+    );
+    CREATE INDEX publish_tokens_by_subject ON publish_tokens (subject);
+    CREATE TABLE publish_token_audit (
+        audit_id INTEGER PRIMARY KEY AUTOINCREMENT, token_id TEXT NOT NULL, action TEXT NOT NULL,
+        subject TEXT NOT NULL, occurred_at TEXT NOT NULL
+    );
+    CREATE TABLE releases (                       -- approved installers are the only ones served
+        version TEXT PRIMARY KEY, platform TEXT NOT NULL, filename TEXT NOT NULL, sha256 TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL, release_notes TEXT NOT NULL, prerequisites TEXT NOT NULL,
+        signed INTEGER NOT NULL, label TEXT NOT NULL, created_at TEXT NOT NULL, created_by TEXT NOT NULL,
+        approved_at TEXT, approved_by TEXT
+    )
+    """),
 ]
 
 

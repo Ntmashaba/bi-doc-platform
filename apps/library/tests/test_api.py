@@ -39,6 +39,7 @@ class ApiTest(unittest.TestCase):
         return None                      # the configured backend: LocalStore
 
     def make_client(self, **kw):
+        kw.setdefault("client", ("127.0.0.1", 50000))            # a local caller, as in local mode
         return TestClient(self.app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False, **kw)
 
     def artifact(self, source=None, **kw) -> bytes:

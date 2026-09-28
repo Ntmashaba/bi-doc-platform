@@ -88,7 +88,7 @@ class MetadataOverrides(ApiTest):
                      "business_area, environment, owner, title, description, tags, current_revision_id, created_at, "
                      "updated_at, etag) VALUES ('d','adf','a','production','factory','Fin','Production','Ops','T',"
                      "'D','[\"x\"]','r','t','t','e')")
-        self.assertEqual(migrations.migrate(conn, "2026-01-02T00:00:00Z"), [3])
+        self.assertEqual(migrations.migrate(conn, "2026-01-02T00:00:00Z"), [m[0] for m in full[2:]])
         self.assertEqual(json.loads(conn.execute("SELECT revision_metadata FROM documents").fetchone()[0]),
                          {"title": "T", "description": "D", "tags": ["x"], "business_area": "Fin", "owner": "Ops"})
 
