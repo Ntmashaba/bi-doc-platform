@@ -14,7 +14,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B06 | Done | B06a backend (`docs/relationships.md`); B06b shell and viewers (`docs/library-ui.md`) |
 | B07 | Done (R1 gate; A08 → B08, A10 ZIP → B12) | Evidence map: `docs/b07/R1-GATE.md`; Docker: `docs/deployment-docker.md` |
 | B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
-| B09–B16 | Not started | |
+| B09 | Built; CI verification in progress; clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
+| B10–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -206,5 +207,19 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - new CI job `generator-windows`, which runs the generator suite on Windows, including `taskkill` tree kill.
 - **Not verified here:** real PBIX extraction with Power BI Desktop (W2, owner) and the pywebview window itself (W1 proved pywebview runs; the full installer is B09).
 
+### 2026-09-28 — B08 merged; B09 started
+- Merged bi-doc-platform #8 at the owner's instruction.
+- **Windows build** (`packaging/windows/`):
+  - PyInstaller spec producing `bidoc.exe` and a windowed `BI Documentation Generator.exe` in one folder, with engines, templates, schema, desktop UI and pywebview bundled;
+  - exact build pins in `requirements-windows-build.txt`.
+  - Verified here: the spec builds on Linux, and the frozen app runs a PBIP + ADF batch, serves the desktop UI, and `--check` reports pywebview.
+- **Installer** (Inno Setup): per-user, fixed AppId for in-place upgrade, uninstall keeps user data unless chosen, labelled unsigned. `release.json`, `SHA256SUMS.txt` and release notes are generated.
+- **Generator changes:**
+  - `bidoc config --pbi-tools`, stored in `config.json` in the generator home, so upgrades keep it;
+  - doctor checks the WebView2 runtime on Windows;
+  - frozen builds report their bundled Python.
+- **A13 script** `verify-install.ps1`: install → doctor → generate → desktop → upgrade → uninstall, from a shell with no Python on `PATH`; static inputs in `verify-inputs/`. Runs in the new CI job `windows-installer` (0.2.0 → 0.2.1 upgrade).
+
 ### Next
-- B09: Windows installer and clean-machine test.
+- Finish B09: first CI run of `windows-installer`, fix anything it finds, record results in `docs/b09/VERIFICATION.md`.
+- Owner: run `verify-install.ps1` on a clean Windows machine (A13) and W2 (real PBIX).

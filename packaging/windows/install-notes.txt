@@ -1,0 +1,18 @@
+BI Documentation Generator
+
+This is a DEVELOPMENT BUILD. It is not code-signed, so Windows SmartScreen may warn you
+before it runs. Production releases are signed.
+
+What it installs: the generator (command line bidoc.exe and the desktop app) for your
+Windows account only. No administrator rights are needed.
+
+What it does not install:
+- Power BI Desktop and pbi-tools. They are needed only for .pbix files. Install them
+  separately, then record pbi-tools with: bidoc config --pbi-tools C:\path\to\pbi-tools.exe
+  PBIP projects, TMDL/BIM models, PBIR reports and Data Factory exports work without them.
+- The Microsoft Edge WebView2 Runtime, needed by the desktop window. It is part of current
+  Windows 10 and 11 installations.
+
+Your data: history, settings and temporary workspaces are kept in %LOCALAPPDATA%\bidoc.
+Upgrading keeps them. Uninstalling keeps them unless you choose to delete them. Generated
+documentation in your output folders is never deleted.

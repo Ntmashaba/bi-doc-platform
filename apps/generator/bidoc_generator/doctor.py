@@ -1,6 +1,7 @@
 """Prerequisite diagnostics: what this machine can generate, and how to fix what it cannot."""
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -8,9 +9,19 @@ import sys
 from pathlib import Path
 
 
+def config() -> dict:
+    """Settings kept in the generator home (config.json), so upgrades keep them."""
+    try:
+        data = json.loads((home() / "config.json").read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
 def _pbi_tools(configured: str | None):
-    """A configured path wins; otherwise PATH. Never search the disk and run what is found."""
-    candidate = configured or os.environ.get("BIDOC_PBI_TOOLS")
+    """A configured path wins (argument, BIDOC_PBI_TOOLS, config.json); otherwise PATH.
+    Never search the disk and run what is found."""
+    candidate = configured or os.environ.get("BIDOC_PBI_TOOLS") or config().get("pbi_tools")
     if candidate:
         return str(Path(candidate)) if Path(candidate).is_file() else None
     return shutil.which("pbi-tools") or shutil.which("pbi-tools.exe")
@@ -29,10 +40,30 @@ def _power_bi_desktop():
     return "Microsoft Store" if store.exists() else None
 
 
+def webview2_version():
+    """Microsoft Edge WebView2 runtime (the desktop window's browser engine), or None."""
+    if platform.system() != "Windows":
+        return None
+    import winreg  # noqa: PLC0415
+    client = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    for root, key in ((winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\" + client),
+                      (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + client),
+                      (winreg.HKEY_CURRENT_USER, "SOFTWARE\\" + client)):
+        try:
+            with winreg.OpenKey(root, key) as k:
+                value = winreg.QueryValueEx(k, "pv")[0]
+                if value and value != "0.0.0.0":
+                    return value
+        except OSError:
+            continue
+    return None
+
+
 def diagnose(pbi_tools: str | None = None) -> dict:
     checks, ready = [], {}
     py_ok = sys.version_info >= (3, 11)
-    checks.append({"check": "python", "ok": py_ok, "detail": platform.python_version(),
+    bundled = " (bundled with the installed app)" if getattr(sys, "frozen", False) else ""
+    checks.append({"check": "python", "ok": py_ok, "detail": platform.python_version() + bundled,
                    "fix": None if py_ok else "Install Python 3.11 or later."})
     engines = {}
     for engine, module in (("pbi-doc-gen", "pbidocgen"), ("adf-doc-gen", "adfdocgen")):
@@ -53,7 +84,12 @@ def diagnose(pbi_tools: str | None = None) -> dict:
     desktop = _power_bi_desktop()
     checks.append({"check": "pbi-tools", "ok": bool(tools), "detail": tools or "not found",
                    "fix": None if tools else "Install pbi-tools Desktop (https://pbi.tools, AGPL-3.0) separately and "
-                                             "set BIDOC_PBI_TOOLS to its pbi-tools.exe path."})
+                                             "record its path: bidoc config --pbi-tools C:\\path\\to\\pbi-tools.exe"})
+    if windows:
+        wv2 = webview2_version()
+        checks.append({"check": "webview2", "ok": bool(wv2), "detail": wv2 or "not found",
+                       "fix": None if wv2 else "Install the Microsoft Edge WebView2 Runtime (needed by the desktop "
+                                               "window only; the command line works without it)."})
     checks.append({"check": "power-bi-desktop", "ok": bool(desktop), "detail": desktop or "not found",
                    "fix": None if desktop else "Install Power BI Desktop (required by pbi-tools to read PBIX files)."})
     reasons = [r for r, bad in (("PBIX extraction runs on Windows only", not windows),

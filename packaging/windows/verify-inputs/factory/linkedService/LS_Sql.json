@@ -1,0 +1,9 @@
+{
+ "name": "LS_Sql",
+ "properties": {
+  "type": "AzureSqlDatabase",
+  "typeProperties": {
+   "connectionString": "Server=tcp:sql.example.local,1433;Database=SalesDW;"
+  }
+ }
+}

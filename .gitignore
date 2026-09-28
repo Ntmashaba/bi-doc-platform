@@ -7,3 +7,4 @@ test.log
 spikes/w1/dist/
 spikes/w1/*.spec
 node_modules/
+packaging/windows/version_info.txt

@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # The native window. Without it, `bidoc desktop --no-window` serves the same app on loopback.
-desktop = ["pywebview>=5,<7"]
+desktop = ["pywebview==6.2.1"]
 
 [project.scripts]
 bidoc = "bidoc_generator.cli:main"
