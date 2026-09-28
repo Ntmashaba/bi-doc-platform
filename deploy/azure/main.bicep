@@ -82,6 +82,21 @@ var roles = {
   acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 }
 
+var appEnv = [
+  { name: 'DATA_BACKEND', value: 'azure' }
+  { name: 'AZURE_STORAGE_TABLE_ENDPOINT', value: storage.properties.primaryEndpoints.table }
+  { name: 'AZURE_STORAGE_BLOB_ENDPOINT', value: storage.properties.primaryEndpoints.blob }
+  { name: 'AZURE_STORAGE_TABLE', value: tableName }
+  { name: 'AZURE_STORAGE_CONTAINER', value: containerName }
+  { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
+  { name: 'AUTH_MODE', value: 'entra' }
+  { name: 'ENTRA_TENANT_ID', value: tenant().tenantId }
+  { name: 'ENTRA_ROLE_MAP', value: entraRoleMap }
+  { name: 'ENTRA_DEFAULT_ROLES', value: entraDefaultRoles }
+  { name: 'GATEWAY_TRUSTED_PROXIES', value: trustedProxies }
+  { name: 'BIND_HOST', value: '0.0.0.0' }
+]
+
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${namePrefix}-library-id'
   location: location
@@ -223,20 +238,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'library'
           image: containerImage
           resources: { cpu: json(cpu), memory: memory }
-          env: [
-            { name: 'DATA_BACKEND', value: 'azure' }
-            { name: 'AZURE_STORAGE_TABLE_ENDPOINT', value: storage.properties.primaryEndpoints.table }
-            { name: 'AZURE_STORAGE_BLOB_ENDPOINT', value: storage.properties.primaryEndpoints.blob }
-            { name: 'AZURE_STORAGE_TABLE', value: tableName }
-            { name: 'AZURE_STORAGE_CONTAINER', value: containerName }
-            { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
-            { name: 'AUTH_MODE', value: 'entra' }
-            { name: 'ENTRA_TENANT_ID', value: tenant().tenantId }
-            { name: 'ENTRA_ROLE_MAP', value: entraRoleMap }
-            { name: 'ENTRA_DEFAULT_ROLES', value: entraDefaultRoles }
-            { name: 'GATEWAY_TRUSTED_PROXIES', value: trustedProxies }
-            { name: 'BIND_HOST', value: '0.0.0.0' }
-          ]
+          env: appEnv
           probes: [
             { type: 'Liveness', httpGet: { path: '/api/v1/health/live', port: 8765 }, periodSeconds: 30 }
             { type: 'Readiness', httpGet: { path: '/api/v1/health/ready', port: 8765 }, periodSeconds: 10 }
@@ -256,10 +258,46 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
   dependsOn: [ tableRole, blobRole, pullRole, table, blobContainer ]
 }
 
+// Daily housekeeping (handoff 10): expire job leases and delete raw job sources past their
+// retention, without depending on traffic. Runs the same image with the same identity.
+resource cleanupJob 'Microsoft.App/jobs@2024-03-01' = {
+  name: '${namePrefix}-cleanup'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identity.id}': {} }
+  }
+  properties: {
+    environmentId: appEnvironment.id
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 600
+      replicaRetryLimit: 1
+      scheduleTriggerConfig: { cronExpression: '17 3 * * *', parallelism: 1, replicaCompletionCount: 1 }
+      registries: empty(registryServer) ? [] : [
+        { server: registryServer, identity: identity.id }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'cleanup'
+          image: containerImage
+          command: [ 'python', '-m', 'bidoc_library', 'cleanup' ]
+          resources: { cpu: json(cpu), memory: memory }
+          env: appEnv
+        }
+      ]
+    }
+  }
+  dependsOn: [ tableRole, blobRole, pullRole ]
+}
+
 // Built-in authentication (Easy Auth) with Microsoft Entra ID. Everything except health
-// probes and the token-only publishing API needs sign-in; the library then reads the
-// validated principal (AUTH_MODE=entra). The publishing API rejects anything but a
-// publishing token, so leaving it outside sign-in opens nothing else (handoff 17.5).
+// probes, the token-only publishing API and the token-only worker API needs sign-in; the
+// library then reads the validated principal (AUTH_MODE=entra). Those APIs reject anything
+// but their own tokens, so leaving them outside sign-in opens nothing else (handoff 10, 17.5).
 resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
   parent: app
   name: 'current'
@@ -272,6 +310,7 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
         '/api/v1/health/live'
         '/api/v1/health/ready'
         '/api/v1/publishing/*'
+        '/api/v1/worker/*'
       ]
     }
     identityProviders: {

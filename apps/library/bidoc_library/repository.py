@@ -280,3 +280,59 @@ class LocalRepository:
             return (Path(self.root) / "releases" / record["version"] / record["filename"]).read_bytes()
         except OSError:
             raise LibraryError("ARTIFACT_CORRUPT", "the installer file is missing", 500) from None
+
+    # ---- workers, jobs and staged results (R3, B14) ----------------------------------------
+    # One `records` table: JSON bodies with a version for compare-and-set. The job row is read
+    # inside the publication transaction, so a stale lease can never commit (handoff 17.6).
+
+    def rec_get(self, kind, rec_id):
+        with self._db() as conn:
+            row = conn.execute("SELECT body, version FROM records WHERE kind=? AND id=?", (kind, rec_id)).fetchone()
+        return {**json.loads(row[0]), "_v": row[1]} if row else None
+
+    def rec_list(self, kind) -> list[dict]:
+        with self._db() as conn:
+            return [{**json.loads(b), "_v": v} for b, v in
+                    conn.execute("SELECT body, version FROM records WHERE kind=? ORDER BY id", (kind,))]
+
+    def rec_put(self, kind, rec_id, body, expected_version) -> bool:
+        """Create (expected_version None) or replace at that version; False when it moved."""
+        data = json.dumps({k: v for k, v in body.items() if k != "_v"})
+        with self._db() as conn, self._tx(conn):
+            if expected_version is None:
+                return conn.execute("INSERT OR IGNORE INTO records (kind, id, body, version) VALUES (?,?,?,1)",
+                                    (kind, rec_id, data)).rowcount == 1
+            return conn.execute("UPDATE records SET body=?, version=version+1 WHERE kind=? AND id=? AND version=?",
+                                (data, kind, rec_id, expected_version)).rowcount == 1
+
+    def blob_put(self, key: str, stream) -> int:
+        """Write a new blob from a file object (streamed); returns its size."""
+        path = Path(self.root) / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".partial")
+        size = 0
+        with tmp.open("wb") as out:
+            while chunk := stream.read(1 << 20):
+                out.write(chunk)
+                size += len(chunk)
+        tmp.replace(path)
+        return size
+
+    def blob_chunks(self, key: str):
+        """The blob as an iterator of chunks (streamed to the caller)."""
+        try:
+            fh = (Path(self.root) / key).open("rb")
+        except OSError:
+            raise LibraryError("NOT_FOUND", "the stored file is gone", 404) from None
+
+        def chunks():
+            with fh:
+                while chunk := fh.read(1 << 20):
+                    yield chunk
+        return chunks()
+
+    def blob_delete(self, key: str) -> None:
+        try:
+            (Path(self.root) / key).unlink()
+        except FileNotFoundError:
+            pass

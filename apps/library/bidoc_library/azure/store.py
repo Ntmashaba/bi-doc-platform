@@ -36,6 +36,7 @@ from bidoc_contracts import Limits, validate_artifact
 from ..admission import admit, admit_for_preview, preview_body, reprojected
 from ..errors import LibraryError, conflict, not_found
 from ..store import SimulatedCrash, _cursor_decode, _cursor_encode, _now, _sha256, validate_overrides
+from ..jobguard import finalized, job_fields, lease_current
 from ..repository import StaleSequence
 from .backends import Conflict, NotFound
 
@@ -85,7 +86,7 @@ class AzureStore:
 
     def publish(self, data: bytes, *, subject: str, idempotency_key: str, expected_etag: str | None = None,
                 target_document_id: str | None = None, query_code: str = "withheld",
-                legacy_metadata=None) -> dict:
+                legacy_metadata=None, job=None) -> dict:
         from bidoc_engines import legacy  # noqa: PLC0415
         if not idempotency_key or len(idempotency_key) > 200:
             raise LibraryError("INVALID_REQUEST", "an Idempotency-Key of 1-200 characters is required")
@@ -117,7 +118,9 @@ class AzureStore:
             row = {"RowKey": "imp:" + import_id, "import_id": import_id, "subject": subject,
                    "idempotency_key": idempotency_key, "request_sha256": request,
                    "submitted_artifact_sha256": submitted, "target_document_id": target_document_id or "",
-                   "expected_etag": expected_etag or "", "state": "validating", "created_at": self.now()}
+                   "expected_etag": expected_etag or "", "state": "validating", "created_at": self.now(),
+                   **dict(zip(("job_id", "job_attempt", "job_lease_hash"),
+                              ("" if v is None else v for v in job_fields(job))))}
             try:
                 self.tables.transact(IMPORTS, [("create", row), ("create", {"RowKey": key_row, "import_id": import_id})])
                 break
@@ -262,6 +265,12 @@ class AzureStore:
             stream = _stream_key(rev["asset_id"], rev["document_type"], rev["environment_key"], rev["scope_key"])
             stale = (doc["doc_etag"] != expected) if doc else (expected is not None)
             clash = doc is None and self.tables.get(DOCS, stream) is not None
+            job_row = self.tables.get(DOCS, "job:" + imp["job_id"]) if imp.get("job_id") else None
+            job_body = json.loads(job_row["body"]) if job_row else None
+            if imp.get("job_id") and not lease_current(job_body, imp["job_attempt"], imp["job_lease_hash"],
+                                                        self.now()):
+                return self._mark_conflicted(imp, rev, "LEASE_STALE",
+                                             "the job's lease is no longer current; nothing was published")
             if stale or clash:
                 return self._mark_conflicted(imp, rev)
             seq, now, etag = state["sequence"] + 1, self.now(), uuid.uuid4().hex
@@ -288,6 +297,9 @@ class AzureStore:
             ops += [("create", {"RowKey": f"event:{seq:012d}", **event}),
                     ("create", {"RowKey": "evrev:" + revision_id, **event}),
                     ("create", {"RowKey": f"docev:{document_id}:{seq:012d}", **event})]
+            if job_row:                        # the job succeeds in the same commit, under its ETag
+                done = finalized(job_body, document_id, revision_id, seq, now)
+                ops.append(("replace", {"RowKey": "job:" + imp["job_id"], "body": json.dumps(done)}, job_row["etag"]))
             self._fault("before_commit")
             try:
                 self.tables.transact(DOCS, ops)
@@ -306,12 +318,12 @@ class AzureStore:
         self._update_import(imp["import_id"], state="committed", catalogue_sequence=ev["sequence"],
                             committed_event_id=ev["sequence"], completed_at=self.now())
 
-    def _mark_conflicted(self, imp, rev):
+    def _mark_conflicted(self, imp, rev, code="REVISION_CONFLICT",
+                         message="the document changed before this revision could be published"):
         if rev:
             rev["status"] = "conflicted"
             self.tables.transact(_revisions(imp["document_id"]), [("upsert", rev)])
-        self._update_import(imp["import_id"], state="conflicted", error_code="REVISION_CONFLICT",
-                            error_message="the document changed before this revision could be published",
+        self._update_import(imp["import_id"], state="conflicted", error_code=code, error_message=message,
                             completed_at=self.now())
 
     def _fail(self, import_id, exc: LibraryError):
@@ -325,7 +337,8 @@ class AzureStore:
         if imp["state"] == "committed":
             return imp
         if imp["state"] == "conflicted":
-            raise conflict("REVISION_CONFLICT", imp["error_message"] or "revision conflicted", import_id=import_id)
+            raise conflict(imp.get("error_code") or "REVISION_CONFLICT", imp["error_message"] or "revision conflicted",
+                           import_id=import_id)
         if imp["state"] == "failed":
             raise LibraryError(imp["error_code"], imp["error_message"], REPLAY_STATUS.get(imp["error_code"], 409),
                                {"import_id": import_id})
@@ -736,3 +749,42 @@ class AzureStore:
 
     def validate_stored(self, document_id, revision_id) -> dict:
         return validate_artifact(self.read_artifact(document_id, revision_id), limits=self.limits)
+
+    # ---- workers, jobs and staged results (R3, B14) ----------------------------------------
+    # Job rows live in the commit partition ("job:{id}"), so a publication commit can carry
+    # the job row's ETag: renewal or reassignment changes it, and a stale lease cannot commit.
+
+    @staticmethod
+    def _rec_place(kind, rec_id):
+        return (DOCS, f"job:{rec_id}") if kind == "job" else (f"records:{kind}", f"{kind}:{rec_id}")
+
+    def rec_get(self, kind, rec_id):
+        part, row = self._rec_place(kind, rec_id)
+        found = self.tables.get(part, row)
+        return {**json.loads(found["body"]), "_v": found["etag"]} if found else None
+
+    def rec_list(self, kind) -> list[dict]:
+        part, prefix = self._rec_place(kind, "")
+        return [{**json.loads(r["body"]), "_v": r["etag"]} for r in self.tables.query(part, prefix)]
+
+    def rec_put(self, kind, rec_id, body, expected_version) -> bool:
+        part, row = self._rec_place(kind, rec_id)
+        entity = {"RowKey": row, "body": json.dumps({k: v for k, v in body.items() if k != "_v"})}
+        try:
+            self.tables.transact(part, [("create", entity) if expected_version is None
+                                        else ("replace", entity, expected_version)])
+            return True
+        except Conflict:
+            return False
+
+    def blob_put(self, key: str, stream) -> int:
+        return self.blobs.put_stream(key, stream)
+
+    def blob_chunks(self, key: str):
+        try:
+            return self.blobs.chunks(key)
+        except NotFound:
+            raise LibraryError("NOT_FOUND", "the stored file is gone", 404) from None
+
+    def blob_delete(self, key: str) -> None:
+        self.blobs.delete(key)

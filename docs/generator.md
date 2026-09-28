@@ -100,3 +100,8 @@ The existing `pbi-doc-gen` and `adf-doc-gen` command lines are unchanged.
 
 `bidoc export-library OUTPUT INPUT...` writes a folder that works without a network or a
 library server, opened straight from disk. See `docs/portable-export.md`.
+
+## Worker mode (optional R3)
+
+`bidoc worker connect URL`, then `bidoc worker run` processes jobs that people upload to a
+library, one at a time, with the same engines. See `docs/workers.md`.

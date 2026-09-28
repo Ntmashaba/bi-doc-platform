@@ -100,6 +100,43 @@
     "title": "Body_create_import_api_v1_imports_post",
     "type": "object"
    },
+   "Body_create_job_api_v1_jobs_post": {
+    "properties": {
+     "document_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "publish as a new version of this",
+      "title": "Document Id"
+     },
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "description": "A PBIX file, or a ZIP of a PBIP project",
+      "title": "File",
+      "type": "string"
+     },
+     "input_type": {
+      "enum": [
+       "pbix",
+       "pbip_zip"
+      ],
+      "title": "Input Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "input_type"
+    ],
+    "title": "Body_create_job_api_v1_jobs_post",
+    "type": "object"
+   },
    "Body_preview_import_api_v1_imports_preview_post": {
     "properties": {
      "file": {
@@ -170,6 +207,30 @@
      "file"
     ],
     "title": "Body_publishing_import_api_v1_publishing_imports_post",
+    "type": "object"
+   },
+   "Body_worker_results_api_v1_worker_jobs__job_id__results_post": {
+    "properties": {
+     "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+     },
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "lease_token": {
+      "title": "Lease Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "lease_token",
+     "attempt_id"
+    ],
+    "title": "Body_worker_results_api_v1_worker_jobs__job_id__results_post",
     "type": "object"
    },
    "Capabilities": {
@@ -264,6 +325,215 @@
     "title": "Capabilities",
     "type": "object"
    },
+   "Claim": {
+    "properties": {
+     "input_download_url": {
+      "title": "Input Download Url",
+      "type": "string"
+     },
+     "job": {
+      "$ref": "#/components/schemas/ClaimedJob"
+     },
+     "lease_expires_at": {
+      "title": "Lease Expires At",
+      "type": "string"
+     },
+     "lease_token": {
+      "title": "Lease Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "job",
+     "lease_token",
+     "lease_expires_at",
+     "input_download_url"
+    ],
+    "title": "Claim",
+    "type": "object"
+   },
+   "ClaimedJob": {
+    "properties": {
+     "attempt": {
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+     },
+     "cancel_outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancel Outcome"
+     },
+     "cancellation_requested": {
+      "title": "Cancellation Requested",
+      "type": "boolean"
+     },
+     "completed_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Completed At"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Document Id"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "input_type": {
+      "title": "Input Type",
+      "type": "string"
+     },
+     "job_id": {
+      "title": "Job Id",
+      "type": "string"
+     },
+     "max_attempts": {
+      "title": "Max Attempts",
+      "type": "integer"
+     },
+     "output_document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Output Document Id"
+     },
+     "output_revision_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Output Revision Id"
+     },
+     "requested_by": {
+      "title": "Requested By",
+      "type": "string"
+     },
+     "source_bytes": {
+      "title": "Source Bytes",
+      "type": "integer"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "state": {
+      "enum": [
+       "queued",
+       "leased",
+       "running",
+       "publishing",
+       "cancel_requested",
+       "succeeded",
+       "failed",
+       "cancelled"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "worker_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worker Id"
+     }
+    },
+    "required": [
+     "job_id",
+     "input_type",
+     "filename",
+     "source_bytes",
+     "document_id",
+     "requested_by",
+     "state",
+     "stage",
+     "attempt",
+     "max_attempts",
+     "worker_id",
+     "created_at",
+     "started_at",
+     "completed_at",
+     "error",
+     "output_document_id",
+     "output_revision_id",
+     "cancellation_requested",
+     "cancel_outcome",
+     "attempt_id"
+    ],
+    "title": "ClaimedJob",
+    "type": "object"
+   },
    "Classification": {
     "properties": {
      "business_area": {
@@ -285,6 +555,35 @@
      "owner"
     ],
     "title": "Classification",
+    "type": "object"
+   },
+   "CompleteBody": {
+    "properties": {
+     "attempt_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Attempt Id",
+      "type": "string"
+     },
+     "lease_token": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Lease Token",
+      "type": "string"
+     },
+     "staged_result_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Staged Result Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "lease_token",
+     "attempt_id",
+     "staged_result_id"
+    ],
+    "title": "CompleteBody",
     "type": "object"
    },
    "Document": {
@@ -508,6 +807,125 @@
     "title": "DocumentPage",
     "type": "object"
    },
+   "EnrolledWorker": {
+    "properties": {
+     "allowed_input_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Allowed Input Types",
+      "type": "array"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "enrolled_at": {
+      "title": "Enrolled At",
+      "type": "string"
+     },
+     "enrolled_by": {
+      "title": "Enrolled By",
+      "type": "string"
+     },
+     "extractor_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Extractor Version"
+     },
+     "input_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Input Types",
+      "type": "array"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_heartbeat_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Heartbeat At"
+     },
+     "readiness": {
+      "title": "Readiness",
+      "type": "string"
+     },
+     "readiness_detail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Readiness Detail"
+     },
+     "ready": {
+      "title": "Ready",
+      "type": "boolean"
+     },
+     "revoked_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked At"
+     },
+     "token": {
+      "title": "Token",
+      "type": "string"
+     },
+     "worker_id": {
+      "title": "Worker Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "worker_id",
+     "label",
+     "enrolled_by",
+     "enrolled_at",
+     "allowed_input_types",
+     "input_types",
+     "engine_version",
+     "extractor_version",
+     "readiness",
+     "readiness_detail",
+     "last_heartbeat_at",
+     "revoked_at",
+     "ready",
+     "token"
+    ],
+    "title": "EnrolledWorker",
+    "type": "object"
+   },
    "ErrorBody": {
     "properties": {
      "code": {
@@ -547,6 +965,98 @@
      "error"
     ],
     "title": "ErrorResponse",
+    "type": "object"
+   },
+   "FailBody": {
+    "properties": {
+     "error_code": {
+      "maxLength": 60,
+      "minLength": 1,
+      "title": "Error Code",
+      "type": "string"
+     },
+     "lease_token": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Lease Token",
+      "type": "string"
+     },
+     "message": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Message",
+      "type": "string"
+     },
+     "retryable": {
+      "default": false,
+      "title": "Retryable",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "lease_token",
+     "error_code"
+    ],
+    "title": "FailBody",
+    "type": "object"
+   },
+   "Heartbeat": {
+    "properties": {
+     "engine_version": {
+      "maxLength": 100,
+      "title": "Engine Version",
+      "type": "string"
+     },
+     "extractor_version": {
+      "anyOf": [
+       {
+        "maxLength": 100,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Extractor Version"
+     },
+     "input_types": {
+      "items": {
+       "enum": [
+        "pbix",
+        "pbip_zip"
+       ],
+       "type": "string"
+      },
+      "title": "Input Types",
+      "type": "array"
+     },
+     "readiness": {
+      "enum": [
+       "ready",
+       "not_ready"
+      ],
+      "title": "Readiness",
+      "type": "string"
+     },
+     "readiness_detail": {
+      "anyOf": [
+       {
+        "maxLength": 500,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Readiness Detail"
+     }
+    },
+    "required": [
+     "engine_version",
+     "input_types",
+     "readiness"
+    ],
+    "title": "Heartbeat",
     "type": "object"
    },
    "ImportOutcome": {
@@ -983,6 +1493,214 @@
     "title": "IssuedToken",
     "type": "object"
    },
+   "JobList": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/JobOut"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "JobList",
+    "type": "object"
+   },
+   "JobOut": {
+    "properties": {
+     "attempt": {
+      "title": "Attempt",
+      "type": "integer"
+     },
+     "cancel_outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancel Outcome"
+     },
+     "cancellation_requested": {
+      "title": "Cancellation Requested",
+      "type": "boolean"
+     },
+     "completed_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Completed At"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Document Id"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "input_type": {
+      "title": "Input Type",
+      "type": "string"
+     },
+     "job_id": {
+      "title": "Job Id",
+      "type": "string"
+     },
+     "max_attempts": {
+      "title": "Max Attempts",
+      "type": "integer"
+     },
+     "output_document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Output Document Id"
+     },
+     "output_revision_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Output Revision Id"
+     },
+     "requested_by": {
+      "title": "Requested By",
+      "type": "string"
+     },
+     "source_bytes": {
+      "title": "Source Bytes",
+      "type": "integer"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "state": {
+      "enum": [
+       "queued",
+       "leased",
+       "running",
+       "publishing",
+       "cancel_requested",
+       "succeeded",
+       "failed",
+       "cancelled"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "worker_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worker Id"
+     }
+    },
+    "required": [
+     "job_id",
+     "input_type",
+     "filename",
+     "source_bytes",
+     "document_id",
+     "requested_by",
+     "state",
+     "stage",
+     "attempt",
+     "max_attempts",
+     "worker_id",
+     "created_at",
+     "started_at",
+     "completed_at",
+     "error",
+     "output_document_id",
+     "output_revision_id",
+     "cancellation_requested",
+     "cancel_outcome"
+    ],
+    "title": "JobOut",
+    "type": "object"
+   },
+   "LeaseBody": {
+    "properties": {
+     "lease_token": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Lease Token",
+      "type": "string"
+     }
+    },
+    "required": [
+     "lease_token"
+    ],
+    "title": "LeaseBody",
+    "type": "object"
+   },
    "ManualLink": {
     "properties": {
      "created_at": {
@@ -1413,6 +2131,67 @@
     "title": "ObjectView",
     "type": "object"
    },
+   "Outcome": {
+    "properties": {
+     "cancel_outcome": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancel Outcome"
+     },
+     "catalogue_sequence": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Catalogue Sequence"
+     },
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Document Id"
+     },
+     "revision_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revision Id"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     }
+    },
+    "required": [
+     "state",
+     "document_id",
+     "revision_id",
+     "catalogue_sequence",
+     "cancel_outcome"
+    ],
+    "title": "Outcome",
+    "type": "object"
+   },
    "OverrideProvenance": {
     "properties": {
      "catalogue_sequence": {
@@ -1488,6 +2267,33 @@
      "reason"
     ],
     "title": "Processing",
+    "type": "object"
+   },
+   "ProgressBody": {
+    "properties": {
+     "lease_token": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Lease Token",
+      "type": "string"
+     },
+     "stage": {
+      "enum": [
+       "downloading",
+       "extracting",
+       "analysing",
+       "rendering",
+       "uploading"
+      ],
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "lease_token",
+     "stage"
+    ],
+    "title": "ProgressBody",
     "type": "object"
    },
    "Publication": {
@@ -1758,6 +2564,24 @@
      "items"
     ],
     "title": "ReleaseList",
+    "type": "object"
+   },
+   "Renewal": {
+    "properties": {
+     "cancellation_requested": {
+      "title": "Cancellation Requested",
+      "type": "boolean"
+     },
+     "lease_expires_at": {
+      "title": "Lease Expires At",
+      "type": "string"
+     }
+    },
+    "required": [
+     "lease_expires_at",
+     "cancellation_requested"
+    ],
+    "title": "Renewal",
     "type": "object"
    },
    "Revision": {
@@ -2075,6 +2899,29 @@
     "title": "SectionTarget",
     "type": "object"
    },
+   "Staged": {
+    "properties": {
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     },
+     "staged_result_id": {
+      "title": "Staged Result Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "staged_result_id",
+     "document_id",
+     "revision_id"
+    ],
+    "title": "Staged",
+    "type": "object"
+   },
    "SubjectRequest": {
     "properties": {
      "subject": {
@@ -2214,6 +3061,169 @@
      "expires_in_days"
     ],
     "title": "TokenRequest",
+    "type": "object"
+   },
+   "WorkerList": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/WorkerOut"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "WorkerList",
+    "type": "object"
+   },
+   "WorkerOut": {
+    "properties": {
+     "allowed_input_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Allowed Input Types",
+      "type": "array"
+     },
+     "engine_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Version"
+     },
+     "enrolled_at": {
+      "title": "Enrolled At",
+      "type": "string"
+     },
+     "enrolled_by": {
+      "title": "Enrolled By",
+      "type": "string"
+     },
+     "extractor_version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Extractor Version"
+     },
+     "input_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Input Types",
+      "type": "array"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_heartbeat_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Heartbeat At"
+     },
+     "readiness": {
+      "title": "Readiness",
+      "type": "string"
+     },
+     "readiness_detail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Readiness Detail"
+     },
+     "ready": {
+      "title": "Ready",
+      "type": "boolean"
+     },
+     "revoked_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked At"
+     },
+     "worker_id": {
+      "title": "Worker Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "worker_id",
+     "label",
+     "enrolled_by",
+     "enrolled_at",
+     "allowed_input_types",
+     "input_types",
+     "engine_version",
+     "extractor_version",
+     "readiness",
+     "readiness_detail",
+     "last_heartbeat_at",
+     "revoked_at",
+     "ready"
+    ],
+    "title": "WorkerOut",
+    "type": "object"
+   },
+   "WorkerRequest": {
+    "properties": {
+     "input_types": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "pbix",
+          "pbip_zip"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Input Types"
+     },
+     "label": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label"
+    ],
+    "title": "WorkerRequest",
     "type": "object"
    }
   }
@@ -4452,6 +5462,556 @@
     "summary": "Get Import",
     "tags": [
      "imports"
+    ]
+   }
+  },
+  "/api/v1/jobs": {
+   "get": {
+    "operationId": "list_jobs_api_v1_jobs_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "List Jobs",
+    "tags": [
+     "jobs"
+    ]
+   },
+   "post": {
+    "description": "Queue a source for a processing worker; 409 WORKER_UNAVAILABLE when none is ready.",
+    "operationId": "create_job_api_v1_jobs_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_create_job_api_v1_jobs_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Create Job",
+    "tags": [
+     "jobs"
+    ]
+   }
+  },
+  "/api/v1/jobs/{job_id}": {
+   "get": {
+    "operationId": "get_job_api_v1_jobs__job_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Get Job",
+    "tags": [
+     "jobs"
+    ]
+   }
+  },
+  "/api/v1/jobs/{job_id}/cancel": {
+   "post": {
+    "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Cancel Job",
+    "tags": [
+     "jobs"
+    ]
+   }
+  },
+  "/api/v1/jobs/{job_id}/retry": {
+   "post": {
+    "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Retry Job",
+    "tags": [
+     "jobs"
     ]
    }
   },
@@ -6976,6 +8536,1260 @@
     "summary": "Search Index",
     "tags": [
      "search"
+    ]
+   }
+  },
+  "/api/v1/worker/claim": {
+   "post": {
+    "operationId": "worker_claim_api_v1_worker_claim_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Claim"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "204": {
+      "description": "No job"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Claim",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/heartbeat": {
+   "post": {
+    "operationId": "worker_heartbeat_api_v1_worker_heartbeat_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Heartbeat"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Heartbeat",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/complete": {
+   "post": {
+    "description": "The server publishes the staged result as the requesting user, under the current lease.",
+    "operationId": "worker_complete_api_v1_worker_jobs__job_id__complete_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompleteBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Outcome"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Complete",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/fail": {
+   "post": {
+    "operationId": "worker_fail_api_v1_worker_jobs__job_id__fail_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FailBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/JobOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Fail",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/progress": {
+   "post": {
+    "operationId": "worker_progress_api_v1_worker_jobs__job_id__progress_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProgressBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Progress",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/renew": {
+   "post": {
+    "operationId": "worker_renew_api_v1_worker_jobs__job_id__renew_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LeaseBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Renewal"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Renew",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/results": {
+   "post": {
+    "description": "Stage an immutable candidate for this attempt; nothing is published yet.",
+    "operationId": "worker_results_api_v1_worker_jobs__job_id__results_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_worker_results_api_v1_worker_jobs__job_id__results_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Staged"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Results",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/worker/jobs/{job_id}/source": {
+   "get": {
+    "operationId": "worker_source_api_v1_worker_jobs__job_id__source_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Job Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "X-Lease-Token",
+      "required": true,
+      "schema": {
+       "title": "X-Lease-Token",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Worker Source",
+    "tags": [
+     "worker"
+    ]
+   }
+  },
+  "/api/v1/workers": {
+   "get": {
+    "operationId": "list_workers_api_v1_workers_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkerList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "List Workers",
+    "tags": [
+     "workers"
+    ]
+   },
+   "post": {
+    "description": "Enroll a processing worker. The token is shown once.",
+    "operationId": "enroll_worker_api_v1_workers_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkerRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EnrolledWorker"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Enroll Worker",
+    "tags": [
+     "workers"
+    ]
+   }
+  },
+  "/api/v1/workers/{worker_id}": {
+   "delete": {
+    "operationId": "revoke_worker_api_v1_workers__worker_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "worker_id",
+      "required": true,
+      "schema": {
+       "title": "Worker Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Revoke Worker",
+    "tags": [
+     "workers"
     ]
    }
   }

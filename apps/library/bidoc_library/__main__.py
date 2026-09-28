@@ -5,6 +5,7 @@
     python -m bidoc_library verify SRC        check a backup's files against their checksums
     python -m bidoc_library restore SRC       restore into the configured, empty library
     python -m bidoc_library check             read every committed revision back (after a restore)
+    python -m bidoc_library cleanup           expire job leases; delete job sources past retention (daily)
 """
 import json
 import sys
@@ -29,6 +30,12 @@ def _maintenance(command, args, settings) -> int:
             out = b.backup(open_store(settings, _limits(settings)), args[0])
         elif command == "restore":
             out = b.restore(args[0], settings=settings, limits=_limits(settings))
+        elif command == "cleanup":
+            from datetime import timedelta  # noqa: PLC0415
+
+            from .jobs import Jobs  # noqa: PLC0415
+            out = Jobs(open_store(settings, _limits(settings)),
+                       retention=timedelta(hours=settings.source_retention_hours)).cleanup()
         else:
             out = b.check(open_store(settings, _limits(settings)))
     except b.BackupError as exc:
@@ -40,7 +47,7 @@ def _maintenance(command, args, settings) -> int:
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    commands = {"backup": 1, "verify": 1, "restore": 1, "check": 0}
+    commands = {"backup": 1, "verify": 1, "restore": 1, "check": 0, "cleanup": 0}
     if argv and (argv[0] not in commands or len(argv) != commands[argv[0]] + 1):
         print(__doc__, file=sys.stderr)
         return 2

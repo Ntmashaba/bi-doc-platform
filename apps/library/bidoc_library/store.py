@@ -32,6 +32,7 @@ from bidoc_engines import legacy
 from .admission import admit, admit_for_preview, preview_body, reprojected
 from .errors import LibraryError, conflict, not_found
 from .migrations import migrate
+from .jobguard import finalized, job_fields, lease_current
 from .repository import LocalRepository
 
 
@@ -168,7 +169,9 @@ class LocalStore(LocalRepository):
 
     def publish(self, data: bytes, *, subject: str, idempotency_key: str, expected_etag: str | None = None,
                 target_document_id: str | None = None, query_code: str = "withheld",
-                legacy_metadata=None) -> dict:
+                legacy_metadata=None, job=None) -> dict:
+        """`job`: {job_id, attempt, lease_hash} when a processing job publishes; its lease is
+        re-checked inside the commit transaction, and the job row is finalized with it."""
         if not idempotency_key or len(idempotency_key) > 200:
             raise LibraryError("INVALID_REQUEST", "an Idempotency-Key of 1-200 characters is required")
         if query_code not in ("withheld", "included"):
@@ -198,10 +201,10 @@ class LocalStore(LocalRepository):
             import_id = str(uuid.uuid4())
             with self._tx(conn):
                 conn.execute("INSERT INTO imports (import_id, subject, idempotency_key, request_sha256, "
-                             "submitted_artifact_sha256, target_document_id, expected_etag, state, created_at) "
-                             "VALUES (?,?,?,?,?,?,?, 'validating', ?)",
+                             "submitted_artifact_sha256, target_document_id, expected_etag, state, created_at, "
+                             "job_id, job_attempt, job_lease_hash) VALUES (?,?,?,?,?,?,?, 'validating', ?,?,?,?)",
                              (import_id, subject, idempotency_key, request, submitted, target_document_id,
-                              expected_etag, self.now()))
+                              expected_etag, self.now(), *(job_fields(job))))
         if duplicate is not None:
             return self._record_duplicate(import_id, duplicate)
         try:
@@ -315,11 +318,20 @@ class LocalStore(LocalRepository):
                 clash = None if doc else conn.execute(
                     "SELECT 1 FROM documents WHERE asset_id=? AND document_type=? AND environment_key=? AND scope_key=?",
                     (pub["asset_id"], manifest["document_type"], pub["environment_key"], pub["scope_key"])).fetchone()
-                if stale or clash:
+                job_row = job_body = None
+                if imp["job_id"]:
+                    job_row = conn.execute("SELECT body, version FROM records WHERE kind='job' AND id=?",
+                                           (imp["job_id"],)).fetchone()
+                    job_body = json.loads(job_row[0]) if job_row else None
+                lease_ok = not imp["job_id"] or lease_current(job_body, imp["job_attempt"], imp["job_lease_hash"],
+                                                              self.now())
+                if stale or clash or not lease_ok:
+                    code, message = (("REVISION_CONFLICT", "the document changed before this revision could be "
+                                                           "published") if lease_ok else
+                                     ("LEASE_STALE", "the job's lease is no longer current; nothing was published"))
                     conn.execute("UPDATE revisions SET status='conflicted' WHERE revision_id=?", (rev["revision_id"],))
-                    conn.execute("UPDATE imports SET state='conflicted', error_code='REVISION_CONFLICT', "
-                                 "error_message='the document changed before this revision could be published', "
-                                 "completed_at=? WHERE import_id=?", (self.now(), import_id))
+                    conn.execute("UPDATE imports SET state='conflicted', error_code=?, error_message=?, "
+                                 "completed_at=? WHERE import_id=?", (code, message, self.now(), import_id))
                     conn.execute("COMMIT")
                     return
                 now = self.now()
@@ -352,6 +364,10 @@ class LocalStore(LocalRepository):
                              (now, rev["revision_id"]))
                 conn.execute("UPDATE imports SET state='committed', committed_event_id=?, catalogue_sequence=?, "
                              "completed_at=? WHERE import_id=?", (event, seq, now, import_id))
+                if job_row:                                   # the job succeeds in the same transaction
+                    done = finalized(job_body, rev["document_id"], rev["revision_id"], seq, now)
+                    conn.execute("UPDATE records SET body=?, version=version+1 WHERE kind='job' AND id=?",
+                                 (json.dumps(done), imp["job_id"]))
                 self._fault("before_commit")
                 conn.execute("COMMIT")
             except BaseException:
@@ -371,7 +387,8 @@ class LocalStore(LocalRepository):
         if imp["state"] == "committed":
             return imp
         if imp["state"] == "conflicted":
-            raise conflict("REVISION_CONFLICT", imp["error_message"] or "revision conflicted", import_id=import_id)
+            raise conflict(imp.get("error_code") or "REVISION_CONFLICT", imp["error_message"] or "revision conflicted",
+                           import_id=import_id)
         if imp["state"] == "failed":
             status = {"CONTRACT_INVALID": 422, "UNSUPPORTED_SAFE_PROJECTION": 422, "PAYLOAD_TOO_LARGE": 413,
                       "ARTIFACT_TOO_LARGE": 413, "PRECONDITION_REQUIRED": 428, "INVALID_REQUEST": 400}.get(

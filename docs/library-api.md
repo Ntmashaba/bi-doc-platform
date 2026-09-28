@@ -27,6 +27,8 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 | `MAX_HTML_BYTES`, `MAX_MANIFEST_BYTES` | 25 MiB, 16 MiB | pilot defaults |
 | `MAX_ZIP_BYTES` | 100 MiB | ZIP profile uploads (see `docs/contracts/envelope-v1.md`) |
 | `CLIENT_SEARCH_INDEX_BYTES` | 8 MiB | above this, browsers use server search (`docs/performance.md`) |
+| `MAX_SOURCE_BYTES` | 1 GiB | processing-job source uploads (R3, `docs/workers.md`) |
+| `SOURCE_RETENTION_HOURS` | 24 | raw job sources kept after a job ends (1–720) |
 | `ALLOWED_HOSTS` | — | extra Host values accepted in local mode |
 
 ## Access
@@ -41,10 +43,12 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 
 ## Routes
 
+Processing jobs and workers (R3) are in `docs/workers.md`.
+
 | Method and path | Role | Success / main errors |
 |---|---|---|
 | `GET /health/live`, `GET /health/ready` | none | `200`; ready `503 NOT_READY` (no details) |
-| `GET /capabilities` | viewer | manifest versions, limits, access mode, `can_publish`, `can_manage_relationships`, `relationship_schema_version`, processing (none: R3), installer (none yet), `search_available` |
+| `GET /capabilities` | viewer | manifest versions, limits, access mode, `can_publish`, `can_manage_relationships`, `relationship_schema_version`, `processing` per engine and `worker_status` (`ready`, `unavailable`, `none_enrolled`; see `docs/workers.md`), installer availability, `search_available`, `search_mode` |
 | `GET /documents` | viewer (`archived=true`: publisher) | `{items, next_cursor}`; filters `q`, `document_type`, `business_area`, `environment`, `owner`, `tag`; `limit` 1–200 |
 | `GET /documents/{id}` | viewer | document plus `ETag` header; `404` |
 | `GET /documents/{id}/revisions` | viewer | committed history, newest first |

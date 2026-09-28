@@ -9,7 +9,8 @@ This runbook takes a client from an empty resource group to a signed-in library.
 | User-assigned managed identity | Storage Table and Blob Data Contributor on the one account; AcrPull when a registry is named |
 | Storage account (or an existing one) | Keys disabled (managed identity only), TLS 1.2, no public blobs, 14-day blob and container soft delete |
 | Log Analytics workspace | 30-day retention by default |
-| Built-in authentication (Easy Auth) with Microsoft Entra ID | Sign-in for everything except health probes and the token-only publishing API |
+| Built-in authentication (Easy Auth) with Microsoft Entra ID | Sign-in for everything except health probes and the token-only publishing and worker APIs |
+| Container Apps job | `python -m bidoc_library cleanup` daily: expires job leases, deletes raw job sources after their retention (R3) |
 | Monthly budget | Email at 80 % actual and 100 % forecast. Budgets notify; they do not cap spending |
 
 It creates no AKS cluster, database server, paid search tier or virtual machine.

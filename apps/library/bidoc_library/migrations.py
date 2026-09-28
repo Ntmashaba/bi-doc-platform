@@ -174,6 +174,16 @@ MIGRATIONS = [
         approved_at TEXT, approved_by TEXT
     )
     """),
+    (5, "processing workers and jobs (R3)", """
+    CREATE TABLE records (                        -- workers, jobs and staged results: JSON bodies with
+        kind TEXT NOT NULL, id TEXT NOT NULL,     -- an optimistic version (compare-and-set)
+        body TEXT NOT NULL, version INTEGER NOT NULL,
+        PRIMARY KEY (kind, id)
+    );
+    ALTER TABLE imports ADD COLUMN job_id TEXT;   -- set when a job publishes: its lease guards the commit
+    ALTER TABLE imports ADD COLUMN job_attempt INTEGER;
+    ALTER TABLE imports ADD COLUMN job_lease_hash TEXT
+    """),
 ]
 
 
