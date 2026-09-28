@@ -5,4 +5,4 @@
 -e packages/engines
 -e packages/relationships
 -e apps/generator
--e apps/library[dev]
+-e apps/library[dev,azure]

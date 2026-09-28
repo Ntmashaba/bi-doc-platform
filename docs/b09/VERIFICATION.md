@@ -1,7 +1,7 @@
 # B09 verification report: Windows installer
 
-Status: **built and verified on Windows CI. Clean-machine run (A13) waiting on the owner.**
-The CI evidence is filled in below after the first green run.
+Status: **built and verified on Windows CI (30 of 30 checks). Clean-machine run (A13)
+waiting on the owner.**
 
 ## What is built
 
@@ -68,7 +68,7 @@ records every check in a JSON report:
 
 | Run | Machine | Result |
 |---|---|---|
-| CI `windows-installer` | GitHub `windows-latest`; Python on disk but not on `PATH` | _pending first run_ |
+| CI `windows-installer`, 2026-09-28, commit `9d2c32f` | GitHub `windows-latest` (Windows Server 2025); Python 3.11.9 on disk, not on `PATH`; WebView2 153.0.4234.48 | **30 of 30 checks passed.** The installer is 16.8 MB. The executables ran without Python on `PATH`. PBIX was correctly reported unavailable (no pbi-tools or Power BI Desktop). The upgrade 0.2.0 → 0.2.1 kept history and settings. Uninstall kept user data and the generated documents. The first run's only failure was the script's own `py.exe` check (the launcher sits in the Windows folder); fixed in `9d2c32f` |
 | Clean machine (A13) | Clean Windows 10/11, no Python or Docker | **Not yet run.** Owner action: download the `bidoc-windows-installer` CI artifact, then run `verify-install.ps1 -Installer bidoc-setup-0.2.0-unsigned.exe` (add `-UpgradeInstaller` with a newer build to cover upgrade) and share the report |
 
 ## Not verified

@@ -17,9 +17,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["httpx2==2.13.1"]
+# Azure Table Storage catalogue and Blob artifacts (B10).
+azure = ["azure-data-tables==12.7.0", "azure-storage-blob==12.30.3", "azure-identity==1.25.3"]
 
 [tool.setuptools]
-packages = ["bidoc_library"]
+packages = ["bidoc_library", "bidoc_library.azure"]
 
 [tool.setuptools.package-data]
 bidoc_library = ["static/*"]

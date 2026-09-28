@@ -26,10 +26,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bidoc_contracts import ContractError, Limits, validate_artifact
+from bidoc_contracts import Limits, validate_artifact
 from bidoc_engines import legacy
-from bidoc_engines.convert import UnsupportedProjection, reproject
 
+from .admission import admit, admit_for_preview, preview_body, reprojected
 from .errors import LibraryError, conflict, not_found
 from .migrations import migrate
 
@@ -224,72 +224,21 @@ class LocalStore:
             self.reconcile()
         return self._replay(import_id)
 
-    def _convert_legacy(self, data, metadata, target_document_id):
-        """Known engine HTML without a manifest: extract, project and re-render (new stream unless targeted)."""
-        stream = {}
-        if target_document_id:
-            doc = self.get_document(target_document_id)
-            with self._db() as conn:
-                row = conn.execute("SELECT environment FROM documents WHERE document_id=?",
-                                   (target_document_id,)).fetchone()
-            stream = {"document_id": doc["document_id"], "asset_id": doc["publication"]["asset_id"],
-                      "environment": row["environment"]}
-        try:
-            artifact, _ = legacy.convert(data, metadata, **stream)
-            manifest = validate_artifact(artifact, limits=self.limits)
-        except UnsupportedProjection as exc:
-            raise LibraryError("UNSUPPORTED_SAFE_PROJECTION", str(exc), 422) from None
-        except ContractError as exc:
-            raise LibraryError("CONTRACT_INVALID", f"conversion failed: {exc}", 422) from None
-        manifest["projection"]["coverage_warnings"].append(legacy.DETAILS_NOT_KEPT)
-        return manifest
-
     def preview(self, data: bytes, *, legacy_metadata=None, query_code: str = "withheld") -> dict:
         """What an import would publish, without writing anything (handoff section 4 import preview)."""
-        try:
-            manifest = validate_artifact(data, limits=self.limits)
-            kind = "envelope"
-        except ContractError as exc:
-            if exc.code != "MANIFEST_MISSING":
-                raise LibraryError("CONTRACT_INVALID", str(exc), 422, {"contract_code": exc.code}) from None
-            try:
-                manifest = self._convert_legacy(data, legacy.parse_metadata(legacy_metadata), None)
-            except ValueError as err:
-                raise LibraryError("INVALID_REQUEST", str(err)) from None
-            kind = "legacy"
-        try:
-            _, stored = reproject(manifest, query_code=query_code)
-        except UnsupportedProjection as exc:
-            raise LibraryError("UNSUPPORTED_SAFE_PROJECTION", str(exc), 422) from None
+        kind, manifest = admit_for_preview(data, limits=self.limits, legacy_metadata=legacy_metadata)
+        _, stored = reprojected(manifest, query_code)
         with self._db() as conn:
-            existing = conn.execute("SELECT document_id, etag FROM documents WHERE document_id=?",
+            existing = conn.execute("SELECT 1 FROM documents WHERE document_id=?",
                                     (manifest["document_id"],)).fetchone()
             duplicate = conn.execute("SELECT document_id, revision_id FROM revisions WHERE "
                                      "submitted_artifact_sha256=? AND status='committed'", (_sha256(data),)).fetchone()
-        cls = stored["classification"]
-        return {"input": kind, "document_type": stored["document_type"],
-                "document_id": None if kind == "legacy" else stored["document_id"],
-                "outcome": ("duplicate" if duplicate else "new_version" if existing else "new_document"),
-                "duplicate_of": dict(duplicate) if duplicate else None,
-                "title": stored["title"], "description": stored["description"], "tags": stored["tags"],
-                "classification": cls, "generator": stored["generator"], "source": stored["source"],
-                "native_schema": stored["projection"]["native_schema"],
-                "query_code": stored["projection"]["options"]["query_code"],
-                "omissions": stored["projection"]["omissions"],
-                "coverage_warnings": stored["projection"]["coverage_warnings"],
-                "object_count": len(stored["objects"]), "section_count": len(stored["sections"])}
+        return preview_body(kind, stored, existing=bool(existing), duplicate=dict(duplicate) if duplicate else None)
 
     def _publish(self, import_id, data, subject, expected_etag, target_document_id, query_code, submitted,
                  legacy_metadata=None):
-        try:
-            manifest = validate_artifact(data, limits=self.limits)
-        except ContractError as exc:
-            if exc.code == "MANIFEST_MISSING":
-                manifest = self._convert_legacy(data, legacy_metadata or {}, target_document_id)
-            else:
-                raise LibraryError(exc.code if exc.code in ("ARTIFACT_TOO_LARGE",) else "CONTRACT_INVALID",
-                                   str(exc), 413 if exc.code == "ARTIFACT_TOO_LARGE" else 422,
-                                   {"contract_code": exc.code, "issues": exc.issues[:20]}) from None
+        manifest = admit(data, limits=self.limits, legacy_metadata=legacy_metadata,
+                         target_document_id=target_document_id, get_document=self.get_document)
         document_id, revision_id = manifest["document_id"], manifest["revision_id"]
         if target_document_id and target_document_id != document_id:
             raise LibraryError("INVALID_REQUEST", "target_document_id does not match the artifact's document_id")
@@ -299,12 +248,7 @@ class LocalStore:
                                  (revision_id,)).fetchone()
             if other and other[0] != submitted:
                 raise conflict("REVISION_BYTES_CONFLICT", "this revision ID was already published with different bytes")
-        try:
-            stored, stored_manifest = reproject(manifest, query_code=query_code)
-        except UnsupportedProjection as exc:
-            raise LibraryError("UNSUPPORTED_SAFE_PROJECTION", str(exc), 422) from None
-        except ContractError as exc:
-            raise LibraryError("CONTRACT_INVALID", f"conversion failed: {exc}", 422) from None
+        stored, stored_manifest = reprojected(manifest, query_code)
 
         path = self._artifact_path(document_id, revision_id)
         self._write_immutable(path, stored, import_id)
