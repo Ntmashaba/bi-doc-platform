@@ -36,9 +36,11 @@ from bidoc_contracts import Limits, validate_artifact
 from ..admission import admit, admit_for_preview, preview_body, reprojected
 from ..errors import LibraryError, conflict, not_found
 from ..store import SimulatedCrash, _cursor_decode, _cursor_encode, _now, _sha256, validate_overrides
+from ..repository import StaleSequence
 from .backends import Conflict, NotFound
 
-DOCS, IMPORTS = "documents", "imports"
+DOCS, IMPORTS, GENERATIONS = "documents", "imports", "generations"
+FAR = 10 ** 12                         # descending sequence keys: FAR - seq
 MAX_COMMIT_ATTEMPTS = 20
 REPLAY_STATUS = {"CONTRACT_INVALID": 422, "UNSUPPORTED_SAFE_PROJECTION": 422, "PAYLOAD_TOO_LARGE": 413,
                  "ARTIFACT_TOO_LARGE": 413, "PRECONDITION_REQUIRED": 428, "INVALID_REQUEST": 400}
@@ -538,6 +540,125 @@ class AzureStore:
                  "changes": json.loads(r["changes"]), "before": json.loads(r["before"]),
                  "after": json.loads(r["after"]), "occurred_at": r["occurred_at"]}
                 for r in self.tables.query(DOCS, f"meta:{document_id}:")]
+
+    # ---- repository for derived state and manual links (repository.py) ---------------
+
+    def read_sequence(self) -> int:
+        return self.catalogue_sequence()
+
+    def catalogue_documents(self) -> list[dict]:
+        return [{"document_id": r["document_id"], "document_type": r["document_type"],
+                 "current_revision_id": r["current_revision_id"], "archived": bool(r["archived"]),
+                 "title": r["title"], "tags": json.loads(r["tags"]), "business_area": r["business_area"],
+                 "environment": r["environment"], "owner": r["owner"], "environment_key": r["environment_key"]}
+                for r in self.tables.query(DOCS, "doc:")]
+
+    def is_committed(self, document_id, revision_id) -> bool:
+        ev = self.tables.get(DOCS, "evrev:" + str(revision_id))
+        return bool(ev) and ev["document_id"] == str(document_id)
+
+    def derived_state(self) -> dict:
+        out = {}
+        for name in ("search", "relationships"):
+            row = self.tables.get(DOCS, "derived:" + name)
+            out[name] = {k: (row.get(k) or None) if k == "snapshot_key" else row.get(k)
+                         for k in ("generation_sequence", "state", "snapshot_key", "updated_at")} if row else None
+        return out
+
+    def put_derived_blob(self, key: str, data: bytes) -> None:
+        if not self.blobs.create(key, data) and self.blobs.read(key) != data:
+            raise LibraryError("INTERNAL_ERROR", "derived snapshot key collision", 500)
+
+    def get_derived_blob(self, key: str) -> bytes:
+        return self.blobs.read(key)
+
+    def save_generation(self, g: dict, now: str) -> None:
+        """The immutable generation record (blob) and its per-revision index rows. Nothing
+        points at it until switch_derived commits its `gen:` row."""
+        record = {k: g[k] for k in ("generation_id", "catalogue_sequence", "rule_version", "members",
+                                    "detected", "manual")}
+        record["completed_at"] = now
+        self.put_derived_blob(f"derived/generations/{g['generation_id']}.json",
+                              json.dumps(record, separators=(",", ":")).encode("utf-8"))
+        rows = [("upsert", {"RowKey": f"rev:{rev}:{FAR - g['catalogue_sequence']:012d}:{g['generation_id']}",
+                            "generation_id": g["generation_id"]}) for rev in sorted(g["members"].values())]
+        for i in range(0, len(rows), 100):
+            self.tables.transact(GENERATIONS, rows[i:i + 100])
+
+    def switch_derived(self, seq, search_key, g, now) -> bool:
+        state = self.tables.get(DOCS, "state")
+        if state["sequence"] != seq:
+            return False
+        pointer = lambda name, key: ("upsert", {"RowKey": "derived:" + name, "generation_sequence": seq,  # noqa: E731
+                                                "state": "ready", "snapshot_key": key, "updated_at": now})
+        try:
+            # Re-writing the state row under its ETag proves the sequence did not move.
+            self.tables.transact(DOCS, [("replace", {"RowKey": "state", "sequence": seq}, state["etag"]),
+                                        pointer("search", search_key), pointer("relationships", g["generation_id"]),
+                                        ("create", {"RowKey": "gen:" + g["generation_id"], "catalogue_sequence": seq,
+                                                    "rule_version": g["rule_version"], "completed_at": now})])
+            return True
+        except Conflict:
+            return False
+
+    def mark_derived_failed(self, seq) -> None:
+        for name in ("search", "relationships"):
+            row = self.tables.get(DOCS, "derived:" + name) or {"RowKey": "derived:" + name,
+                                                              "generation_sequence": seq, "snapshot_key": ""}
+            row.update(state="failed", updated_at=self.now())
+            self.tables.transact(DOCS, [("upsert", row)])
+
+    def get_generation(self, generation_id) -> dict | None:
+        if not self.tables.get(DOCS, "gen:" + str(generation_id)):
+            return None                                  # never switched in: not a ready generation
+        return json.loads(self.blobs.read(f"derived/generations/{generation_id}.json").decode("utf-8"))
+
+    def latest_generation_for(self, revision_id) -> dict | None:
+        for row in self.tables.query(GENERATIONS, f"rev:{revision_id}:"):     # newest first
+            g = self.get_generation(row["generation_id"])
+            if g is not None:
+                return g
+        return None
+
+    @staticmethod
+    def _manual(row) -> dict:
+        return json.loads(row["record"])
+
+    def manual_active(self) -> list[dict]:
+        return [r for r in (self._manual(x) for x in self.tables.query(DOCS, "manual:")) if r["status"] != "deleted"]
+
+    def manual_get(self, relationship_id) -> dict | None:
+        row = self.tables.get(DOCS, "manual:" + str(relationship_id))
+        record = self._manual(row) if row else None
+        return record if record and record["status"] != "deleted" else None
+
+    def manual_write(self, observed_seq, record, expected_etag, action, subject, before) -> None:
+        state = self.tables.get(DOCS, "state")
+        if state["sequence"] != observed_seq:
+            raise StaleSequence()
+        rid = record["relationship_id"]
+        row = self.tables.get(DOCS, "manual:" + rid)
+        current = self._manual(row) if row else None
+        if expected_etag is not None and (current is None or current["status"] == "deleted"
+                                          or current["etag"] != expected_etag):
+            raise conflict("REVISION_CONFLICT", "the link changed since it was read",
+                           current_etag=current["etag"] if current else None)
+        seq = observed_seq + 1
+        entity = {"RowKey": "manual:" + rid, "record": json.dumps(record)}
+        audit = {"RowKey": f"maudit:{rid}:{seq:012d}", "audit_id": seq, "relationship_id": rid, "action": action,
+                 "subject": subject, "occurred_at": self.now(), "before": json.dumps(before) if before else "",
+                 "after": json.dumps(record) if action != "delete" else ""}
+        try:
+            self.tables.transact(DOCS, [("replace", {"RowKey": "state", "sequence": seq}, state["etag"]),
+                                        ("replace", entity, row["etag"]) if row else ("create", entity),
+                                        ("create", audit)])
+        except Conflict:
+            raise StaleSequence() from None
+
+    def manual_audit(self, relationship_id) -> list[dict]:
+        return [{"audit_id": r["audit_id"], "relationship_id": r["relationship_id"], "action": r["action"],
+                 "subject": r["subject"], "occurred_at": r["occurred_at"], "before": r["before"] or None,
+                 "after": r["after"] or None} for r in self.tables.query(DOCS, f"maudit:{relationship_id}:")]
 
     # ---- operations -------------------------------------------------------------------
 

@@ -347,10 +347,26 @@ def _filename(title: str, revision_id: str) -> str:
     return (re.sub(r"[^A-Za-z0-9._ -]+", "_", title).strip(" .")[:80] or "document") + f"--{revision_id[:8]}.html"
 
 
-def create_app(settings: Settings, store: LocalStore | None = None, session_secret: str | None = None) -> FastAPI:
+def open_store(settings: Settings, limits: Limits):
+    """The configured backend: LocalStore (SQLite + files) or AzureStore (Table + Blob)."""
+    if settings.data_backend != "azure":
+        return LocalStore(settings.local_data_dir, limits=limits)
+    from .azure import AzureBlobs, AzureStore, AzureTables  # noqa: PLC0415 - optional dependency
+    if settings.azure_connection_string:
+        tables = AzureTables.from_connection_string(settings.azure_connection_string, settings.azure_table)
+        blobs = AzureBlobs.from_connection_string(settings.azure_connection_string, settings.azure_container)
+    else:
+        from azure.identity import DefaultAzureCredential  # noqa: PLC0415
+        credential = DefaultAzureCredential(managed_identity_client_id=settings.azure_client_id or None)
+        tables = AzureTables.from_identity(settings.azure_table_endpoint, settings.azure_table, credential)
+        blobs = AzureBlobs.from_identity(settings.azure_blob_endpoint, settings.azure_container, credential)
+    return AzureStore(tables, blobs, limits=limits)
+
+
+def create_app(settings: Settings, store=None, session_secret: str | None = None) -> FastAPI:
     settings.validate()
     limits = Limits(html_bytes=settings.max_html_bytes, manifest_bytes=settings.max_manifest_bytes)
-    store = store or LocalStore(settings.local_data_dir, limits=limits)
+    store = store or open_store(settings, limits)
     if settings.auth_mode == "local" and session_secret is None:
         session_secret = load_session_secret(settings.local_data_dir)
     policy = AccessPolicy(settings, session_secret)

@@ -11,7 +11,11 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DATA_BACKEND` | `local` | `azure` arrives in B10 and is refused until then |
+| `DATA_BACKEND` | `local` | `local` (SQLite plus files) or `azure` (Table Storage plus Blob; see `docs/azure-storage.md`) |
+| `AZURE_STORAGE_TABLE_ENDPOINT`, `AZURE_STORAGE_BLOB_ENDPOINT` | — | `azure` with a managed identity: `https://<account>.table.core.windows.net`, `https://<account>.blob.core.windows.net` |
+| `AZURE_CLIENT_ID` | — | a user-assigned managed identity; otherwise `DefaultAzureCredential` |
+| `AZURE_STORAGE_CONNECTION_STRING` | — | `azure` with a connection string instead (Azurite, development). Give either this or both endpoints |
+| `AZURE_STORAGE_TABLE`, `AZURE_STORAGE_CONTAINER` | `bidoc`, `bidoc` | created if missing |
 | `LOCAL_DATA_DIR` | `bidoc-data` | persistent local disk; one library process per folder |
 | `AUTH_MODE` | `local` | `local` or `gateway`; `entra` is refused until B13. There is never an unauthenticated fallback |
 | `BIND_HOST`, `PORT` | `127.0.0.1`, `8765` | local mode refuses any non-loopback address |

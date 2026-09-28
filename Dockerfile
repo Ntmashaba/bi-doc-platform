@@ -19,7 +19,7 @@ COPY apps/library apps/library
 # Engines are fetched at the commits pinned in packages/engines/pyproject.toml; every
 # third-party version comes from the lock file.
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -c requirements-lock.txt \
-        ./packages/contracts ./packages/engines ./packages/relationships ./apps/library
+        ./packages/contracts ./packages/engines ./packages/relationships "./apps/library[azure]"
 
 FROM python:3.11.13-slim-bookworm
 RUN useradd --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin bidoc \

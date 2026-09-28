@@ -39,11 +39,14 @@ class DerivedTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
-        self.app = create_app(Settings(local_data_dir=self.tmp / "data"), session_secret=SECRET)
+        self.app = create_app(Settings(local_data_dir=self.tmp / "data"), store=self.make_store(), session_secret=SECRET)
         self.c = TestClient(self.app, base_url="http://127.0.0.1:8765")
         self.n = 0
         self.factory = adf_factory(self.tmp / "factory")
         self.model = pbi_model(self.tmp / "pbi")
+
+    def make_store(self):
+        return None
 
     def artifact(self, engine, source, kind, **kw):
         r = generate(GenerateRequest(engine=engine, source_path=str(source), source_kind=kind,
@@ -159,9 +162,8 @@ class Detected(DerivedTest):
             self.app.state.store.archive(adf["document_id"], etag.strip('"'), "someone")   # a newer change lands
             return g
         d._build_relationships = racing
-        self.app.state.store.restore  # noqa: B018
-        with self.app.state.store._db() as conn:
-            conn.execute("UPDATE derived_state SET generation_sequence = generation_sequence - 1")
+        store = self.app.state.store
+        store.mark_derived_failed(store.read_sequence())                  # force a rebuild
         self.assertEqual(d.refresh()["state"], "stale")
         d._build_relationships = real
         self.assertEqual(d.refresh()["state"], "ready")
@@ -209,6 +211,11 @@ class Manual(DerivedTest):
         audit = self.c.get(f"/api/v1/relationships/manual/{rid}/audit").json()["items"]
         self.assertEqual([a["action"] for a in audit], ["create", "update", "delete"])
 
+
+
+from backends import add_variants  # noqa: E402
+
+add_variants(globals(), (Search, Detected, Manual))
 
 if __name__ == "__main__":
     unittest.main()

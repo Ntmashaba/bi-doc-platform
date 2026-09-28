@@ -16,7 +16,6 @@ import hashlib
 import json
 import uuid
 from functools import lru_cache
-from pathlib import Path
 
 from bidoc_contracts import locate_manifest
 from bidoc_relationships import RULE_VERSION, Document, detect
@@ -26,9 +25,7 @@ from .errors import LibraryError, not_found
 
 class Derived:
     def __init__(self, store):
-        self.store = store
-        self.dir = Path(store.root) / "derived"
-        self.dir.mkdir(exist_ok=True)
+        self.store = store                     # any repository (repository.py)
         self._manifest = lru_cache(maxsize=512)(self._load_manifest)
 
     # ---- inputs -----------------------------------------------------------------
@@ -40,98 +37,64 @@ class Derived:
     def manifest(self, document_id, revision_id) -> dict:
         return self._manifest(document_id, revision_id)
 
-    def _current(self, conn):
-        rows = conn.execute("SELECT * FROM documents WHERE archived=0 ORDER BY document_id").fetchall()
-        return [(r, self.manifest(r["document_id"], r["current_revision_id"])) for r in rows]
+    def _current(self):
+        docs = [d for d in self.store.catalogue_documents() if not d["archived"]]
+        return [(d, self.manifest(d["document_id"], d["current_revision_id"])) for d in docs]
 
     # ---- rebuild ----------------------------------------------------------------
 
     def status(self) -> dict:
-        with self.store._db() as conn:
-            seq = conn.execute("SELECT sequence FROM catalogue_state").fetchone()[0]
-            rows = {r["name"]: dict(r) for r in conn.execute("SELECT * FROM derived_state")}
-        return {"catalogue_sequence": seq, "search": rows.get("search"), "relationships": rows.get("relationships")}
+        state = self.store.derived_state()
+        return {"catalogue_sequence": self.store.read_sequence(), "search": state["search"],
+                "relationships": state["relationships"]}
 
     def refresh(self) -> dict:
         """Bring search and relationships up to the current sequence; returns the state."""
-        with self.store._db() as conn:
-            seq = conn.execute("SELECT sequence FROM catalogue_state").fetchone()[0]
-            have = {r["name"]: r["generation_sequence"] for r in
-                    conn.execute("SELECT name, generation_sequence FROM derived_state WHERE state='ready'")}
-            if have.get("search") == seq and have.get("relationships") == seq:
-                return {"state": "ready", "catalogue_sequence": seq}
-            current = self._current(conn)
-            manual = [dict(r) for r in conn.execute("SELECT * FROM manual_relationships WHERE status != 'deleted'")]
-        try:
-            snapshot = self._build_search(current, seq)
-            generation = self._build_relationships(current, manual, seq)
-        except Exception:
-            self._mark_failed(seq)
-            raise
+        seq = self.store.read_sequence()
+        state = self.store.derived_state()
+        if all(state[n] and state[n]["state"] == "ready" and state[n]["generation_sequence"] == seq
+               for n in ("search", "relationships")):
+            return {"state": "ready", "catalogue_sequence": seq}
+        # Everything read below is at least as new as `seq`; the switch only happens if the
+        # catalogue is still at `seq`, so nothing newer can be overwritten.
+        current = self._current()
+        manual = self.store.manual_active()
         now = self.store.now()
-        with self.store._db() as conn, self.store._tx(conn):
-            if conn.execute("SELECT sequence FROM catalogue_state").fetchone()[0] != seq:
-                return {"state": "stale", "catalogue_sequence": seq}      # a newer change will rebuild
-            conn.execute("INSERT INTO derived_state (name, generation_sequence, state, updated_at, snapshot_key) "
-                         "VALUES ('search', ?, 'ready', ?, ?) ON CONFLICT(name) DO UPDATE SET "
-                         "generation_sequence=excluded.generation_sequence, state='ready', "
-                         "updated_at=excluded.updated_at, snapshot_key=excluded.snapshot_key", (seq, now, snapshot))
-            self._commit_generation(conn, generation, seq, now)
-            conn.execute("INSERT INTO derived_state (name, generation_sequence, state, updated_at, snapshot_key) "
-                         "VALUES ('relationships', ?, 'ready', ?, ?) ON CONFLICT(name) DO UPDATE SET "
-                         "generation_sequence=excluded.generation_sequence, state='ready', "
-                         "updated_at=excluded.updated_at, snapshot_key=excluded.snapshot_key",
-                         (seq, now, generation["generation_id"]))
+        try:
+            search_key = self._build_search(current, seq)
+            generation = self._build_relationships(current, manual, seq)
+            self.store.save_generation(generation, now)
+        except Exception:
+            self.store.mark_derived_failed(seq)
+            raise
+        if not self.store.switch_derived(seq, search_key, generation, now):
+            return {"state": "stale", "catalogue_sequence": seq}      # a newer change will rebuild
         return {"state": "ready", "catalogue_sequence": seq}
 
-    def _mark_failed(self, seq):
-        with self.store._db() as conn, self.store._tx(conn):
-            for name in ("search", "relationships"):
-                conn.execute("INSERT INTO derived_state (name, generation_sequence, state, updated_at) "
-                             "VALUES (?, ?, 'failed', ?) ON CONFLICT(name) DO UPDATE SET state='failed', "
-                             "updated_at=excluded.updated_at", (name, seq, self.store.now()))
-
     def _build_search(self, current, seq) -> str:
-        documents = [{"document_id": r["document_id"], "revision_id": r["current_revision_id"],
-                      "document_type": r["document_type"],
-                      "classification": {"business_area": r["business_area"], "environment": r["environment"],
-                                         "owner": r["owner"]},
-                      "title": r["title"], "tags": json.loads(r["tags"]),
+        documents = [{"document_id": d["document_id"], "revision_id": d["current_revision_id"],
+                      "document_type": d["document_type"],
+                      "classification": {"business_area": d["business_area"], "environment": d["environment"],
+                                         "owner": d["owner"]},
+                      "title": d["title"], "tags": d["tags"],
                       "sections": [{"id": s["id"], "title": s["title"], "text": s["text"]} for s in m["sections"]]}
-                     for r, m in current]
-        key = f"derived/search-{seq}.json"
-        path = Path(self.store.root) / key
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"generation": seq, "documents": documents}, ensure_ascii=False,
-                                  separators=(",", ":")), encoding="utf-8")
-        tmp.replace(path)
+                     for d, m in current]
+        key = f"derived/search-{seq}-{uuid.uuid4().hex[:8]}.json"
+        self.store.put_derived_blob(key, json.dumps({"generation": seq, "documents": documents}, ensure_ascii=False,
+                                                    separators=(",", ":")).encode("utf-8"))
         return key
 
     def _build_relationships(self, current, manual, seq) -> dict:
-        docs = [Document(r["document_id"], r["current_revision_id"], r["document_type"], r["environment_key"],
-                         tuple(m["objects"])) for r, m in current]
+        docs = [Document(d["document_id"], d["current_revision_id"], d["document_type"], d["environment_key"],
+                         tuple(m["objects"])) for d, m in current]
         vector = sorted((d.document_id, d.revision_id) for d in docs)
-        return {"generation_id": str(uuid.uuid4()), "vector": vector,
+        detected = [{**{k: v for k, v in r.items() if k != "source_parent_object_id"},
+                     "evidence": dict(r["evidence"], source_parent_object_id=r["source_parent_object_id"])}
+                    for r in detect(docs)]
+        return {"generation_id": str(uuid.uuid4()), "catalogue_sequence": seq, "vector": vector,
+                "members": dict(vector), "rule_version": RULE_VERSION,
                 "vector_sha256": hashlib.sha256(json.dumps([vector, RULE_VERSION]).encode()).hexdigest(),
-                "detected": detect(docs), "manual": manual}
-
-    def _commit_generation(self, conn, g, seq, now):
-        conn.execute("INSERT INTO relationship_generations (generation_id, catalogue_sequence, input_vector_sha256, "
-                     "rule_version, state, created_at, completed_at) VALUES (?,?,?,?, 'ready', ?, ?)",
-                     (g["generation_id"], seq, g["vector_sha256"], RULE_VERSION, now, now))
-        conn.executemany("INSERT INTO generation_members VALUES (?,?,?)",
-                         [(g["generation_id"], d, r) for d, r in g["vector"]])
-        conn.executemany(
-            "INSERT INTO detected_relationships (relationship_id, generation_id, source_document_id, "
-            "source_revision_id, source_object_id, target_document_id, target_revision_id, target_object_id, "
-            "kind, confidence, evidence, rule_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(r["relationship_id"], g["generation_id"], r["source_document_id"], r["source_revision_id"],
-              r["source_object_id"], r["target_document_id"], r["target_revision_id"], r["target_object_id"],
-              r["kind"], r["confidence"],
-              json.dumps(dict(r["evidence"], source_parent_object_id=r["source_parent_object_id"])),
-              r["rule_version"]) for r in g["detected"]])
-        conn.executemany("INSERT INTO generation_manual VALUES (?,?,?,?)",
-                         [(g["generation_id"], m["relationship_id"], m["version"], json.dumps(m)) for m in g["manual"]])
+                "detected": detected, "manual": manual}
 
     # ---- reads ------------------------------------------------------------------
 
@@ -143,12 +106,11 @@ class Derived:
                 state = "updating"
         except Exception:  # noqa: BLE001 - serve the prior snapshot, labelled
             state = "stale"
-        with self.store._db() as conn:
-            row = conn.execute("SELECT * FROM derived_state WHERE name='search' AND snapshot_key IS NOT NULL").fetchone()
-            seq = conn.execute("SELECT sequence FROM catalogue_state").fetchone()[0]
-        if row is None:
+        row = self.store.derived_state()["search"]
+        seq = self.store.read_sequence()
+        if row is None or not row.get("snapshot_key"):
             return {"generation": 0, "state": "ready" if seq == 0 else state, "documents": []}
-        data = json.loads((Path(self.store.root) / row["snapshot_key"]).read_text(encoding="utf-8"))
+        data = json.loads(self.store.get_derived_blob(row["snapshot_key"]).decode("utf-8"))
         if row["generation_sequence"] != seq and state == "ready":
             state = "updating"
         return {"generation": data["generation"], "state": state, "documents": data["documents"]}
@@ -167,18 +129,13 @@ class Derived:
         return [{"section_id": t["target_id"], "view": t} for t in m["navigation"]["targets"]
                 if t["target_id"] in sections]
 
-    def _generation_for(self, conn, revision_id, generation_id):
+    def _generation_for(self, revision_id, generation_id):
         if generation_id:
-            g = conn.execute("SELECT * FROM relationship_generations WHERE generation_id=? AND state='ready'",
-                             (generation_id,)).fetchone()
-            if g is None or not conn.execute("SELECT 1 FROM generation_members WHERE generation_id=? AND revision_id=?",
-                                             (generation_id, revision_id)).fetchone():
+            g = self.store.get_generation(generation_id)
+            if g is None or revision_id not in g["members"].values():
                 raise LibraryError("EVIDENCE_UNAVAILABLE", "that generation does not contain this revision", 404)
             return g
-        return conn.execute(
-            "SELECT g.* FROM relationship_generations g JOIN generation_members m ON m.generation_id = g.generation_id "
-            "WHERE m.revision_id=? AND g.state='ready' ORDER BY g.catalogue_sequence DESC LIMIT 1",
-            (revision_id,)).fetchone()
+        return self.store.latest_generation_for(revision_id)
 
     def relationships(self, document_id, *, revision_id=None, generation_id=None, object_id=None,
                       can_see_archived=False) -> dict:
@@ -186,34 +143,28 @@ class Derived:
             self.refresh()
         except Exception:  # noqa: BLE001 - fall back to the newest ready generation, labelled below
             pass
-        with self.store._db() as conn:
-            doc = conn.execute("SELECT * FROM documents WHERE document_id=?", (document_id,)).fetchone()
-            if doc is None or (doc["archived"] and not can_see_archived):
-                raise not_found("document")
-            revision_id = revision_id or doc["current_revision_id"]
-            if not conn.execute("SELECT 1 FROM revisions WHERE document_id=? AND revision_id=? AND status='committed'",
-                                (document_id, revision_id)).fetchone():
-                raise not_found("revision")
-            g = self._generation_for(conn, revision_id, generation_id)
-            seq = conn.execute("SELECT sequence FROM catalogue_state").fetchone()[0]
-            if g is None:
-                return {"document_id": document_id, "revision_id": revision_id,
-                        "generation": {"state": "evidence_unavailable"}, "incoming": [], "outgoing": [], "manual": []}
-            rows = conn.execute("SELECT * FROM detected_relationships WHERE generation_id=? AND "
-                                "(source_document_id=? OR target_document_id=?)",
-                                (g["generation_id"], document_id, document_id)).fetchall()
-            manual = [json.loads(r["record"]) for r in conn.execute(
-                "SELECT record FROM generation_manual WHERE generation_id=?", (g["generation_id"],))]
-            members = {r["document_id"]: r["revision_id"] for r in conn.execute(
-                "SELECT document_id, revision_id FROM generation_members WHERE generation_id=?", (g["generation_id"],))}
-            docs = {r["document_id"]: r for r in conn.execute("SELECT * FROM documents")}
+        docs = {d["document_id"]: d for d in self.store.catalogue_documents()}
+        doc = docs.get(document_id)
+        if doc is None or (doc["archived"] and not can_see_archived):
+            raise not_found("document")
+        revision_id = revision_id or doc["current_revision_id"]
+        if not self.store.is_committed(document_id, revision_id):
+            raise not_found("revision")
+        g = self._generation_for(revision_id, generation_id)
+        seq = self.store.read_sequence()
+        if g is None:
+            return {"document_id": document_id, "revision_id": revision_id,
+                    "generation": {"state": "evidence_unavailable"}, "incoming": [], "outgoing": [], "manual": []}
+        rows = [r for r in g["detected"] if document_id in (r["source_document_id"], r["target_document_id"])]
+        manual = g["manual"]
+        members = g["members"]
         historical = revision_id != doc["current_revision_id"] or generation_id is not None
         state = "ready" if g["catalogue_sequence"] == seq else ("pinned" if historical else "updating")
         incoming, outgoing = [], []
         for r in rows:
             out = r["source_document_id"] == document_id
             this_obj = r["source_object_id"] if out else r["target_object_id"]
-            evidence = json.loads(r["evidence"])
+            evidence = r["evidence"]
             if object_id and this_obj != object_id and evidence.get("source_parent_object_id") != object_id:
                 continue
             other_doc = r["target_document_id"] if out else r["source_document_id"]

@@ -30,9 +30,13 @@ class ApiTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.factory = adf_factory(self.tmp / "factory")
-        self.app = create_app(replace(self.settings, local_data_dir=self.tmp / "data"), session_secret=SECRET)
+        self.app = create_app(replace(self.settings, local_data_dir=self.tmp / "data"), store=self.make_store(),
+                              session_secret=SECRET)
         self.client = self.make_client()
         self.n = 0
+
+    def make_store(self):
+        return None                      # the configured backend: LocalStore
 
     def make_client(self, **kw):
         return TestClient(self.app, base_url="http://127.0.0.1:8765", raise_server_exceptions=False, **kw)
@@ -237,6 +241,11 @@ class Configuration(unittest.TestCase):
         committed = (ROOT / "docs" / "openapi-v1.json").read_text(encoding="utf-8")
         self.assertEqual(committed, openapi(), "regenerate: python -m bidoc_library.openapi > docs/openapi-v1.json")
 
+
+
+from backends import add_variants  # noqa: E402
+
+add_variants(globals(), (Health, Documents, LocalAccess, GatewayAccess))
 
 if __name__ == "__main__":
     unittest.main()

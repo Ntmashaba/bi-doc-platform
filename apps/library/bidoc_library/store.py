@@ -32,6 +32,7 @@ from bidoc_engines import legacy
 from .admission import admit, admit_for_preview, preview_body, reprojected
 from .errors import LibraryError, conflict, not_found
 from .migrations import migrate
+from .repository import LocalRepository
 
 
 class SimulatedCrash(Exception):
@@ -94,7 +95,7 @@ def _cursor_decode(cursor):
         raise LibraryError("INVALID_REQUEST", "invalid cursor") from None
 
 
-class LocalStore:
+class LocalStore(LocalRepository):
     def __init__(self, data_dir, *, limits: Limits = Limits(), faults=(), clock=_now,
                  cleanup_grace_seconds: float = 3600):
         self.root = Path(data_dir)

@@ -92,5 +92,10 @@ class MetadataOverrides(ApiTest):
         self.assertEqual(json.loads(conn.execute("SELECT revision_metadata FROM documents").fetchone()[0]),
                          {"title": "T", "description": "D", "tags": ["x"], "business_area": "Fin", "owner": "Ops"})
 
+
+from backends import add_variants  # noqa: E402
+
+add_variants(globals(), (MetadataOverrides,))
+
 if __name__ == "__main__":
     unittest.main()
