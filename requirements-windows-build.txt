@@ -1,0 +1,18 @@
+# Windows build of the generator (B09): PyInstaller and the desktop window.
+# Exact versions; transitive dependencies included. Used with requirements.txt:
+#   pip install -r requirements.txt -r requirements-windows-build.txt
+-c requirements-lock.txt
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+altgraph==0.17.5
+packaging==26.3
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+setuptools==84.0.0
+pywebview==6.2.1
+pythonnet==3.1.0
+clr-loader==0.3.1
+cffi==2.1.1
+pycparser==3.0
+proxy-tools==0.1.0
+bottle==0.13.4

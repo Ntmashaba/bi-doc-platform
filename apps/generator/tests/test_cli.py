@@ -63,6 +63,18 @@ class Cli(unittest.TestCase):
         self.assertFalse(report["inputs"]["pbix"]["available"])          # PBIX never blocks PBIP/ADF (A07)
         self.assertIn("pbi-tools not found", report["inputs"]["pbix"]["reason"])
 
+    def test_config_keeps_the_pbi_tools_path(self):
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        tool = self.tmp / "pbi-tools.exe"
+        tool.write_bytes(b"")
+        self.assertEqual(run(["config", "--pbi-tools", str(self.tmp / "nope.exe")])[0], 2)
+        self.assertEqual(run(["config", "--pbi-tools", str(tool)])[0], 0)
+        report = json.loads(run(["doctor", "--json"])[1])
+        self.assertEqual(report["pbi_tools"], str(tool.resolve()))
+        run(["config", "--pbi-tools", ""])
+        self.assertEqual(json.loads(run(["config", "--json"])[1]), {})
+
     def test_pbix_without_prerequisites_exits_3(self):                   # A07
         pbix = self.tmp / "r.pbix"
         pbix.write_bytes(b"PK")

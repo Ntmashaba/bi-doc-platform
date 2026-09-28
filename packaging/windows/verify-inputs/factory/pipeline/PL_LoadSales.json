@@ -1,0 +1,32 @@
+{
+ "name": "PL_LoadSales",
+ "properties": {
+  "description": "Loads daily sales into the warehouse.",
+  "activities": [
+   {
+    "name": "Copy daily sales",
+    "type": "Copy",
+    "inputs": [
+     {
+      "referenceName": "DS_Raw",
+      "type": "DatasetReference"
+     }
+    ],
+    "outputs": [
+     {
+      "referenceName": "DS_FactSales",
+      "type": "DatasetReference"
+     }
+    ],
+    "typeProperties": {
+     "source": {
+      "type": "ParquetSource"
+     },
+     "sink": {
+      "type": "AzureSqlSink"
+     }
+    }
+   }
+  ]
+ }
+}

@@ -75,6 +75,10 @@ def _parser():
     r.add_argument("--pbi-tools")
     r.add_argument("--json", action="store_true")
 
+    c = sub.add_parser("config", help="show or change settings kept in the generator home (config.json)")
+    c.add_argument("--pbi-tools", help="path to pbi-tools.exe; an empty value removes it")
+    c.add_argument("--json", action="store_true")
+
     w = sub.add_parser("desktop", help="open the desktop app")
     w.add_argument("--pbi-tools")
     w.add_argument("--no-window", action="store_true", help="serve the app on loopback without opening a window")
@@ -253,6 +257,24 @@ def _retry(args) -> int:
     return _outcome([item])
 
 
+def _config(args) -> int:
+    from .doctor import config  # noqa: PLC0415
+    settings = config()
+    if args.pbi_tools is not None:
+        if args.pbi_tools and not Path(args.pbi_tools).is_file():
+            print(f"error: no file at {args.pbi_tools}", file=sys.stderr)
+            return EXIT_INPUT
+        if args.pbi_tools:
+            settings["pbi_tools"] = str(Path(args.pbi_tools).resolve())
+        else:
+            settings.pop("pbi_tools", None)
+        home().mkdir(parents=True, exist_ok=True)
+        (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    print(json.dumps(settings, indent=1) if args.json else
+          "\n".join(f"{k}: {v}" for k, v in settings.items()) or "(no settings)")
+    return EXIT_OK
+
+
 def _desktop(args) -> int:
     from .desktop.app import run  # noqa: PLC0415
     return run(pbi_tools=args.pbi_tools, window=not args.no_window, port=args.port)
@@ -261,7 +283,7 @@ def _desktop(args) -> int:
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     return {"doctor": _doctor, "generate": _generate, "batch": _batch, "history": _history,
-            "retry": _retry, "desktop": _desktop}[args.command](args)
+            "retry": _retry, "config": _config, "desktop": _desktop}[args.command](args)
 
 
 if __name__ == "__main__":

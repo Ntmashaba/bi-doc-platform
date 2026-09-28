@@ -126,3 +126,43 @@ jobs:
       - name: Generator tests
         working-directory: apps/generator
         run: python -m unittest discover -s tests -v
+
+  windows-installer:
+    # B09 / A13: frozen executables and the Inno Setup installer, then install, diagnose,
+    # generate, serve the desktop app, upgrade (0.2.0 -> 0.2.1) and uninstall from a shell
+    # with no Python on PATH. The runner has Python on disk, so this is not the clean-machine
+    # run; that is the same script on a clean Windows machine (docs/b09/VERIFICATION.md).
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build 0.2.0
+        shell: pwsh
+        run: |
+          ./packaging/windows/build.ps1 -Version 0.2.0 -BuildLabel "CI build (unsigned)"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/old" | Out-Null
+          Copy-Item dist/installer/*.exe "$env:RUNNER_TEMP/old/"
+      - name: Build 0.2.1 (upgrade target)
+        shell: pwsh
+        run: ./packaging/windows/build.ps1 -Version 0.2.1 -BuildLabel "CI build (unsigned)" -SkipInstall
+      - name: Install, use, upgrade and uninstall
+        shell: pwsh
+        run: >
+          ./packaging/windows/verify-install.ps1
+          -Installer "$env:RUNNER_TEMP/old/bidoc-setup-0.2.0-unsigned.exe"
+          -UpgradeInstaller dist/installer/bidoc-setup-0.2.1-unsigned.exe
+          -Report dist/verify-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bidoc-windows-installer
+          path: |
+            dist/installer/*.exe
+            dist/release.json
+            dist/SHA256SUMS.txt
+            dist/RELEASE-NOTES.md
+            dist/verify-report.json
+          retention-days: 14

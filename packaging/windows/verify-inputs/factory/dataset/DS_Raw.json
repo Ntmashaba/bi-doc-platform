@@ -1,0 +1,17 @@
+{
+ "name": "DS_Raw",
+ "properties": {
+  "type": "Parquet",
+  "linkedServiceName": {
+   "referenceName": "LS_Lake",
+   "type": "LinkedServiceReference"
+  },
+  "typeProperties": {
+   "location": {
+    "type": "AzureBlobFSLocation",
+    "fileSystem": "raw",
+    "folderPath": "sales/daily"
+   }
+  }
+ }
+}

@@ -1,0 +1,38 @@
+{
+ "compatibilityLevel": 1567,
+ "model": {
+  "name": "Sales",
+  "tables": [
+   {
+    "name": "Sales",
+    "lineageTag": "7d1a3c52-0b4e-4c61-9a7e-3f2b8c5d6e01",
+    "columns": [
+     {
+      "name": "Amount",
+      "dataType": "decimal"
+     },
+     {
+      "name": "OrderDate",
+      "dataType": "dateTime"
+     }
+    ],
+    "measures": [
+     {
+      "name": "Revenue",
+      "expression": "SUM(Sales[Amount])",
+      "lineageTag": "8e2b4d63-1c5f-4d72-8b8f-4a3c9d6e7f12"
+     }
+    ],
+    "partitions": [
+     {
+      "name": "Sales",
+      "source": {
+       "type": "m",
+       "expression": "let\n    Source = Sql.Database(\"sql.example.local\", \"SalesDW\"),\n    Fact = Source{[Schema=\"dbo\",Item=\"FactSales\"]}[Data]\nin\n    Fact"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}
