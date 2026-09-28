@@ -14,6 +14,7 @@ from typing import Literal, Optional
 from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
+from importlib import resources as _resources
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -36,6 +37,10 @@ VIEW_CSP = ("sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inlin
             "img-src data:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; "
             "frame-ancestors 'self'")
 DOWNLOAD_CSP = "sandbox; default-src 'none'"
+SHELL_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+             "frame-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'")
+STATIC_FILES = {"app.js": "text/javascript", "search.js": "text/javascript", "protocol.js": "text/javascript",
+                "styles.css": "text/css"}
 
 
 # ---- response models (documented in OpenAPI) --------------------------------------
@@ -190,10 +195,16 @@ class DocumentObject(BaseModel):
     view: Optional[ObjectView]
 
 
+class SectionTarget(BaseModel):
+    section_id: str
+    view: ObjectView
+
+
 class ObjectPage(BaseModel):
     document_id: str
     revision_id: str
     items: list[DocumentObject]
+    sections: list[SectionTarget]
     next_cursor: Optional[str]
 
 
@@ -357,6 +368,27 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
             raise forbidden("publisher role required")
         return p
 
+    # ---- library shell (static, no inline script) ----------------------------------
+
+    static = _resources.files("bidoc_library").joinpath("static")
+
+    @app.get("/", include_in_schema=False)
+    def shell(p: Principal = Depends(reader)):
+        page = static.joinpath("index.html").read_text(encoding="utf-8")
+        # Local mode: the page carries the per-installation secret its own requests need. Other
+        # sites cannot read it (no CORS, Host checked) and it never appears in any document.
+        meta = (f'<meta name="bidoc-session" content="{session_secret}">'
+                if settings.auth_mode == "local" and session_secret else "")
+        return Response(page.replace("<!--BIDOC_SESSION-->", meta), media_type="text/html; charset=utf-8",
+                        headers={"Content-Security-Policy": SHELL_CSP, "X-Frame-Options": "DENY"})
+
+    @app.get("/static/{name}", include_in_schema=False)
+    def static_file(name: str, p: Principal = Depends(reader)):
+        if name not in STATIC_FILES:
+            raise LibraryError("NOT_FOUND", "not found", 404)
+        return Response(static.joinpath(name).read_bytes(), media_type=STATIC_FILES[name],
+                        headers={"Cache-Control": "no-cache"})
+
     # ---- health and capabilities --------------------------------------------------
 
     @app.get(f"{PREFIX}/health/live", tags=["health"])
@@ -519,6 +551,7 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
         items = derived.objects(str(document_id), rev)
         start = cursor or 0
         return {"document_id": str(document_id), "revision_id": rev, "items": items[start:start + limit],
+                "sections": derived.section_targets(str(document_id), rev),
                 "next_cursor": str(start + limit) if start + limit < len(items) else None}
 
     @app.get(f"{PREFIX}/documents/{{document_id}}/relationships", tags=["relationships"], responses=ERRORS)

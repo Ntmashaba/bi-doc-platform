@@ -172,7 +172,10 @@ def describe(payload: dict, coverage: str = "complete"):
             f"Type: {s.get('sourceType')}", s.get("server") and f"Server: {s['server']}",
             s.get("database") and f"Database: {s['database']}", s.get("object") and f"Object: {s['object']}",
             "Used by tables: " + ", ".join(sorted(g["tables"])) if g["tables"] else "", f"Status: {s.get('status')}"]))
-        targets.append({"target_id": sid_obj[:512], "view_id": "pbi.source", "args": {"source": label[:200]}})
+        nav = {"source": label[:200], "server": str(s.get("server") or "")[:500],
+               "database": str(s.get("database") or "")[:500], "object": str(s.get("object") or "")[:500]}
+        targets.append({"target_id": sid_obj[:512], "view_id": "pbi.source",
+                        "args": {k: v for k, v in nav.items() if v}})
 
     for p in report.get("pages", []):
         psid = anchor("p", f"page:{p.get('id') or p.get('name')}")

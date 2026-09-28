@@ -1,0 +1,13 @@
+{
+  "name": "bidoc-library-frontend",
+  "private": true,
+  "description": "Library shell (TypeScript). Build output is committed to ../bidoc_library/static; production needs no Node.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "playwright": "1.63.0"
+  }
+}

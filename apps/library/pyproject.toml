@@ -21,5 +21,8 @@ dev = ["httpx2==2.13.1"]
 [tool.setuptools]
 packages = ["bidoc_library"]
 
+[tool.setuptools.package-data]
+bidoc_library = ["static/*"]
+
 [tool.setuptools.dynamic]
 version = { attr = "bidoc_library.__version__" }
