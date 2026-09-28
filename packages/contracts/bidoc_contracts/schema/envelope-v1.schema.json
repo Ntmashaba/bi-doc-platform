@@ -1,0 +1,658 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://bi-doc-platform/contracts/envelope-v1.schema.json",
+ "title": "BI Documentation Platform publication envelope v1",
+ "description": "Content of the inert <script type=\"application/json\" id=\"pbidoc-manifest\"> element. Cross-field rules (unique IDs, references, anchors, hash, size caps) are enforced by bidoc_contracts.validate.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema_version",
+  "document_type",
+  "classification",
+  "native_payload",
+  "objects",
+  "document_id",
+  "revision_id",
+  "title",
+  "description",
+  "tags",
+  "generated_at",
+  "generator",
+  "source",
+  "publication",
+  "projection",
+  "navigation",
+  "identity_version",
+  "content_sha256",
+  "sections"
+ ],
+ "properties": {
+  "schema_version": {
+   "const": 1
+  },
+  "document_type": {
+   "enum": [
+    "power_bi",
+    "adf"
+   ]
+  },
+  "classification": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "business_area",
+    "environment",
+    "owner"
+   ],
+   "properties": {
+    "business_area": {
+     "type": "string",
+     "minLength": 0,
+     "maxLength": 200
+    },
+    "environment": {
+     "type": "string",
+     "minLength": 0,
+     "maxLength": 200
+    },
+    "owner": {
+     "type": "string",
+     "minLength": 0,
+     "maxLength": 200
+    }
+   }
+  },
+  "native_payload": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "data",
+    "generator"
+   ],
+   "properties": {
+    "schema_version": {
+     "type": [
+      "string",
+      "integer"
+     ]
+    },
+    "data": {
+     "type": "object"
+    },
+    "generator": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 100
+    }
+   }
+  },
+  "objects": {
+   "type": "array",
+   "maxItems": 100000,
+   "items": {
+    "$ref": "#/$defs/object"
+   }
+  },
+  "document_id": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  },
+  "revision_id": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  },
+  "title": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 200,
+   "pattern": "^\\S(.*\\S)?$"
+  },
+  "description": {
+   "type": "string",
+   "minLength": 0,
+   "maxLength": 2000
+  },
+  "tags": {
+   "type": "array",
+   "maxItems": 20,
+   "uniqueItems": true,
+   "items": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 50,
+    "pattern": "^\\S(.*\\S)?$"
+   }
+  },
+  "generated_at": {
+   "type": "string",
+   "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$"
+  },
+  "generator": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "version"
+   ],
+   "properties": {
+    "name": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 100
+    },
+    "version": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 100
+    }
+   }
+  },
+  "source": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "label"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "pbix",
+      "pbip",
+      "tmdl",
+      "bim",
+      "pbir",
+      "extracted",
+      "adf_git",
+      "adf_arm",
+      "adf_resources",
+      "legacy"
+     ]
+    },
+    "label": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 255
+    },
+    "sha256": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{64}$"
+    }
+   }
+  },
+  "publication": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "asset_id",
+    "environment_key",
+    "scope_key",
+    "scope_descriptor",
+    "snapshot_state"
+   ],
+   "properties": {
+    "asset_id": {
+     "type": "string",
+     "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "environment_key": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+     "description": "Normalized key; 'unknown' is explicit."
+    },
+    "scope_key": {
+     "type": "string",
+     "pattern": "^[a-z0-9][a-z0-9_.:-]{0,127}$"
+    },
+    "scope_descriptor": {
+     "type": "object",
+     "description": "Engine-specific canonical selection."
+    },
+    "snapshot_state": {
+     "const": "complete"
+    }
+   }
+  },
+  "projection": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "policy_version",
+    "native_schema",
+    "profile",
+    "options",
+    "omissions",
+    "coverage_warnings"
+   ],
+   "properties": {
+    "policy_version": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 50
+    },
+    "native_schema": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 100
+    },
+    "profile": {
+     "enum": [
+      "local",
+      "shared"
+     ],
+     "description": "local: generator output for the author's own use; shared: projected for the shared library. The importer re-applies the shared projection and never trusts this label."
+    },
+    "options": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "query_code"
+     ],
+     "properties": {
+      "query_code": {
+       "enum": [
+        "included",
+        "withheld"
+       ]
+      }
+     }
+    },
+    "omissions": {
+     "type": "array",
+     "maxItems": 100000,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "path",
+       "reason"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "pattern": "^(/([^~/]|~[01])*)*$",
+        "maxLength": 2048
+       },
+       "reason": {
+        "enum": [
+         "query_code_withheld",
+         "credential",
+         "entered_data",
+         "machine_path",
+         "secret_bearing_url",
+         "unsupported_field"
+        ]
+       },
+       "effect": {
+        "type": "string",
+        "minLength": 0,
+        "maxLength": 500
+       }
+      }
+     }
+    },
+    "coverage_warnings": {
+     "type": "array",
+     "maxItems": 1000,
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+     }
+    }
+   }
+  },
+  "navigation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "targets"
+   ],
+   "properties": {
+    "targets": {
+     "type": "array",
+     "maxItems": 200000,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "target_id",
+       "view_id",
+       "args"
+      ],
+      "properties": {
+       "target_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+       },
+       "view_id": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+       },
+       "args": {
+        "type": "object",
+        "maxProperties": 20,
+        "additionalProperties": {
+         "type": [
+          "string",
+          "integer",
+          "boolean"
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "identity_version": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 50
+  },
+  "content_sha256": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "sections": {
+   "type": "array",
+   "maxItems": 10000,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "title",
+     "text"
+    ],
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+     },
+     "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+     },
+     "text": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 100000
+     }
+    }
+   }
+  },
+  "assets": {
+   "type": "array",
+   "description": "ZIP profile only (R2); must be absent from self-contained HTML.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "path",
+     "sha256"
+    ],
+    "properties": {
+     "path": {
+      "type": "string",
+      "pattern": "^assets/[^/].*$",
+      "maxLength": 512
+     },
+     "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+     }
+    }
+   }
+  }
+ },
+ "$defs": {
+  "endpoint": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "system",
+    "server",
+    "instance",
+    "port",
+    "database",
+    "schema",
+    "object",
+    "storage_account",
+    "container",
+    "path",
+    "url"
+   ],
+   "properties": {
+    "system": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "server": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "instance": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "database": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "schema": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "object": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "storage_account": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "container": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "path": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "url": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "port": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 1,
+     "maximum": 65535
+    }
+   }
+  },
+  "binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "binding_id",
+    "operation",
+    "endpoint",
+    "normalized_endpoint",
+    "normalization_version",
+    "invocation_context",
+    "evidence_refs",
+    "resolution",
+    "coverage"
+   ],
+   "properties": {
+    "binding_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "operation": {
+     "enum": [
+      "read",
+      "write",
+      "delete",
+      "execute"
+     ]
+    },
+    "endpoint": {
+     "$ref": "#/$defs/endpoint",
+     "description": "Values exactly as the engine found them."
+    },
+    "normalized_endpoint": {
+     "$ref": "#/$defs/endpoint",
+     "description": "Comparison form produced by normalization_version; never replaces endpoint."
+    },
+    "normalization_version": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 50
+    },
+    "invocation_context": {
+     "type": "object",
+     "description": "Where the operation happens, e.g. pipeline/activity path and resolved parameters.",
+     "additionalProperties": {
+      "type": [
+       "string",
+       "integer",
+       "boolean",
+       "null"
+      ]
+     }
+    },
+    "evidence_refs": {
+     "type": "array",
+     "maxItems": 100,
+     "items": {
+      "type": "string",
+      "pattern": "^(/([^~/]|~[01])*)*$",
+      "maxLength": 2048
+     },
+     "description": "JSON Pointers into native_payload.data; never copies of the evidence."
+    },
+    "resolution": {
+     "enum": [
+      "static",
+      "partial",
+      "dynamic",
+      "opaque",
+      "unsupported"
+     ]
+    },
+    "coverage": {
+     "enum": [
+      "complete",
+      "selection",
+      "partial",
+      "unknown"
+     ]
+    }
+   }
+  },
+  "object": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "object_id",
+    "kind",
+    "label",
+    "section_id",
+    "parent_object_id",
+    "bindings",
+    "dynamic",
+    "opaque",
+    "coverage"
+   ],
+   "properties": {
+    "object_id": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "kind": {
+     "enum": [
+      "source",
+      "table",
+      "measure",
+      "pipeline",
+      "activity",
+      "trigger",
+      "dataflow",
+      "dataset",
+      "linked_service",
+      "file",
+      "other"
+     ]
+    },
+    "label": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "section_id": {
+     "type": "string",
+     "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+    },
+    "parent_object_id": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "minLength": 1,
+     "maxLength": 512
+    },
+    "bindings": {
+     "type": "array",
+     "maxItems": 1000,
+     "items": {
+      "$ref": "#/$defs/binding"
+     }
+    },
+    "dynamic": {
+     "type": "boolean"
+    },
+    "opaque": {
+     "type": "boolean"
+    },
+    "coverage": {
+     "enum": [
+      "complete",
+      "selection",
+      "partial",
+      "unknown"
+     ]
+    }
+   }
+  }
+ }
+}

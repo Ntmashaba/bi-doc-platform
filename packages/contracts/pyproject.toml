@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi-doc-contracts"
+dynamic = ["version"]
+description = "Publication envelope v1 for BI Documentation Platform artifacts: schema, validator and hash."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["jsonschema>=4.18"]
+
+[tool.setuptools]
+packages = ["bidoc_contracts"]
+
+[tool.setuptools.package-data]
+bidoc_contracts = ["schema/*.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bidoc_contracts.__version__" }

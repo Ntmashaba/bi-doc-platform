@@ -7,7 +7,10 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | ID | Status | Notes |
 |---|---|---|
 | B01 | Done except Windows packaging spike (blocked: no Windows host) | Findings: `docs/b01/BASELINE.md`; scripts: `spikes/b01/` |
-| B02–B16 | Not started | |
+| B02 | In progress | Envelope v1 schema, validator, hash and golden fixtures done; identity/binding mappings drafted. Remaining: ADF scope descriptors, legacy-import native-schema mapping, freeze review |
+| B03–B16 | Not started | |
+| W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
+| W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
 ## Log
 
@@ -28,5 +31,26 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 3. Windows: W1 packaging build on Windows CI and W2 real PBIX extraction on the owner's machine, reported separately.
 4. Engines get `pyproject.toml`; platform consumes versioned engine packages.
 
+### 2026-09-28 — Owner decisions applied; engine packaging; W1 probe
+- ADR 0001 recorded. pbi-tools licence verified from upstream `LICENSE` at `main` and tag `1.2.0`: AGPL-3.0.
+- Engine packaging PRs (pyproject, console script, templates as package data, wheel install test):
+  pbi-doc-gen [#2](https://github.com/Ntmashaba/pbi-doc-gen/pull/2) (166 tests OK, `run_ci.py` OK with no skips);
+  adf-doc-gen [#2](https://github.com/Ntmashaba/adf-doc-gen/pull/2) (29 tests OK). Engine CLI behaviour unchanged.
+- W1 probe ([run](https://github.com/Ntmashaba/bi-doc-platform/actions/runs/36424226145)): `windows-latest` = Windows Server 2025 (10.0.26100),
+  Python 3.11.9, WebView2 153.0; PyInstaller 6.22.3 + pywebview 6.2.1 build OK; frozen exe ran and read its bundled asset.
+  **Not covered:** GUI window rendering (headless runner), installer tooling, engine generation inside the exe (B09).
+
+### 2026-09-28 — B02 started
+- `packages/contracts` (`bi-doc-contracts`, standard library only): envelope v1 JSON Schema, validator that interprets the schema file,
+  manifest locate/embed/hash, strict JSON, size limits, cross-field and anchor checks.
+- Golden fixtures built by `tests/build_fixtures.py` via the real `embed_manifest` (valid PBI, valid ADF with CRLF, escaped script-like
+  text; invalid unsupported version, duplicate manifest, hash mismatch, missing anchor). 25 tests OK, including agreement with the
+  reference `jsonschema` library.
+- ADR 0001 policy reflected in the envelope: `projection.profile` (local/shared) and `projection.options.query_code` (included/withheld).
+- Identity/binding draft `docs/contracts/identity-and-bindings-v1.md`. Found: TMDL reader and BIM path both drop `lineageTag` (B03 engine change).
+- Added Linux CI for the contracts package (fails on skipped tests).
+
 ### Next
-- B02: envelope JSON Schema, hash implementation and golden fixtures; engine ID mappings (check PBI `lineageTag`); binding/endpoint schema.
+- B02: ADF scope descriptors (factory vs. selection), native-schema mapping for legacy import (`pbi-doc-gen/2`, `adf-doc-gen/2`), then freeze.
+- B03: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
+  shared projection with the *Include query code* option; adapters emitting envelope v1.
