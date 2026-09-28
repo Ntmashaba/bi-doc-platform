@@ -163,6 +163,8 @@ def describe(payload: dict, coverage: str = "complete"):
         resolved = s.get("status") == "Resolved"
         label = " ".join(x for x in (s.get("database"), ".".join(y for y in (s.get("schema"), s.get("object")) if y))
                          if x) or s.get("object") or s.get("location") or s.get("sourceType") or "source"
+        if str(ep.get("path") or "").startswith("withheld:"):
+            label = f"{label.split(' — ')[0]} — personal location withheld (ref {ep['path'][9:17]})"
         ssid = anchor("s", sid_obj)
         objects.append({"object_id": sid_obj[:512], "kind": "source", "label": label[:512], "section_id": ssid,
                         "parent_object_id": None, "dynamic": not resolved, "opaque": False, "coverage": coverage,

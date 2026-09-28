@@ -242,6 +242,7 @@ class SearchHit(BaseModel):
 class SearchResults(BaseModel):
     generation: int
     state: str
+    total: int = Field(description="all matches; items holds the first `limit`")
     items: list[SearchHit]
 
 
@@ -325,6 +326,9 @@ class Capabilities(BaseModel):
     worker_status: Optional[str]
     installer_available: bool
     search_available: bool
+    search_mode: Literal["client", "server"] = Field(
+        description="client: download /search-index and search in the browser; server: the index is too large, "
+                    "so load /search-index?sections=false for the catalogue and query /search")
     can_manage_relationships: bool
     can_administer: bool
     relationship_schema_version: str
@@ -595,6 +599,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                                 "available": False,
                                 "reason": "Hosted processing is not available (optional R3); use the generator."}],
                 "worker_status": None, "installer_available": bool(publishing.releases()), "search_available": True,
+                "search_mode": search_mode(),
                 "can_manage_relationships": p.can("publish"), "can_administer": p.can("admin"),
                 "relationship_schema_version": "rel-rules/1"}
 
@@ -749,22 +754,36 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
 
     @app.get(f"{PREFIX}/search-index", response_model=SearchIndex, tags=["search"],
              responses={304: {"description": "Not modified"}, **ERRORS})
-    def search_index(request: Request, p: Principal = Depends(reader)):
+    def search_index(request: Request, sections: bool = True, p: Principal = Depends(reader)):
+        """The whole search index, or with `sections=false` only the catalogue fields (server search mode)."""
         index = derived.search_index()
-        etag = _etag_header(f"search-{index['generation']}-{index['state']}")
+        etag = _etag_header(f"search-{index['generation']}-{index['state']}-{int(sections)}")
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag})
+        if not sections:
+            index = {**index, "documents": [{**d, "sections": []} for d in index["documents"]]}
         return JSONResponse(index, headers={"ETag": etag, "Cache-Control": "private, no-cache"})
+
+    index_size = {"key": None, "bytes": 0}
+
+    def search_mode() -> str:
+        index = derived.search_index()
+        key = (index["generation"], index["state"])
+        if index_size["key"] != key:
+            index_size.update(key=key, bytes=len(json.dumps(index, separators=(",", ":")).encode()))
+        return "server" if index_size["bytes"] > settings.client_search_index_bytes else "client"
 
     @app.get(f"{PREFIX}/search", response_model=SearchResults, tags=["search"], responses=ERRORS)
     def search(q: Optional[str] = Query(None, max_length=500),
                document_type: Optional[Literal["power_bi", "adf"]] = None, business_area: Optional[str] = None,
                environment: Optional[str] = None, owner: Optional[str] = None, tag: Optional[str] = None,
-               limit: int = Query(50, ge=1, le=200), p: Principal = Depends(reader)):
+               limit: int = Query(50, ge=1, le=500), p: Principal = Depends(reader)):
+        """The same matching and ranking as the browser search (search semantics v1)."""
         index = derived.search_index()
         items = run_search(index["documents"], q, document_type=document_type, business_area=business_area,
-                           environment=environment, owner=owner, tag=tag)[:limit]
-        return {"generation": index["generation"], "state": index["state"], "items": items}
+                           environment=environment, owner=owner, tag=tag)
+        return {"generation": index["generation"], "state": index["state"], "total": len(items),
+                "items": items[:limit]}
 
     # ---- objects and relationships ------------------------------------------------
 

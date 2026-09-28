@@ -35,12 +35,23 @@ def split_server(server):
     return host or None, instance or None, port
 
 
+_WITHHELD = re.compile(r"personal location withheld \[ref ([0-9a-f]{12})\]")
+
+
+def withheld_path(value):
+    """A personal path the shared projection withheld becomes `withheld:<ref>`: distinct per
+    file, stable across revisions, and never matched by relationship rules."""
+    m = _WITHHELD.search(value or "") if isinstance(value, str) else None
+    return f"withheld:{m.group(1)}" if m else value
+
+
 def endpoint(**values) -> dict:
     ep = empty()
     for k, v in values.items():
         if k not in ep:
             raise KeyError(k)
         ep[k] = v if v not in ("", []) else None
+    ep["path"] = withheld_path(ep["path"])
     if ep["port"] is not None and not (isinstance(ep["port"], int) and 1 <= ep["port"] <= 65535):
         ep["port"] = None
     return ep

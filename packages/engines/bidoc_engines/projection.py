@@ -2,14 +2,22 @@
 
 Local output is never projected. The shared profile:
   * withholds query code (M/SQL) unless the publisher explicitly includes it;
-  * always removes machine paths, and applies best-effort credential, URL-token and
-    entered-data cleaning to every string, including included code.
+  * always removes the input's own machine path (model.sourcePath);
+  * replaces personal local paths (drive-letter paths, file:// URIs, /home and /Users
+    paths) wherever they appear, including inside code, labels and identifiers, with
+    "<file name> — personal location withheld [ref <12 hex>]". The ref is a stable
+    pseudonym of the full path, so distinct files stay distinct and the same file keeps
+    its ID across revisions. UNC shares, URLs (SharePoint, Blob, ADLS) and relative
+    repository paths are kept: they identify real shared dependencies;
+  * applies best-effort credential, URL-token and entered-data cleaning to every string,
+    including included code.
 Cleaning is pattern-based and is not a guarantee; only withholding code is.
 Omissions record JSON Pointers and reasons, never values.
 """
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 
 POLICY_VERSION = "shared-projection/1"
@@ -52,6 +60,15 @@ _CREDENTIAL = re.compile(r"(?i)\b(password|pwd|accountkey|sharedaccesskey|shared
                          r"client_?secret)\s*=\s*('[^']*'|\"[^\"]*\"|[^;\"'\s]+)")
 _URL_SECRET = re.compile(r"(?i)([?&](?:sig|token|access_token|code|key|apikey|api_key|password|secret|"
                          r"client_secret)=)([^&#\s\"']+)")
+# Personal local paths: a drive letter, file:// URI or /home, /Users, /root path. The path
+# runs to the first file extension followed by a boundary (so "Budget 2024.xlsx" keeps its
+# space); without an extension it ends at the first whitespace after the last separator.
+# UNC shares (\\server\share) and URLs are shared locations and are not matched.
+_PATH_START = re.compile(r"file:/{2,3}(?=[A-Za-z]:[\\/]|/?(?:home|Users|root)/)|\\\\\?\\[A-Za-z]:(?=[\\/])|(?<![\w\\/.])[A-Za-z]:(?=[\\/])"
+                         r"|(?<![\w.:/\\])/(?:home|Users|root)(?=/)")
+_PATH_RUN = re.compile(r"""[^"'<>|\r\n\t*?`]*""")
+_EXTENSION = re.compile(r"""\.[A-Za-z0-9]{1,8}(?=$|[\s"',;)\]}])""")
+WITHHELD_PATH = re.compile(r"personal location withheld \[ref ([0-9a-f]{12})\]")
 _BINARY_TEXT = re.compile(r'(Binary\.FromText\(\s*")([^"]*)(")')
 
 
@@ -181,6 +198,39 @@ def _withhold_code_spans(text: str) -> str:
     return " | ".join(kept)
 
 
+def _path_end(text: str, start: int) -> int:
+    if text.startswith("\\\\?\\", start):               # \\?\C:\... long-path prefix
+        start += 4
+    run_end = _PATH_RUN.match(text, start).end()
+    ext = _EXTENSION.search(text, start, run_end)
+    if ext:
+        return ext.end()
+    last_sep = max(text.rfind("\\", start, run_end), text.rfind("/", start, run_end))
+    end = last_sep + 1
+    while end < run_end and not text[end].isspace() and text[end] not in ",;)]}":
+        end += 1
+    return end
+
+
+def withhold_personal_paths(text: str) -> str:
+    """Replace every personal local path in `text` with its file name and a stable reference
+    (idempotent: the replacement is never itself a path)."""
+    if not text:
+        return text
+    out, pos = [], 0
+    for m in _PATH_START.finditer(text):
+        if m.start() < pos:
+            continue
+        end = _path_end(text, m.start())
+        path = text[m.start():end]
+        norm = re.sub(r"^(?:file:/+|\\\\\?\\)", "", path).replace("\\", "/").rstrip("/")
+        name = norm.rsplit("/", 1)[-1] or "folder"
+        ref = hashlib.sha256(norm.lower().encode("utf-8")).hexdigest()[:12]
+        out.append(text[pos:m.start()] + f"{name} — personal location withheld [ref {ref}]")
+        pos = end
+    return "".join(out) + text[pos:]
+
+
 def _is_code_field(document_type: str, path) -> bool:
     key = path[-1] if path else None
     if document_type == "power_bi":
@@ -210,6 +260,11 @@ def project(document_type: str, payload: dict, *, query_code: str = "withheld"):
         if any(_matches(path, p) for p in MACHINE_PATHS[document_type]):
             omit(path, "machine_path", "Local file path removed.")
             return ""
+        withheld = withhold_personal_paths(node)
+        if withheld != node:
+            omit(path, "machine_path", "Personal file location withheld; the file name and a stable reference "
+                                        "are kept.")
+            node = withheld
         key = path[-1] if path and isinstance(path[-1], str) else None
         if document_type == "adf" and query_code == "withheld" and _DF_SQL_OPTION.search(node):
             stripped = _withhold_df_options(node)

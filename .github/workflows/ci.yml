@@ -27,6 +27,35 @@ jobs:
           done
           if grep -q "skipped" test.log; then echo "::error::tests were skipped"; exit 1; fi
 
+  large-documents:
+    # A41: import, memory, search and relationship rebuild with large documents; server
+    # search must return exactly what the browser search returns.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - run: python apps/library/tests/check_large_documents.py --json "$RUNNER_TEMP/a41.json"
+
+  azure-template:
+    # B13: the Container Apps template compiles, lints clean, keeps the pilot limits and
+    # sets only configuration the library accepts.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Bicep 0.47.16 (checksum pinned)
+        run: |
+          curl -sSLo "$RUNNER_TEMP/bicep" https://github.com/Azure/bicep/releases/download/v0.47.16/bicep-linux-x64
+          echo "64c345a58e0c3e48b1bc98a4e62d6b3adb1d238281297de3400aeafb2697aa5a  $RUNNER_TEMP/bicep" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bicep"
+      - run: python -m pip install -r requirements.txt
+      - run: python deploy/azure/check_template.py "$RUNNER_TEMP/bicep"
+
   real-pbix-samples:
     # 29 real reports pre-extracted by pbi-tools (MIT, Microsoft samples): valid artifacts,
     # no query code in shared output, DAX and source locations kept.
@@ -114,6 +143,8 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Container persistence and access checks
         run: python apps/library/tests/check_docker.py bidoc-library
+      - name: Desktop publishing through a TLS ingress (A36)
+        run: python apps/library/tests/check_ingress.py
 
   generator-windows:
     # B08 on Windows: batch queue, PBIX extraction through a child process, and cancellation
@@ -203,7 +234,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_store.py -v 2>&1 | tee azurite.log
           python -m unittest discover -s tests -p test_azure_backend.py -v 2>&1 | tee -a azurite.log
-          for suite in test_api test_derived test_metadata test_legacy_import; do
+          for suite in test_api test_derived test_metadata test_legacy_import test_zip_import test_publishing test_backup; do
             python -m unittest discover -s tests -p "$suite.py" -v 2>&1 | tee -a azurite.log
           done
           grep -q "Azurite" azurite.log || { echo "::error::Azurite tests did not run"; exit 1; }

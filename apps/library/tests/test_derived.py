@@ -104,6 +104,35 @@ class Search(DerivedTest):
         self.assertEqual([d["document_type"] for d in docs], ["power_bi"])
 
 
+class ServerSearch(DerivedTest):
+    """A41: when the index is too large for browsers, /search serves the same semantics."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = create_app(Settings(local_data_dir=self.tmp / "data2", client_search_index_bytes=0),
+                              store=self.make_store(), session_secret=SECRET)
+        self.c = TestClient(self.app, base_url="http://127.0.0.1:8765")
+
+    def test_server_mode_matches_browser_semantics(self):
+        from bidoc_library.search import search
+        self.publish_both()
+        self.assertEqual(self.c.get("/api/v1/capabilities").json()["search_mode"], "server")
+        full = self.c.get("/api/v1/search-index").json()
+        lite = self.c.get("/api/v1/search-index", params={"sections": "false"})
+        self.assertTrue(all(d["sections"] == [] for d in lite.json()["documents"]))
+        self.assertNotEqual(lite.headers["ETag"], self.c.get("/api/v1/search-index").headers["ETag"])
+        for q, f in (("copy daily", {}), ("sales", {}), ("revenue", {"document_type": "power_bi"}), ("", {}),
+                     ("a", {}), ("zzz", {})):
+            r = self.c.get("/api/v1/search", params={"q": q, "limit": 1, **f}).json()
+            expected = search(full["documents"], q, **f)
+            self.assertEqual((r["total"], r["items"]), (len(expected), expected[:1]), q)
+
+    def test_small_library_searches_in_the_browser(self):
+        app = create_app(Settings(local_data_dir=self.tmp / "data3"), store=self.make_store(), session_secret=SECRET)
+        c = TestClient(app, base_url="http://127.0.0.1:8765")
+        self.assertEqual(c.get("/api/v1/capabilities").json()["search_mode"], "client")
+
+
 class Detected(DerivedTest):
     def test_bidirectional_exact_link(self):                                  # A20
         adf, pbi = self.publish_both()
@@ -215,7 +244,7 @@ class Manual(DerivedTest):
 
 from backends import add_variants  # noqa: E402
 
-add_variants(globals(), (Search, Detected, Manual))
+add_variants(globals(), (Search, ServerSearch, Detected, Manual))
 
 if __name__ == "__main__":
     unittest.main()

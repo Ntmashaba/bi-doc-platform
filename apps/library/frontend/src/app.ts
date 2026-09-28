@@ -94,7 +94,7 @@ function href(path: string[], params: Record<string, string | null | undefined> 
 }
 
 interface Capabilities { can_publish: boolean; can_manage_relationships: boolean; can_administer: boolean; access_mode: string;
-  limits: { html_bytes: number; zip_bytes: number }; }
+  limits: { html_bytes: number; zip_bytes: number }; search_mode?: "client" | "server"; }
 let caps: Capabilities | null = null;
 let viewer: ViewerChannel | null = null;
 
@@ -127,8 +127,12 @@ async function render(): Promise<void> {
 interface SearchIndex { generation: number; state: string; documents: IndexedDocument[]; }
 let index: SearchIndex | null = null;
 let indexEtag = "";
+// In server search mode (a library too large to search in the browser) the index holds only
+// catalogue fields, and text queries go to /search, which has the same semantics.
+const serverSearch = (): boolean => caps?.search_mode === "server";
 async function loadIndex(): Promise<SearchIndex> {
-  const res = await api<SearchIndex>("/search-index", { headers: indexEtag ? { "If-None-Match": indexEtag } : {} });
+  const res = await api<SearchIndex>(serverSearch() ? "/search-index?sections=false" : "/search-index",
+    { headers: indexEtag ? { "If-None-Match": indexEtag } : {} });
   if (res.status !== 304) { index = res.data; indexEtag = res.headers.get("ETag") || ""; }
   return index as SearchIndex;
 }
@@ -191,9 +195,21 @@ async function homeView(type: string | null, params: URLSearchParams): Promise<v
         results);
 
   if (q && !archived) {
-    const hits = search(idx.documents, q, { document_type: type, ...filters });
+    let hits: Hit[], total: number;
+    if (serverSearch()) {
+      const sq = new URLSearchParams({ q, limit: "500" });
+      if (type) sq.set("document_type", type);
+      for (const [k, v] of Object.entries(filters)) if (v) sq.set(k, v);
+      const res = await api<{ total: number; items: Hit[] }>("/search?" + sq.toString());
+      hits = res.data.items;
+      total = res.data.total;
+    } else {
+      hits = search(idx.documents, q, { document_type: type, ...filters });
+      total = hits.length;
+    }
     results.replaceChildren(
-      h("p", { class: "count" }, `${hits.length} ${hits.length === 1 ? "result" : "results"} for “${q}”`),
+      h("p", { class: "count" }, `${total} ${total === 1 ? "result" : "results"} for “${q}”` +
+        (total > hits.length ? ` (showing the first ${hits.length})` : "")),
       hits.length ? h("ol", { class: "hits" }, ...hits.map(hitRow))
         : notice("info", idx.documents.length ? "No matching results. Try fewer or different words, or clear the filters."
           : "There is no documentation in the library yet."));

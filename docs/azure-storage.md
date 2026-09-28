@@ -93,12 +93,11 @@ python -m bidoc_library
 ```
 
 The identity needs the **Storage Table Data Contributor** and **Storage Blob Data
-Contributor** roles on the account. Deployment templates and the runbook are B13.
+Contributor** roles on the account. The deployment template and runbook are in `docs/azure-deployment.md`.
 
 ## Still not done
 
 - **Live Azure (A15):** needs authorization and a disposable account; the same suites run
   there unchanged.
-- **Backup and restore for the Azure backend:** B13.
 - **Scale:** listing and reconciliation read whole partitions; load testing comes before
-  scale-out (ADR 0002).
+  scale-out (ADR 0002). Backup and restore: `docs/backup-restore.md`.

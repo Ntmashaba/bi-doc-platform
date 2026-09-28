@@ -94,8 +94,8 @@ def _compare_file(a: dict, b: dict):
         return None, []
     if con_a and con_b and con_a != con_b:
         return None, []
-    if not path_a or not path_b:
-        return None, []
+    if not path_a or not path_b or path_a.startswith("withheld:") or path_b.startswith("withheld:"):
+        return None, []                          # withheld personal paths never match
     if path_a == path_b and con_a and con_b:
         return "exact", []
     if path_a == path_b:

@@ -123,8 +123,11 @@ async function render() {
 }
 let index = null;
 let indexEtag = "";
+// In server search mode (a library too large to search in the browser) the index holds only
+// catalogue fields, and text queries go to /search, which has the same semantics.
+const serverSearch = () => caps?.search_mode === "server";
 async function loadIndex() {
-    const res = await api("/search-index", { headers: indexEtag ? { "If-None-Match": indexEtag } : {} });
+    const res = await api(serverSearch() ? "/search-index?sections=false" : "/search-index", { headers: indexEtag ? { "If-None-Match": indexEtag } : {} });
     if (res.status !== 304) {
         index = res.data;
         indexEtag = res.headers.get("ETag") || "";
@@ -162,8 +165,24 @@ async function homeView(type, params) {
     const results = h("section", { id: "results", "aria-live": "polite" });
     mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
     if (q && !archived) {
-        const hits = search(idx.documents, q, { document_type: type, ...filters });
-        results.replaceChildren(h("p", { class: "count" }, `${hits.length} ${hits.length === 1 ? "result" : "results"} for “${q}”`), hits.length ? h("ol", { class: "hits" }, ...hits.map(hitRow))
+        let hits, total;
+        if (serverSearch()) {
+            const sq = new URLSearchParams({ q, limit: "500" });
+            if (type)
+                sq.set("document_type", type);
+            for (const [k, v] of Object.entries(filters))
+                if (v)
+                    sq.set(k, v);
+            const res = await api("/search?" + sq.toString());
+            hits = res.data.items;
+            total = res.data.total;
+        }
+        else {
+            hits = search(idx.documents, q, { document_type: type, ...filters });
+            total = hits.length;
+        }
+        results.replaceChildren(h("p", { class: "count" }, `${total} ${total === 1 ? "result" : "results"} for “${q}”` +
+            (total > hits.length ? ` (showing the first ${hits.length})` : "")), hits.length ? h("ol", { class: "hits" }, ...hits.map(hitRow))
             : notice("info", idx.documents.length ? "No matching results. Try fewer or different words, or clear the filters."
                 : "There is no documentation in the library yet."));
         return;

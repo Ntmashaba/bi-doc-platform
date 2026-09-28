@@ -6,11 +6,18 @@ local    Loopback only. Host must be a loopback name (blocks DNS rebinding); a
 gateway  Identity is trusted only from configured proxy addresses; anything else is
          401. Browser mutations need the anti-CSRF header, which a cross-site form
          or simple request cannot send.
+entra    Azure Container Apps / App Service built-in authentication (Easy Auth) with
+         Microsoft Entra ID. The platform signs the user in and passes the validated
+         claims as X-MS-CLIENT-PRINCIPAL; it is trusted only from the configured proxy
+         addresses and only for the configured tenant. App roles map to viewer,
+         publisher and admin (ENTRA_ROLE_MAP). No principal means 401, never anonymous.
 """
 from __future__ import annotations
 
+import base64
 import hmac
 import ipaddress
+import json
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +28,9 @@ ROLES = {"viewer": {"read"}, "publisher": {"read", "publish"}, "admin": {"read",
 CSRF_HEADER, CSRF_VALUE = "X-Requested-With", "bidoc"
 SESSION_HEADER = "X-Bidoc-Session"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+ENTRA_PRINCIPAL_HEADER = "X-MS-CLIENT-PRINCIPAL"
+TID_CLAIM = "http://schemas.microsoft.com/identity/claims/tenantid"
+OID_CLAIM = "http://schemas.microsoft.com/identity/claims/objectidentifier"
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,7 @@ class AccessPolicy:
         self.mode = settings.auth_mode
         self.session_secret = session_secret
         self.proxies = [ipaddress.ip_network(p, strict=False) for p in settings.gateway_trusted_proxies]
+        self.role_map = dict(settings.entra_role_map)
         port = settings.port
         self.local_hosts = {f"{h}:{port}" for h in ("127.0.0.1", "localhost", "[::1]")} | \
             {"127.0.0.1", "localhost", "[::1]"} | set(settings.extra_allowed_hosts)
@@ -83,13 +94,17 @@ class AccessPolicy:
                     raise unauthorized("local changes need the session secret (X-Bidoc-Session)")
                 self._csrf(headers)
             return Principal("local-owner", frozenset({"viewer", "publisher", "admin"}))
-        # gateway
         try:
             ip = ipaddress.ip_address(client_ip or "")
         except ValueError:
             raise unauthorized("request did not come through the configured gateway") from None
         if not any(ip in net for net in self.proxies):
             raise unauthorized("request did not come through the configured gateway")
+        if self.mode == "entra":
+            principal = self._entra(headers)
+            if mutating:
+                self._csrf(headers)
+            return principal
         subject = (headers.get(self.settings.gateway_subject_header) or "").strip()
         if not subject:
             raise unauthorized("the gateway did not supply an identity")
@@ -97,6 +112,31 @@ class AccessPolicy:
                           if r.strip()) or frozenset(self.settings.gateway_default_roles)
         if mutating:
             self._csrf(headers)
+        return Principal(subject[:200], roles & set(ROLES))
+
+    def _entra(self, headers) -> Principal:
+        raw = headers.get(ENTRA_PRINCIPAL_HEADER) or ""
+        if not raw:
+            raise unauthorized("sign-in required (no authenticated principal from the platform)")
+        try:
+            data = json.loads(base64.b64decode(raw + "=" * (-len(raw) % 4), validate=False))
+            claims = [(str(c["typ"]), str(c["val"])) for c in data.get("claims", [])]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise unauthorized("the platform principal could not be read") from None
+        if (data.get("auth_typ") or "").lower() not in ("aad", "azureactivedirectory"):
+            raise unauthorized("only Microsoft Entra ID sign-in is accepted")
+        values = {}
+        for typ, val in claims:
+            values.setdefault(typ, []).append(val)
+        first = lambda *names: next((values[n][0] for n in names if values.get(n)), "")  # noqa: E731
+        if first("tid", TID_CLAIM).lower() != self.settings.entra_tenant_id.lower():
+            raise unauthorized("this sign-in belongs to a different tenant")
+        subject = first("oid", OID_CLAIM)
+        if not subject:
+            raise unauthorized("the sign-in has no object ID")
+        role_typ = data.get("role_typ") or "roles"
+        granted = {self.role_map[r] for r in values.get(role_typ, []) + values.get("roles", []) if r in self.role_map}
+        roles = frozenset(granted or self.settings.entra_default_roles)
         return Principal(subject[:200], roles & set(ROLES))
 
     @staticmethod

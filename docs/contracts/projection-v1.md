@@ -12,12 +12,37 @@ Status: frozen for B03 (pre-release). Governs what leaves a generator or enters 
 
 | Reason | Rule |
 |---|---|
-| `machine_path` | Absolute machine paths removed (pbi-doc-gen `/model/sourcePath`). |
+| `machine_path` | The input's own path is removed (pbi-doc-gen `/model/sourcePath`). Personal local paths anywhere else (drive-letter paths, `file://` URIs to them, `/home`, `/Users`, `/root`), including inside code, labels and identifiers, become `<file name> — personal location withheld [ref <12 hex>]`. See *Personal paths* below. |
 | `credential` | Connection-string secrets (`Password=`, `Pwd=`, `AccountKey=`, `SharedAccessSignature=` …) replaced with `[credential withheld]` in every string. |
 | `secret_bearing_url` | URL query values for credential-like names (`sig`, `token`, `access_token`, `code`, `key`, `apikey`, `api_key`, `password`, `secret`, `client_secret`) replaced in every string. |
 | `entered_data` | In retained M: `Binary.FromText("…")` bodies and literal row lists of `Table.FromRows({…})` / `#table(…, {…})` replaced with a withheld marker. |
 
 These rules are a safety net over every string in the payload, including when `query_code` is `included`. They are pattern-based and are **not** a guarantee that no sensitive value remains. Only withholding code gives that property for code fields.
+
+## Personal paths (owner decision, 2026-09-28)
+
+| Path | Shared output |
+|---|---|
+| The PBIX/PBIP being documented (`sourcePath`, `pbixSource`, report location) | withheld; local output and history keep it |
+| A personal file data source, e.g. `C:\Users\Alice\Data\Budget.xlsx` | withheld; the file name and a stable reference are kept |
+| An ADF repository file, e.g. `pipeline/LoadSales.json` | kept (relative) |
+| UNC shares, SharePoint, Blob and ADLS locations | kept: real shared dependencies used for lineage |
+
+- **The reference** is the first 12 hex digits of the SHA-256 of the normalised path
+  (forward slashes, lower case). Distinct files stay distinct, even when their names match,
+  and the same file keeps its reference across revisions. It is a pseudonym, not
+  encryption: someone who already knows the exact full path can confirm a guess.
+- **Endpoints:** a withheld path becomes `path: "withheld:<ref>"` in its endpoint.
+  - Source object IDs derive from that, so they are opaque and independent of the
+    displayed location.
+  - Labels read "Budget.xlsx — personal location withheld (ref 871f53c0)".
+  - Relationship rules never match a withheld path.
+- **Local output is unchanged.** Local processing, such as batch re-use checks, keeps full
+  paths.
+- **Existing links:** sources that used to carry a personal path in their ID get a new ID
+  on their next shared publication. Document and revision IDs do not change. Manual links
+  to the old source ID follow the usual disappearance rule and show *Needs review*. Detected
+  links never used personal paths, since file matching needs a storage account.
 
 ## Code-bearing fields (engines 0.2.0: pbi-doc-gen `b8d1fa1`, adf-doc-gen `c5645bf`)
 

@@ -222,6 +222,73 @@ class GatewayAccess(ApiTest):
                             "FORBIDDEN")
 
 
+TENANT = "11111111-2222-4333-8444-555555555555"
+
+
+def easy_auth(oid="oid-ann", roles=(), tenant=TENANT, auth_typ="aad", role_typ="roles"):
+    """X-MS-CLIENT-PRINCIPAL as Azure Container Apps / App Service built-in auth sends it."""
+    import base64
+    claims = [{"typ": "http://schemas.microsoft.com/identity/claims/tenantid", "val": tenant},
+              {"typ": "http://schemas.microsoft.com/identity/claims/objectidentifier", "val": oid},
+              {"typ": "name", "val": "Ann"}] + [{"typ": role_typ, "val": r} for r in roles]
+    body = {"auth_typ": auth_typ, "claims": claims, "name_typ": "name", "role_typ": role_typ}
+    return {"X-MS-CLIENT-PRINCIPAL": base64.b64encode(json.dumps(body).encode()).decode().rstrip("=")}
+
+
+class EntraAccess(ApiTest):
+    settings = Settings(auth_mode="entra", entra_tenant_id=TENANT, gateway_trusted_proxies=("127.0.0.1/32",))
+
+    def ea(self, ip="127.0.0.1"):
+        return TestClient(self.app, base_url="https://docs.corp", client=(ip, 5000), raise_server_exceptions=False)
+
+    def test_principal_only_from_the_platform(self):
+        viewer = easy_auth(roles=["BiDoc.Viewer"])
+        self.assertApiError(self.ea("10.9.9.9").get("/api/v1/documents", headers=viewer), 401, "UNAUTHENTICATED")
+        self.assertApiError(self.ea().get("/api/v1/documents"), 401, "UNAUTHENTICATED")
+        self.assertApiError(self.ea().get("/api/v1/documents", headers=easy_auth(roles=["BiDoc.Viewer"],
+                                                                                 tenant="other")), 401,
+                            "UNAUTHENTICATED")
+        self.assertApiError(self.ea().get("/api/v1/documents", headers=easy_auth(roles=["BiDoc.Viewer"],
+                                                                                 auth_typ="google")), 401,
+                            "UNAUTHENTICATED")
+        self.assertApiError(self.ea().get("/api/v1/documents", headers={"X-MS-CLIENT-PRINCIPAL": "%%%"}), 401,
+                            "UNAUTHENTICATED")
+        self.assertApiError(self.ea().get("/api/v1/documents", headers=easy_auth(oid="")), 401, "UNAUTHENTICATED")
+        self.assertEqual(self.ea().get("/api/v1/documents", headers=viewer).status_code, 200)
+
+    def test_app_roles_map_to_library_roles(self):
+        client = self.ea()
+        nobody = easy_auth(oid="oid-eve")                                  # signed in, no app role
+        self.assertApiError(client.get("/api/v1/documents", headers=nobody), 403, "FORBIDDEN")
+        viewer = {**easy_auth(roles=["BiDoc.Viewer"]), "X-Requested-With": "bidoc"}
+        publisher = {**easy_auth(oid="oid-bob", roles=["BiDoc.Publisher"], role_typ="http://schemas.microsoft.com/"
+                                 "ws/2008/06/identity/claims/role"), "X-Requested-With": "bidoc"}
+        self.assertApiError(self.upload(self.artifact(), client=client, headers=viewer), 403, "FORBIDDEN")
+        out = self.upload(self.artifact(), client=client, headers=publisher)
+        self.assertEqual(out.status_code, 201, out.text)
+        revs = client.get(f"/api/v1/documents/{out.json()['document_id']}/revisions", headers=viewer).json()["items"]
+        self.assertEqual(revs[0]["publisher_subject"], "oid-bob")          # the stable object ID, not a name
+        no_csrf = {k: v for k, v in publisher.items() if k != "X-Requested-With"}
+        r = client.post("/api/v1/imports", files={"file": ("d.html", self.artifact(adf_factory(self.tmp / "b")),
+                                                             "text/html")},
+                        headers={**no_csrf, "Idempotency-Key": "no-csrf"})
+        self.assertApiError(r, 403, "FORBIDDEN")
+
+    def test_configuration(self):
+        base = {"AUTH_MODE": "entra", "BIND_HOST": "0.0.0.0", "GATEWAY_TRUSTED_PROXIES": "127.0.0.1"}
+        for env in (base, {**base, "ENTRA_TENANT_ID": "contoso"},
+                    {**base, "ENTRA_TENANT_ID": TENANT, "GATEWAY_TRUSTED_PROXIES": ""},
+                    {**base, "ENTRA_TENANT_ID": TENANT, "ENTRA_ROLE_MAP": "Readers"},
+                    {**base, "ENTRA_TENANT_ID": TENANT, "ENTRA_ROLE_MAP": "Readers=owner"},
+                    {**base, "ENTRA_TENANT_ID": TENANT, "ENTRA_DEFAULT_ROLES": "root"}):
+            with self.assertRaises(ConfigError, msg=env):
+                from_env(env)
+        s = from_env({**base, "ENTRA_TENANT_ID": TENANT, "ENTRA_ROLE_MAP": "Readers=viewer, Editors=publisher",
+                      "ENTRA_DEFAULT_ROLES": "viewer"})
+        self.assertEqual((s.entra_role_map, s.entra_default_roles),
+                         ((("Readers", "viewer"), ("Editors", "publisher")), ("viewer",)))
+
+
 class Configuration(unittest.TestCase):
     def test_unsafe_configurations_are_refused(self):
         for env in ({"AUTH_MODE": "entra"}, {"BIND_HOST": "0.0.0.0"}, {"AUTH_MODE": "gateway"},

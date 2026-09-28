@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix": { "value": "bidocpilot" },
+    "containerImage": { "value": "<registry>.azurecr.io/bidoc-library:<version>" },
+    "registryServer": { "value": "<registry>.azurecr.io" },
+    "registryName": { "value": "<registry>" },
+    "entraClientId": { "value": "<app registration client ID>" },
+    "entraClientSecret": { "value": "<set on the command line, never in this file>" },
+    "monthlyBudget": { "value": 20 },
+    "budgetContactEmails": { "value": ["<operations mailbox>"] }
+  }
+}

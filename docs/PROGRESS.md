@@ -16,9 +16,10 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
 | B09 | Done on Windows CI (30/30); clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
 | B10 | Done against Azurite (the library serves from Azure storage); live Azure A15 needs authorization | `docs/azure-storage.md`, ADR 0002 |
-| B11 | Done (A36 through a real ingress is part of B13) | `docs/publishing.md` |
+| B11 | Done (A36 through a TLS ingress in B13) | `docs/publishing.md` |
 | B12 | Done (A12 in Edge on Windows CI) | `docs/portable-export.md`; ZIP: `docs/contracts/envelope-v1.md` |
-| B13–B16 | Not started | |
+| B13 | Done in CI; owner steps listed in the R2 checklist | `docs/azure-deployment.md`, `docs/backup-restore.md`, `docs/performance.md`, `docs/release-checklist-r2.md` |
+| B14–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -281,5 +282,63 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Engine fix (pbi-doc-gen 0.4.1):** a framed report no longer adds browser history entries when switching tabs, so Back leaves the document as expected. The platform pin moves to that commit.
 - **Tests:** 34 ZIP contract tests; ZIP import on LocalStore and Azure; export unit tests; the offline browser check in Chromium and in Edge on Windows CI.
 
+### 2026-09-28 — B12 merged; B13 completed
+- Merged pbi-doc-gen #6 and bi-doc-platform #13 at the owner's instruction. The platform now pins pbi-doc-gen at the merge commit (`8d89ca5`).
+- **Backup and restore (A14, A28):**
+  - `python -m bidoc_library backup | verify | restore | check`, on both backends;
+  - a backup holds one committed sequence: catalogue, history, metadata and manual audit, generation pointers and every referenced immutable file, all checksummed;
+  - restore goes only into an empty deployment of the same backend, verifies first, then reads every revision back;
+  - tests on LocalStore, in-memory Azure and Azurite show every reader-visible result identical after restore, including pinned generations.
+- **`AUTH_MODE=entra`:**
+  - Container Apps / App Service built-in authentication; the library reads `X-MS-CLIENT-PRINCIPAL` only from trusted proxies and only for the configured tenant;
+  - app roles map to viewer, publisher and admin; the subject is the Entra object ID;
+  - no principal is `401`, and no role is `403` unless a default role is configured.
+- **Azure template** (`deploy/azure/main.bicep`):
+  - Container Apps Consumption with 0–1 replicas and 0.25 vCPU / 0.5 GiB;
+  - a user-assigned identity with data-plane roles only, on a storage account with keys disabled;
+  - Easy Auth everywhere except health and the token-only publishing API;
+  - Log Analytics retention and a budget alert.
+
+  CI compiles and lints it, checks the pilot limits, and checks that its configuration is accepted by the library.
+- **Runbook** (`docs/azure-deployment.md`): app registration and roles, deploy, go-live verification (trusted-proxy check, forged-header check, A36 on the real ingress), access management, cold start, cost worksheet, upgrades.
+- **A36 in CI** (`check_ingress.py`):
+  - nginx terminates TLS in front of the library in gateway mode;
+  - `bidoc connect` and `bidoc publish` publish a document, retry it (duplicate), publish a new version against the ETag, and read results back;
+  - the token is refused on browser routes, forged identity headers are ignored, and revocation stops publishing.
+- **A41** (`check_large_documents.py`, `docs/performance.md`):
+  - a 150-table / 1,500-measure model (23.9 MB artifact) and a 400-pipeline factory;
+  - publish takes 16 s, the full rebuild 2 s and peak memory is 266 MiB; the index is 884 KB;
+  - server search equals browser search.
+
+  New server search mode: above `CLIENT_SEARCH_INDEX_BYTES`, the UI uses `/search`. A browser step covers it.
+- **Found:** a large model is close to the 25 MiB default upload limit; `docs/performance.md` says when to raise it.
+- **Owner steps** (`docs/release-checklist-r2.md`): code signing, W2, clean-machine A13, live Azure A15, deployment and A36 on the client's ingress, first production backup.
+
+### 2026-09-28 — Personal paths in shared output (owner decision)
+- **Owner decision:** keep full paths locally. In shared output, withhold personal
+  locations without merging distinct sources, and keep shared locations and relative
+  repository paths.
+- **Implemented in the shared projection** (`docs/contracts/projection-v1.md`, *Personal
+  paths*):
+  - every string is covered, including code, labels, report location, `pbixSource` and ADF
+    entity keys and endpoints;
+  - each path is replaced with its file name and a stable 12-hex reference;
+  - the endpoint path becomes `withheld:<ref>`, so source IDs are opaque, distinct and
+    stable;
+  - labels read "Budget.xlsx — personal location withheld (ref …)";
+  - relationship rules refuse to match withheld paths.
+- **Tests** (`packages/engines/tests/test_personal_paths.py`):
+  - two `Budget.xlsx` files in different folders stay two sources;
+  - IDs are stable across revisions;
+  - UNC and SharePoint locations are kept;
+  - local output is unchanged;
+  - no relationship comes from a withheld path;
+  - replacements are idempotent.
+- **Real samples:** the 29 Microsoft reports contained personal paths. 112 are now withheld;
+  all real-sample checks still pass.
+- **Effect on existing links:** sources that had a personal path in their ID get a new ID on
+  their next shared publication. Manual links to them show *Needs review*. Nothing has been
+  rolled out to a team yet.
+
 ### Next
-- B13: deployment templates, backup and restore, A36 through a real ingress.
+- B14: worker enrollment and protocol, durable job lifecycle (optional R3).

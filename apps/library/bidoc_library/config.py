@@ -22,16 +22,20 @@ class ConfigError(ValueError):
 class Settings:
     data_backend: str = "local"
     local_data_dir: Path = Path("bidoc-data")
-    auth_mode: str = "local"                       # local | gateway (entra arrives in B13)
+    auth_mode: str = "local"                       # local | gateway | entra
     bind_host: str = "127.0.0.1"
     port: int = 8765
     gateway_trusted_proxies: tuple = ()            # proxy addresses allowed to assert identity
     gateway_subject_header: str = "X-Forwarded-User"
     gateway_roles_header: str = "X-Forwarded-Roles"
     gateway_default_roles: tuple = ("viewer",)     # roles when the gateway sends none
+    entra_tenant_id: str = ""
+    entra_role_map: tuple = (("BiDoc.Viewer", "viewer"), ("BiDoc.Publisher", "publisher"), ("BiDoc.Admin", "admin"))
+    entra_default_roles: tuple = ()                # roles for a signed-in user with no app role
     max_html_bytes: int = 25 * MIB
     max_manifest_bytes: int = 16 * MIB
     max_zip_bytes: int = 100 * MIB
+    client_search_index_bytes: int = 8 * MIB     # above this, browsers search on the server (A41)
     log_level: str = "info"
     extra_allowed_hosts: tuple = field(default_factory=tuple)
     # Local mode inside a container must listen on the container interface. That is only
@@ -62,10 +66,19 @@ class Settings:
                 raise ConfigError("AZURE_STORAGE_TABLE must be 3-63 letters or digits, starting with a letter")
             if not re.fullmatch(r"[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]", self.azure_container):
                 raise ConfigError("AZURE_STORAGE_CONTAINER must be a valid lowercase container name")
+        if self.auth_mode not in ("local", "gateway", "entra"):
+            raise ConfigError("AUTH_MODE must be local, gateway or entra")
         if self.auth_mode == "entra":
-            raise ConfigError("AUTH_MODE=entra is not available until B13; use local or gateway")
-        if self.auth_mode not in ("local", "gateway"):
-            raise ConfigError("AUTH_MODE must be local or gateway")
+            if not re.fullmatch(r"[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}", self.entra_tenant_id):
+                raise ConfigError("AUTH_MODE=entra needs ENTRA_TENANT_ID (the directory ID, a GUID)")
+            if not self.gateway_trusted_proxies:
+                raise ConfigError("AUTH_MODE=entra needs GATEWAY_TRUSTED_PROXIES (where the platform's "
+                                  "authentication forwards from)")
+            for proxy in self.gateway_trusted_proxies:
+                ipaddress.ip_network(proxy, strict=False)
+            bad = {r for _, r in self.entra_role_map} - {"viewer", "publisher", "admin"}
+            if bad or set(self.entra_default_roles) - {"viewer", "publisher", "admin"}:
+                raise ConfigError("ENTRA_ROLE_MAP and ENTRA_DEFAULT_ROLES may only name viewer, publisher or admin")
         if self.auth_mode == "local":
             if not ipaddress.ip_address(self.bind_host).is_loopback and not self.local_container_bind:
                 raise ConfigError("AUTH_MODE=local only binds to a loopback address; use gateway mode to share. "
@@ -78,7 +91,8 @@ class Settings:
                 ipaddress.ip_network(proxy, strict=False)
         if not 1 <= self.port <= 65535:
             raise ConfigError("PORT must be 1-65535")
-        if self.max_html_bytes < 1 or self.max_manifest_bytes < 1 or self.max_zip_bytes < 1:
+        if self.max_html_bytes < 1 or self.max_manifest_bytes < 1 or self.max_zip_bytes < 1 \
+                or self.client_search_index_bytes < 0:
             raise ConfigError("upload limits must be positive")
         return self
 
@@ -93,6 +107,17 @@ def _container_ack(value) -> bool:
     if value != CONTAINER_BIND_ACK:
         raise ConfigError(f"{CONTAINER_BIND_ENV} must be exactly {CONTAINER_BIND_ACK!r} when set")
     return True
+
+
+def _pairs(value: str) -> tuple:
+    """"AppRole=viewer,Other=admin" -> (("AppRole", "viewer"), ("Other", "admin"))."""
+    out = []
+    for item in _list(value):
+        name, sep, role = item.partition("=")
+        if not sep or not name.strip() or not role.strip():
+            raise ConfigError("ENTRA_ROLE_MAP entries look like AppRoleValue=viewer")
+        out.append((name.strip(), role.strip().lower()))
+    return tuple(out)
 
 
 def _list(value: str) -> tuple:
@@ -112,9 +137,13 @@ def from_env(env=None) -> Settings:
             gateway_subject_header=env.get("GATEWAY_SUBJECT_HEADER", "X-Forwarded-User"),
             gateway_roles_header=env.get("GATEWAY_ROLES_HEADER", "X-Forwarded-Roles"),
             gateway_default_roles=_list(env.get("GATEWAY_DEFAULT_ROLES", "viewer")),
+            entra_tenant_id=env.get("ENTRA_TENANT_ID", "").strip(),
+            entra_default_roles=_list(env.get("ENTRA_DEFAULT_ROLES", "")),
+            **({"entra_role_map": _pairs(env["ENTRA_ROLE_MAP"])} if env.get("ENTRA_ROLE_MAP") else {}),
             max_html_bytes=int(env.get("MAX_HTML_BYTES", str(25 * MIB))),
             max_manifest_bytes=int(env.get("MAX_MANIFEST_BYTES", str(16 * MIB))),
             max_zip_bytes=int(env.get("MAX_ZIP_BYTES", str(100 * MIB))),
+            client_search_index_bytes=int(env.get("CLIENT_SEARCH_INDEX_BYTES", str(8 * MIB))),
             log_level=env.get("LOG_LEVEL", "info"),
             extra_allowed_hosts=_list(env.get("ALLOWED_HOSTS", "")),
             local_container_bind=_container_ack(env.get(CONTAINER_BIND_ENV)),
