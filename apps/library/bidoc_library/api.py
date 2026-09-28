@@ -132,7 +132,7 @@ LEGACY_METADATA_HELP = ("JSON object with any of title, description, tags, busin
 
 
 class ImportPreview(BaseModel):
-    input: Literal["envelope", "legacy"]
+    input: Literal["envelope", "zip", "legacy"]
     document_type: Literal["power_bi", "adf"]
     document_id: Optional[str] = Field(description="null for legacy input: a new stream identity is assigned")
     outcome: Literal["new_document", "new_version", "duplicate"]
@@ -454,7 +454,9 @@ def open_store(settings: Settings, limits: Limits):
 
 def create_app(settings: Settings, store=None, session_secret: str | None = None) -> FastAPI:
     settings.validate()
-    limits = Limits(html_bytes=settings.max_html_bytes, manifest_bytes=settings.max_manifest_bytes)
+    limits = Limits(html_bytes=settings.max_html_bytes, manifest_bytes=settings.max_manifest_bytes,
+                    zip_bytes=settings.max_zip_bytes)
+    upload_cap = max(limits.html_bytes, limits.zip_bytes)
     store = store or open_store(settings, limits)
     if settings.auth_mode == "local" and session_secret is None:
         session_secret = load_session_secret(settings.local_data_dir)
@@ -491,9 +493,10 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
             length = request.headers.get("content-length")
             if length is None:
                 return error(request, 411, "LENGTH_REQUIRED", "uploads must declare Content-Length")
-            if not length.isdigit() or int(length) > limits.html_bytes + MULTIPART_OVERHEAD:
+            if not length.isdigit() or int(length) > upload_cap + MULTIPART_OVERHEAD:
                 return error(request, 413, "PAYLOAD_TOO_LARGE",
-                             f"uploads are limited to {limits.html_bytes} bytes of HTML")
+                             f"uploads are limited to {limits.html_bytes} bytes of HTML or "
+                             f"{limits.zip_bytes} bytes of ZIP")
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -583,7 +586,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     @app.get(f"{PREFIX}/capabilities", response_model=Capabilities, tags=["library"], responses=ERRORS)
     def capabilities(p: Principal = Depends(reader)):
         return {"version": __version__, "manifest_versions": [SCHEMA_VERSION],
-                "limits": {"html_bytes": limits.html_bytes, "manifest_bytes": limits.manifest_bytes,
+                "limits": {"html_bytes": limits.html_bytes, "zip_bytes": limits.zip_bytes, "manifest_bytes": limits.manifest_bytes,
                            "section_text_bytes": limits.section_text_bytes},
                 "access_mode": settings.auth_mode, "can_publish": p.can("publish"),
                 "processing": [{"engine": "power_bi", "input_types": ["pbix", "pbip"], "available": False,
@@ -710,9 +713,10 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
 
     async def run_import(file, subject, idempotency_key, if_match, target_document_id, query_code, legacy_metadata):
         """One import path for browser and direct publishing: the same validation and commit."""
-        data = await file.read(limits.html_bytes + 1)
-        if len(data) > limits.html_bytes:
-            raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {limits.html_bytes}-byte limit", 413)
+        data = await file.read(upload_cap + 1)
+        cap = limits.zip_bytes if data[:4] == b"PK\x03\x04" else limits.html_bytes
+        if len(data) > cap:
+            raise LibraryError("PAYLOAD_TOO_LARGE", f"the upload exceeds the {cap}-byte limit", 413)
         outcome = await run_in_threadpool(
             store.publish, data, subject=subject, idempotency_key=idempotency_key,
             expected_etag=_if_match(if_match), target_document_id=str(target_document_id) if target_document_id else None,
@@ -731,9 +735,10 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                                                                    description=LEGACY_METADATA_HELP),
                              p: Principal = Depends(publisher)):
         """Detected identity, title, outcome and projection omissions; nothing is stored."""
-        data = await file.read(limits.html_bytes + 1)
-        if len(data) > limits.html_bytes:
-            raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {limits.html_bytes}-byte limit", 413)
+        data = await file.read(upload_cap + 1)
+        cap = limits.zip_bytes if data[:4] == b"PK\x03\x04" else limits.html_bytes
+        if len(data) > cap:
+            raise LibraryError("PAYLOAD_TOO_LARGE", f"the upload exceeds the {cap}-byte limit", 413)
         return await run_in_threadpool(store.preview, data, legacy_metadata=legacy_metadata, query_code=query_code)
 
     @app.get(f"{PREFIX}/imports/{{import_id}}", response_model=ImportStatus, tags=["imports"], responses=ERRORS)

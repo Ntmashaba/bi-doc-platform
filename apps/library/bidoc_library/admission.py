@@ -6,7 +6,7 @@ re-projected and re-rendered by the trusted engines.
 """
 from __future__ import annotations
 
-from bidoc_contracts import ContractError, validate_artifact
+from bidoc_contracts import ContractError, is_zip, validate_artifact, validate_zip
 from bidoc_engines import legacy
 from bidoc_engines.convert import UnsupportedProjection, reproject
 
@@ -34,21 +34,46 @@ def convert_legacy(data: bytes, metadata: dict, target, *, limits) -> dict:
     return manifest
 
 
+ASSETS_NOT_KEPT = ("{n} asset file(s) from the ZIP were verified but not kept: the library re-renders documents "
+                   "with its trusted engines, which do not use them.")
+
+
+def _contract_error(exc: ContractError) -> LibraryError:
+    return LibraryError(exc.code if exc.code in ("ARTIFACT_TOO_LARGE",) else "CONTRACT_INVALID",
+                        str(exc), 413 if exc.code == "ARTIFACT_TOO_LARGE" else 422,
+                        {"contract_code": exc.code, "issues": exc.issues[:20]})
+
+
+def admit_zip(data: bytes, *, limits) -> dict:
+    """The ZIP profile: every archive rule and asset hash is checked, then only the verified
+    document.html goes on (its manifest without the asset list)."""
+    try:
+        z = validate_zip(data, limits=limits)
+    except ContractError as exc:
+        raise _contract_error(exc) from None
+    manifest = z.manifest
+    if manifest.pop("assets", None):
+        manifest["projection"]["coverage_warnings"].append(ASSETS_NOT_KEPT.format(n=len(z.assets)))
+    return manifest
+
+
 def admit(data: bytes, *, limits, legacy_metadata, target_document_id, get_document) -> dict:
-    """The validated manifest to publish (envelope, or converted legacy HTML)."""
+    """The validated manifest to publish (envelope, ZIP profile, or converted legacy HTML)."""
+    if is_zip(data):
+        return admit_zip(data, limits=limits)
     try:
         return validate_artifact(data, limits=limits)
     except ContractError as exc:
         if exc.code == "MANIFEST_MISSING":
             target = get_document(target_document_id) if target_document_id else None
             return convert_legacy(data, legacy_metadata or {}, target, limits=limits)
-        raise LibraryError(exc.code if exc.code in ("ARTIFACT_TOO_LARGE",) else "CONTRACT_INVALID",
-                           str(exc), 413 if exc.code == "ARTIFACT_TOO_LARGE" else 422,
-                           {"contract_code": exc.code, "issues": exc.issues[:20]}) from None
+        raise _contract_error(exc) from None
 
 
 def admit_for_preview(data: bytes, *, limits, legacy_metadata):
     """(input kind, manifest) without storing anything."""
+    if is_zip(data):
+        return "zip", admit_zip(data, limits=limits)
     try:
         return "envelope", validate_artifact(data, limits=limits)
     except ContractError as exc:

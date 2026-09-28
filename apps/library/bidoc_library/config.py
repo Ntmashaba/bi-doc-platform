@@ -31,6 +31,7 @@ class Settings:
     gateway_default_roles: tuple = ("viewer",)     # roles when the gateway sends none
     max_html_bytes: int = 25 * MIB
     max_manifest_bytes: int = 16 * MIB
+    max_zip_bytes: int = 100 * MIB
     log_level: str = "info"
     extra_allowed_hosts: tuple = field(default_factory=tuple)
     # Local mode inside a container must listen on the container interface. That is only
@@ -77,7 +78,7 @@ class Settings:
                 ipaddress.ip_network(proxy, strict=False)
         if not 1 <= self.port <= 65535:
             raise ConfigError("PORT must be 1-65535")
-        if self.max_html_bytes < 1 or self.max_manifest_bytes < 1:
+        if self.max_html_bytes < 1 or self.max_manifest_bytes < 1 or self.max_zip_bytes < 1:
             raise ConfigError("upload limits must be positive")
         return self
 
@@ -113,6 +114,7 @@ def from_env(env=None) -> Settings:
             gateway_default_roles=_list(env.get("GATEWAY_DEFAULT_ROLES", "viewer")),
             max_html_bytes=int(env.get("MAX_HTML_BYTES", str(25 * MIB))),
             max_manifest_bytes=int(env.get("MAX_MANIFEST_BYTES", str(16 * MIB))),
+            max_zip_bytes=int(env.get("MAX_ZIP_BYTES", str(100 * MIB))),
             log_level=env.get("LOG_LEVEL", "info"),
             extra_allowed_hosts=_list(env.get("ALLOWED_HOSTS", "")),
             local_container_bind=_container_ack(env.get(CONTAINER_BIND_ENV)),

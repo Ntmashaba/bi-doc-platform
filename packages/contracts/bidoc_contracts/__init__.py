@@ -4,10 +4,11 @@ from .manifest import (MANIFEST_ID, PLACEHOLDER, content_sha256, embed_manifest,
                        serialize_manifest)
 from .scope import ScopeError, adf_scope, power_bi_scope, scope_key
 from .validate import ContractError, Limits, load_schema, validate_artifact, validate_manifest
+from .zipprofile import ZipArtifact, is_zip, validate_zip
 
 __version__ = "0.1.0"
 SCHEMA_VERSION = 1
 
 __all__ = ["MANIFEST_ID", "PLACEHOLDER", "ScopeError", "adf_scope", "power_bi_scope", "scope_key", "SCHEMA_VERSION", "ContractError", "Limits", "content_sha256",
            "embed_manifest", "load_schema", "locate_manifest", "serialize_manifest", "validate_artifact",
-           "validate_manifest"]
+           "validate_manifest", "ZipArtifact", "is_zip", "validate_zip"]

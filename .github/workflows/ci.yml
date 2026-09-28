@@ -82,7 +82,8 @@ jobs:
         working-directory: apps/library/frontend
         run: |
           npx tsc -p tsconfig.json
-          git diff --exit-code -- ../bidoc_library/static
+          npx tsc -p tsconfig.offline.json
+          git diff --exit-code -- ../bidoc_library/static ../../generator/bidoc_generator/offline_static
       - name: Install Chromium
         working-directory: apps/library/frontend
         run: npx playwright install --with-deps chromium
@@ -97,6 +98,8 @@ jobs:
           git diff --exit-code -- ../bidoc_generator/desktop/static
       - name: Generator desktop UI acceptance
         run: python apps/generator/tests/check_desktop_browser.py
+      - name: Portable offline export over file:// (A12, A38)
+        run: python apps/generator/tests/check_offline_browser.py
 
   docker:
     # A03: the library image builds from the lock file, runs as non-root, refuses an
@@ -126,6 +129,14 @@ jobs:
       - name: Generator tests
         working-directory: apps/generator
         run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install browser driver
+        working-directory: apps/library/frontend
+        run: npm ci
+      - name: Portable offline export in Microsoft Edge over file:// (A12)
+        run: python apps/generator/tests/check_offline_browser.py --channel msedge
 
   windows-installer:
     # B09 / A13: frozen executables and the Inno Setup installer, then install, diagnose,

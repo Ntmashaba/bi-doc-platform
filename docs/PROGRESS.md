@@ -17,7 +17,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B09 | Done on Windows CI (30/30); clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
 | B10 | Done against Azurite (the library serves from Azure storage); live Azure A15 needs authorization | `docs/azure-storage.md`, ADR 0002 |
 | B11 | Done (A36 through a real ingress is part of B13) | `docs/publishing.md` |
-| B12–B16 | Not started | |
+| B12 | Done (A12 in Edge on Windows CI) | `docs/portable-export.md`; ZIP: `docs/contracts/envelope-v1.md` |
+| B13–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -268,5 +269,17 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Tests:** library publishing suites on all three backends; generator against a real library server; Credential Manager on Windows CI; browser steps for tokens and downloads.
 - **Open:** A36 through an actual ingress (B13, with the templates).
 
+### 2026-09-28 — B11 merged; B12 completed
+- Merged bi-doc-platform #12 at the owner's instruction.
+- **ZIP profile:**
+  - `validate_zip` in the contracts package handles traversal, absolute and backslash paths, case collisions, symlinks, encryption, nested archives, unexpected entries, and the size and entry limits (enforced while reading);
+  - the library imports ZIP uploads on all backends and in preview; assets are not kept yet, and a coverage warning says so;
+  - UI and API accept `.zip`, and `MAX_ZIP_BYTES` sets the cap.
+- **Portable export:**
+  - `bidoc export-library` builds a `file://` folder: catalogue, search, related-object links, and a sandboxed viewer with Back support;
+  - documents are re-rendered read-only from their manifests; relationships are pinned in the snapshot; partial exports show "Not included".
+- **Engine fix (pbi-doc-gen 0.4.1):** a framed report no longer adds browser history entries when switching tabs, so Back leaves the document as expected. The platform pin moves to that commit.
+- **Tests:** 34 ZIP contract tests; ZIP import on LocalStore and Azure; export unit tests; the offline browser check in Chromium and in Edge on Windows CI.
+
 ### Next
-- B12: ZIP assets and portable offline export.
+- B13: deployment templates, backup and restore, A36 through a real ingress.

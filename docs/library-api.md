@@ -22,6 +22,7 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 | `GATEWAY_TRUSTED_PROXIES` | — | required in gateway mode: ingress addresses/CIDRs allowed to assert identity |
 | `GATEWAY_SUBJECT_HEADER`, `GATEWAY_ROLES_HEADER`, `GATEWAY_DEFAULT_ROLES` | `X-Forwarded-User`, `X-Forwarded-Roles`, `viewer` | roles are `viewer`, `publisher`, `admin` |
 | `MAX_HTML_BYTES`, `MAX_MANIFEST_BYTES` | 25 MiB, 16 MiB | pilot defaults |
+| `MAX_ZIP_BYTES` | 100 MiB | ZIP profile uploads (see `docs/contracts/envelope-v1.md`) |
 | `ALLOWED_HOSTS` | — | extra Host values accepted in local mode |
 
 ## Access

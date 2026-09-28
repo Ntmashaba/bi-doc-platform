@@ -27,6 +27,22 @@ Status: **frozen for B03 (pre-release)**, 28 September 2026. No artifact has bee
 6. `HASH_MISMATCH`: the handoff's rule; the whole manifest element, opening tag included, is replaced by `<!--PBIDOC-MANIFEST-->` before SHA-256.
 7. `MISSING_ANCHOR`: every section ID must be an element `id` in the document, found by a non-executing HTML parse.
 
+## ZIP profile (B12)
+
+A ZIP artifact holds exactly one root `document.html` (an ordinary v1 envelope) plus files
+under `assets/`. `manifest.assets` lists every asset as `{path, sha256}`, and the archive
+must contain exactly those entries. `bidoc_contracts.validate_zip` refuses:
+
+- paths that traverse, are absolute, use backslashes or drive letters, or have `.`, `..`
+  or empty segments;
+- duplicate or case-colliding entries, symlinks, encrypted entries, nested archives and
+  unexpected entries;
+- archives over 100 MiB zipped, 250 MiB expanded or 2000 entries (sizes are counted while
+  reading, not trusted from headers); `MAX_ZIP_BYTES` sets the library's upload cap.
+
+The library imports the document and, for now, does not keep the assets: the import adds
+an `ASSETS_NOT_KEPT` coverage warning. Current engines produce single-file HTML.
+
 ## Producer rule
 
 The producer renders its HTML with the placeholder `<!--PBIDOC-MANIFEST-->` exactly once, and `embed_manifest()` hashes those bytes and inserts the element. The manifest JSON escapes every `<` as `<`, so no text can close the script. The engines' existing `const DATA` blobs escape only `</`. B03's renderer changes should escape `<` there too, so a payload string that spells a manifest element cannot create a second manifest.

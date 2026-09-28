@@ -94,7 +94,7 @@ function href(path: string[], params: Record<string, string | null | undefined> 
 }
 
 interface Capabilities { can_publish: boolean; can_manage_relationships: boolean; can_administer: boolean; access_mode: string;
-  limits: { html_bytes: number }; }
+  limits: { html_bytes: number; zip_bytes: number }; }
 let caps: Capabilities | null = null;
 let viewer: ViewerChannel | null = null;
 
@@ -354,7 +354,7 @@ async function tokensView(): Promise<void> {
 
 // ---- import -------------------------------------------------------------------------
 
-interface ImportPreview { input: "envelope" | "legacy"; document_type: string; document_id: string | null;
+interface ImportPreview { input: "envelope" | "zip" | "legacy"; document_type: string; document_id: string | null;
   outcome: "new_document" | "new_version" | "duplicate"; title: string; native_schema: string; query_code: string;
   omissions: { path: string; reason: string }[]; coverage_warnings: string[]; object_count: number; section_count: number; }
 
@@ -406,7 +406,7 @@ async function importView(): Promise<void> {
     for (const o of p.omissions) reasons.set(o.reason, (reasons.get(o.reason) || 0) + 1);
     preview.replaceChildren(h("dl", { class: "kv" },
       h("dt", {}, "Title"), h("dd", {}, p.title), h("dt", {}, "Type"), h("dd", {}, TYPE_LABEL[p.document_type] || p.document_type),
-      h("dt", {}, "Input"), h("dd", {}, legacy ? `Older document (${p.native_schema}), converted` : "Generated document"),
+      h("dt", {}, "Input"), h("dd", {}, legacy ? `Older document (${p.native_schema}), converted` : p.input === "zip" ? "Generated document (ZIP)" : "Generated document"),
       h("dt", {}, "Result"), h("dd", {}, result),
       h("dt", {}, "Contents"), h("dd", {}, `${p.object_count} objects, ${p.section_count} sections`),
       h("dt", {}, "Query code"), h("dd", {}, p.query_code === "included" ? "included" : "withheld"),
@@ -416,7 +416,7 @@ async function importView(): Promise<void> {
     submit.disabled = false;
   }
 
-  const input = h("input", { type: "file", id: "file", accept: ".html,text/html", required: true, onchange: async () => {
+  const input = h("input", { type: "file", id: "file", accept: ".html,.zip,text/html,application/zip", required: true, onchange: async () => {
     file = input.files?.[0] || null;
     key = crypto.randomUUID();                            // reused if the same file is retried
     legacy = false;
@@ -424,7 +424,8 @@ async function importView(): Promise<void> {
     preview.replaceChildren();
     submit.disabled = true;
     if (!file) return;
-    if (file.size > (caps?.limits.html_bytes || Infinity)) {
+    const zip = /\.zip$/i.test(file.name);
+    if (file.size > ((zip ? caps?.limits.zip_bytes : caps?.limits.html_bytes) || Infinity)) {
       preview.append(notice("error", "This file is larger than the library accepts."));
       return;
     }

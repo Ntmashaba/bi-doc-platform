@@ -95,3 +95,8 @@ Security follows the library's local mode:
 - in the desktop window, previews open in a separate window with no host bridge.
 
 The existing `pbi-doc-gen` and `adf-doc-gen` command lines are unchanged.
+
+## Portable offline export
+
+`bidoc export-library OUTPUT INPUT...` writes a folder that works without a network or a
+library server, opened straight from disk. See `docs/portable-export.md`.

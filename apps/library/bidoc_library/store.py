@@ -173,8 +173,9 @@ class LocalStore(LocalRepository):
             raise LibraryError("INVALID_REQUEST", "an Idempotency-Key of 1-200 characters is required")
         if query_code not in ("withheld", "included"):
             raise LibraryError("INVALID_REQUEST", "query_code must be withheld or included")
-        if len(data) > self.limits.html_bytes:
-            raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {self.limits.html_bytes}-byte limit", 413)
+        cap = self.limits.zip_bytes if data[:4] == b"PK\x03\x04" else self.limits.html_bytes
+        if len(data) > cap:
+            raise LibraryError("PAYLOAD_TOO_LARGE", f"the upload exceeds the {cap}-byte limit", 413)
         try:
             legacy_metadata = legacy.parse_metadata(legacy_metadata)
         except ValueError as exc:
