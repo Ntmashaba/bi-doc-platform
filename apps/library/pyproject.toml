@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi-doc-library"
+dynamic = ["version"]
+description = "BI Documentation Platform shared library: catalogue, immutable revisions, publication."
+requires-python = ">=3.11"
+# Local packages bi-doc-contracts and bi-doc-engines are installed first (requirements.txt).
+dependencies = []
+
+[tool.setuptools]
+packages = ["bidoc_library"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bidoc_library.__version__" }

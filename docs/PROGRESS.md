@@ -9,7 +9,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B01 | Done except Windows packaging spike (blocked: no Windows host) | Findings: `docs/b01/BASELINE.md`; scripts: `spikes/b01/` |
 | B02 | Done | Envelope v1, scope keys, projection and identity specs frozen (pre-release): `docs/contracts/` |
 | B03 | Done (PBIX via bidoc deferred to B08) | Engines 0.2.0 fixes; `packages/engines` adapters, projection, identity; `bidoc` CLI; real-input checks in CI |
-| B04–B16 | Not started | |
+| B04 | Done | `apps/library` LocalStore: SQLite catalogue, immutable revisions, crash-safe publication (`docs/library-storage.md`) |
+| B05–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -83,8 +84,19 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Deviation:** PBIX generation through `bidoc` is not wired (it needs Windows and pbi-tools to verify). `doctor` reports it as unavailable and points to `pbi-doc-gen --pbix`. Moved to B08.
 - **Observation for the owner:** real reports reference source files under personal paths (e.g. `C:\Users\<name>\OneDrive…`). These are source locations, not generator machine paths, so shared output keeps them as documentation. Say if they should be treated as sensitive.
 
+### 2026-09-28 — B03 PRs merged; B04 completed
+- Merged at the owner's instruction: bi-doc-platform #2, pbi-doc-gen #3, adf-doc-gen #3. Engines are re-pinned to their merged `main` commits (pbi-doc-gen `86dd3fc`, adf-doc-gen `c66260b`).
+- **`apps/library` (`bi-doc-library`), `LocalStore`** (`docs/library-storage.md`):
+  - versioned migrations: catalogue, immutable revisions, imports, publication events, catalogue sequence, derived-state pointer, relationship tables (filled in B06);
+  - publication: idempotency, byte-duplicate recovery, validate, identity/stream checks, re-project, immutable write, prepared revision, one atomic commit under the original ETag;
+  - startup reconciliation; archive/restore; filtered, paginated reads; integrity-checked artifact reads; backup/restore.
+- **`bidoc_engines.convert.reproject`:** every import is regenerated through the shared projection; producer labels are never trusted, and withheld code is never restored.
+- **Tests:** library 19, engines 27, contracts 29, CLI 4, all OK. They cover A02, A04, A05 (concurrent writers: one wins, one 409), A06/A34 (crash after write, after prepare, inside commit, after commit; an intervening commit is never overwritten), A10 (invalid, unsupported, oversized: nothing stored) and A14 (backup/restore).
+- **Found while testing:**
+  - Startup cleanup would have deleted an in-flight publication if a second process opened the same folder. Cleanup now only touches work older than a grace period (1 h default), and a test covers it.
+  - A test opening one store per thread exposed that risk. The library runs as one store per process; that rule is documented.
+
 ### Next
-- Merge engine PRs #3; re-pin `packages/engines/pyproject.toml` to the merge commits.
-- B04: local catalogue/artifact repositories (SQLite), migrations, immutable revisions and crash-safe publication.
+- B05: HTTP API v1 over LocalStore (FastAPI): import/read/archive endpoints, OpenAPI, upload limits, idempotency headers, error envelope.
 - Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.
