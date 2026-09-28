@@ -17,8 +17,8 @@ from .doctor import home
 TARGET_PREFIX = "bidoc:publish:"
 
 
-def _target(library_url: str) -> str:
-    return TARGET_PREFIX + library_url.rstrip("/").lower()
+def _target(library_url: str, kind: str = "publish") -> str:
+    return f"bidoc:{kind}:" + library_url.rstrip("/").lower()
 
 
 # ---- Windows Credential Manager -----------------------------------------------------
@@ -112,13 +112,13 @@ else:
     STORE = "a file readable only by you (generator home)"
 
 
-def save_token(library_url: str, token: str) -> None:
-    _save(_target(library_url), token)
+def save_token(library_url: str, token: str, kind: str = "publish") -> None:
+    _save(_target(library_url, kind), token)
 
 
-def load_token(library_url: str):
-    return _load(_target(library_url))
+def load_token(library_url: str, kind: str = "publish"):
+    return _load(_target(library_url, kind))
 
 
-def delete_token(library_url: str) -> None:
-    _delete(_target(library_url))
+def delete_token(library_url: str, kind: str = "publish") -> None:
+    _delete(_target(library_url, kind))

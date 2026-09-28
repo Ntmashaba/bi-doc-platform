@@ -15,7 +15,9 @@ an empty deployment of the same backend, checks every file against backup.json f
 opens the restored library and reads every committed revision back through its checksum.
 Derived search and relationship snapshots are rebuilt by the library if anything is stale.
 
-Session secrets, staging uploads and partial files are not backed up. Publishing tokens
+Session secrets, staging uploads, partial files and processing-job sources and staged
+candidates (raw PBIX/PBIP content, kept at most 24 hours) are not backed up; job records
+are, and a restored job whose source is gone cannot be retried. Publishing tokens
 are (hashes only), so revocations survive a restore.
 """
 from __future__ import annotations
@@ -34,7 +36,8 @@ from .errors import LibraryError
 FORMAT = "bidoc-backup/1"
 INDEX = "backup.json"
 SKIP_LOCAL = {"catalogue.sqlite3", "catalogue.sqlite3-wal", "catalogue.sqlite3-shm", "catalogue.sqlite3-journal",
-              "session-secret", "staging"}
+              "session-secret", "staging", "jobs"}
+SKIP_BLOB_PREFIX = "jobs/"          # raw job sources and staged candidates are transient (24 h)
 SEQUENCE_RETRIES = 5
 
 
@@ -135,7 +138,7 @@ def _backup_azure(store, dest: Path, files: list) -> dict:
     for _ in range(SEQUENCE_RETRIES):
         before = store.catalogue_sequence()
         entities = [_entity_json(e) for e in store.tables.scan()]
-        keys = store.blobs.list("")                          # listed after the scan: a superset
+        keys = [k for k in store.blobs.list("") if not k.startswith(SKIP_BLOB_PREFIX)]   # after the scan
         if store.catalogue_sequence() == before:
             break
         time.sleep(0.5)

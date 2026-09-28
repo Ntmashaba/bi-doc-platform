@@ -41,7 +41,11 @@ def main() -> int:
     auth = by_type["Microsoft.App/containerApps/authConfigs"][0]["properties"]
     assert auth["globalValidation"]["unauthenticatedClientAction"] == "RedirectToLoginPage"
     assert sorted(auth["globalValidation"]["excludedPaths"]) == [
-        "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/publishing/*"], "only health and publishing skip sign-in"
+        "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/publishing/*", "/api/v1/worker/*"], \
+        "only health and the token-only publishing and worker APIs skip sign-in"
+    job = by_type["Microsoft.App/jobs"][0]["properties"]
+    assert job["template"]["containers"][0]["command"] == ["python", "-m", "bidoc_library", "cleanup"]
+    assert job["configuration"]["triggerType"] == "Schedule", "cleanup must not depend on traffic"
     for forbidden in ("Microsoft.ContainerService/managedClusters", "Microsoft.Sql/servers",
                       "Microsoft.Search/searchServices", "Microsoft.Compute/virtualMachines"):
         assert forbidden not in by_type, f"{forbidden} is not part of the pilot"
@@ -50,7 +54,10 @@ def main() -> int:
               "entraDefaultRoles": params["entraDefaultRoles"], "tableName": params["tableName"],
               "containerName": params["containerName"]}
     env = {}
-    for item in container["env"]:
+    items = container["env"]
+    if isinstance(items, str):                  # "[variables('appEnv')]"
+        items = arm["variables"][items.split("variables('")[1].split("'")[0]]
+    for item in items:
         value = item["value"]
         if value.startswith("["):              # an ARM expression: substitute a realistic value
             if "parameters(" in value:

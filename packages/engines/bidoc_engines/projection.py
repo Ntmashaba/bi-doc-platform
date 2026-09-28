@@ -5,9 +5,11 @@ Local output is never projected. The shared profile:
   * always removes the input's own machine path (model.sourcePath);
   * replaces personal local paths (drive-letter paths, file:// URIs, /home and /Users
     paths) wherever they appear, including inside code, labels and identifiers, with
-    "<file name> — personal location withheld [ref <12 hex>]". The ref is a stable
-    pseudonym of the full path, so distinct files stay distinct and the same file keeps
-    its ID across revisions. UNC shares, URLs (SharePoint, Blob, ADLS) and relative
+    "<file name> — personal location withheld [ref <SHA-256 hex>]". The ref is a
+    pseudonymous identifier of the full path, not anonymisation: distinct files stay
+    distinct, and a file keeps its ID while its path stays the same (moving it, or
+    generating from another user's folder, changes the ref). Identity uses the full
+    digest; labels show its first 8 characters. UNC shares, URLs (SharePoint, Blob, ADLS) and relative
     repository paths are kept: they identify real shared dependencies;
   * applies best-effort credential, URL-token and entered-data cleaning to every string,
     including included code.
@@ -68,7 +70,7 @@ _PATH_START = re.compile(r"file:/{2,3}(?=[A-Za-z]:[\\/]|/?(?:home|Users|root)/)|
                          r"|(?<![\w.:/\\])/(?:home|Users|root)(?=/)")
 _PATH_RUN = re.compile(r"""[^"'<>|\r\n\t*?`]*""")
 _EXTENSION = re.compile(r"""\.[A-Za-z0-9]{1,8}(?=$|[\s"',;)\]}])""")
-WITHHELD_PATH = re.compile(r"personal location withheld \[ref ([0-9a-f]{12})\]")
+WITHHELD_PATH = re.compile(r"personal location withheld \[ref ([0-9a-f]{64})\]")
 _BINARY_TEXT = re.compile(r'(Binary\.FromText\(\s*")([^"]*)(")')
 
 
@@ -225,7 +227,7 @@ def withhold_personal_paths(text: str) -> str:
         path = text[m.start():end]
         norm = re.sub(r"^(?:file:/+|\\\\\?\\)", "", path).replace("\\", "/").rstrip("/")
         name = norm.rsplit("/", 1)[-1] or "folder"
-        ref = hashlib.sha256(norm.lower().encode("utf-8")).hexdigest()[:12]
+        ref = hashlib.sha256(norm.lower().encode("utf-8")).hexdigest()
         out.append(text[pos:m.start()] + f"{name} — personal location withheld [ref {ref}]")
         pos = end
     return "".join(out) + text[pos:]

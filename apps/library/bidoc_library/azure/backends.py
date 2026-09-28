@@ -216,6 +216,18 @@ class MemoryBlobs:
             self.calls += 1
             return sorted(k for k in self._blobs if k.startswith(prefix))
 
+    def put_stream(self, key: str, stream) -> int:
+        """Write (or overwrite) a blob from a file object; returns its size."""
+        data = stream.read()
+        with self._lock:
+            self.calls += 1
+            self._blobs[key] = bytes(data)
+        return len(data)
+
+    def chunks(self, key: str):
+        data = self.read(key)
+        return iter([data[i:i + (1 << 20)] for i in range(0, len(data), 1 << 20)] or [b""])
+
     def corrupt(self, key: str) -> None:            # tests only
         self._blobs[key] = self._blobs[key] + b" "
 
@@ -269,6 +281,22 @@ class AzureBlobs:
     def list(self, prefix="") -> list[str]:
         self.calls += 1
         return sorted(b.name for b in self._c.list_blobs(name_starts_with=prefix))
+
+    def put_stream(self, key, stream) -> int:
+        self.calls += 1
+        start = stream.tell()
+        size = stream.seek(0, 2) - start
+        stream.seek(start)
+        self._c.upload_blob(key, stream, length=size, overwrite=True, max_concurrency=2)
+        return size
+
+    def chunks(self, key):
+        from azure.core.exceptions import ResourceNotFoundError  # noqa: PLC0415
+        self.calls += 1
+        try:
+            return self._c.download_blob(key).chunks()
+        except ResourceNotFoundError:
+            raise NotFound(key) from None
 
     def corrupt(self, key) -> None:                 # tests only
         data = self.read(key)

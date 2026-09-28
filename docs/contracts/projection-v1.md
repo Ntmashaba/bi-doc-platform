@@ -12,7 +12,7 @@ Status: frozen for B03 (pre-release). Governs what leaves a generator or enters 
 
 | Reason | Rule |
 |---|---|
-| `machine_path` | The input's own path is removed (pbi-doc-gen `/model/sourcePath`). Personal local paths anywhere else (drive-letter paths, `file://` URIs to them, `/home`, `/Users`, `/root`), including inside code, labels and identifiers, become `<file name> — personal location withheld [ref <12 hex>]`. See *Personal paths* below. |
+| `machine_path` | The input's own path is removed (pbi-doc-gen `/model/sourcePath`). Personal local paths anywhere else (drive-letter paths, `file://` URIs to them, `/home`, `/Users`, `/root`), including inside code, labels and identifiers, become `<file name> — personal location withheld [ref <SHA-256 hex>]`. See *Personal paths* below. |
 | `credential` | Connection-string secrets (`Password=`, `Pwd=`, `AccountKey=`, `SharedAccessSignature=` …) replaced with `[credential withheld]` in every string. |
 | `secret_bearing_url` | URL query values for credential-like names (`sig`, `token`, `access_token`, `code`, `key`, `apikey`, `api_key`, `password`, `secret`, `client_secret`) replaced in every string. |
 | `entered_data` | In retained M: `Binary.FromText("…")` bodies and literal row lists of `Table.FromRows({…})` / `#table(…, {…})` replaced with a withheld marker. |
@@ -28,11 +28,19 @@ These rules are a safety net over every string in the payload, including when `q
 | An ADF repository file, e.g. `pipeline/LoadSales.json` | kept (relative) |
 | UNC shares, SharePoint, Blob and ADLS locations | kept: real shared dependencies used for lineage |
 
-- **The reference** is the first 12 hex digits of the SHA-256 of the normalised path
-  (forward slashes, lower case). Distinct files stay distinct, even when their names match,
-  and the same file keeps its reference across revisions. It is a pseudonym, not
-  encryption: someone who already knows the exact full path can confirm a guess.
-- **Endpoints:** a withheld path becomes `path: "withheld:<ref>"` in its endpoint.
+- **The reference** is the SHA-256 of the normalised path (forward slashes, lower case).
+  - **It is a pseudonymous identifier, not anonymisation.** Anyone who can guess the exact
+    full path can confirm the guess. It is unkeyed by design for the pilot (owner decision).
+  - **Identity uses the full digest.** Labels show its first 8 characters, or more when two
+    sources in one document would otherwise read the same. A collision between short
+    references never merges sources.
+  - **Stability:** a file keeps its reference while its original path stays the same.
+    Moving the file, or generating the document from another user's folder, changes the
+    reference.
+  - Distinct files stay distinct, even when their names match.
+  - Re-projecting an already-redacted payload, for example when the library re-imports a
+    shared artifact, changes nothing.
+- **Endpoints:** a withheld path becomes `path: "withheld:<full digest>"` in its endpoint.
   - Source object IDs derive from that, so they are opaque and independent of the
     displayed location.
   - Labels read "Budget.xlsx — personal location withheld (ref 871f53c0)".

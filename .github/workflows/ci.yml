@@ -234,7 +234,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_store.py -v 2>&1 | tee azurite.log
           python -m unittest discover -s tests -p test_azure_backend.py -v 2>&1 | tee -a azurite.log
-          for suite in test_api test_derived test_metadata test_legacy_import test_zip_import test_publishing test_backup; do
+          for suite in test_api test_derived test_metadata test_legacy_import test_zip_import test_publishing test_backup test_personal_paths_import test_jobs; do
             python -m unittest discover -s tests -p "$suite.py" -v 2>&1 | tee -a azurite.log
           done
           grep -q "Azurite" azurite.log || { echo "::error::Azurite tests did not run"; exit 1; }

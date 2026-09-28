@@ -29,7 +29,10 @@ to:
 It does not hold:
 
 - the local session secret (a new one is made);
-- staging uploads and partial files.
+- staging uploads and partial files;
+- processing-job sources and staged candidates (raw PBIX or project content, kept at most
+  24 hours). Job records are kept, and a restored job whose source is gone cannot be
+  retried.
 
 **Consistency:**
 

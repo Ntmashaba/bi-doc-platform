@@ -10,11 +10,12 @@ import json
 import logging
 import re
 import uuid
+from datetime import timedelta
 from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, Path, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from importlib import resources as _resources
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -27,6 +28,7 @@ from .access import AccessPolicy, Principal, forbidden, load_session_secret
 from .config import Settings
 from .derived import Derived
 from .errors import LibraryError
+from .jobs import Jobs
 from .manual import ManualLinks
 from .publishing import MAX_INSTALLER_BYTES, Publishing, require_transport
 from .search import search as run_search
@@ -316,6 +318,119 @@ class ManualLink(BaseModel):
     version: int
 
 
+
+class JobOut(BaseModel):
+    job_id: str
+    input_type: str
+    filename: str
+    source_bytes: int
+    document_id: Optional[str]
+    requested_by: str
+    state: Literal["queued", "leased", "running", "publishing", "cancel_requested", "succeeded", "failed",
+                   "cancelled"]
+    stage: Optional[str]
+    attempt: int
+    max_attempts: int
+    worker_id: Optional[str]
+    created_at: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    error: Optional[dict]
+    output_document_id: Optional[str]
+    output_revision_id: Optional[str]
+    cancellation_requested: bool
+    cancel_outcome: Optional[str]
+
+
+class JobList(BaseModel):
+    items: list[JobOut]
+
+
+class WorkerRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=100)
+    input_types: Optional[list[Literal["pbix", "pbip_zip"]]] = None
+
+
+class WorkerOut(BaseModel):
+    worker_id: str
+    label: str
+    enrolled_by: str
+    enrolled_at: str
+    allowed_input_types: list[str]
+    input_types: list[str]
+    engine_version: Optional[str]
+    extractor_version: Optional[str]
+    readiness: str
+    readiness_detail: Optional[str]
+    last_heartbeat_at: Optional[str]
+    revoked_at: Optional[str]
+    ready: bool
+
+
+class EnrolledWorker(WorkerOut):
+    token: str
+
+
+class WorkerList(BaseModel):
+    items: list[WorkerOut]
+
+
+class Heartbeat(BaseModel):
+    engine_version: str = Field(max_length=100)
+    extractor_version: Optional[str] = Field(None, max_length=100)
+    input_types: list[Literal["pbix", "pbip_zip"]]
+    readiness: Literal["ready", "not_ready"]
+    readiness_detail: Optional[str] = Field(None, max_length=500)
+
+
+class LeaseBody(BaseModel):
+    lease_token: str = Field(min_length=1, max_length=100)
+
+
+class ProgressBody(LeaseBody):
+    stage: Literal["downloading", "extracting", "analysing", "rendering", "uploading"]
+
+
+class CompleteBody(LeaseBody):
+    attempt_id: str = Field(min_length=1, max_length=64)
+    staged_result_id: str = Field(min_length=1, max_length=64)
+
+
+class FailBody(LeaseBody):
+    error_code: str = Field(min_length=1, max_length=60)
+    message: str = Field("", max_length=2000)
+    retryable: bool = False
+
+
+class ClaimedJob(JobOut):
+    attempt_id: str
+
+
+class Claim(BaseModel):
+    job: ClaimedJob
+    lease_token: str
+    lease_expires_at: str
+    input_download_url: str
+
+
+class Renewal(BaseModel):
+    lease_expires_at: str
+    cancellation_requested: bool
+
+
+class Staged(BaseModel):
+    staged_result_id: str
+    document_id: str
+    revision_id: str
+
+
+class Outcome(BaseModel):
+    state: str
+    document_id: Optional[str]
+    revision_id: Optional[str]
+    catalogue_sequence: Optional[int]
+    cancel_outcome: Optional[str]
+
 class Capabilities(BaseModel):
     version: str
     manifest_versions: list[int]
@@ -468,6 +583,8 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     derived = Derived(store)
     manual = ManualLinks(store, derived)
     publishing = Publishing(store)
+    jobs = Jobs(store, max_source_bytes=settings.max_source_bytes,
+                retention=timedelta(hours=settings.source_retention_hours))
 
     def refresh_derived() -> str:
         """Bring search/relationships up to date after a committed change; never fails the change."""
@@ -480,6 +597,11 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                   description="Shared Power BI and Data Factory documentation library, API v1.",
                   openapi_url=f"{PREFIX}/openapi.json", docs_url=None, redoc_url=None)
     app.state.store, app.state.settings, app.state.policy = store, settings, policy
+    app.state.jobs = jobs
+    try:
+        jobs.cleanup()                        # also on start; the daily job does not depend on traffic
+    except Exception:  # noqa: BLE001 - never block startup on housekeeping
+        log.exception("job cleanup at startup failed")
 
     # ---- errors and cross-cutting headers ---------------------------------------
 
@@ -493,6 +615,15 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request.state.request_id = str(uuid.uuid4())
+        caps = {f"{PREFIX}/jobs": settings.max_source_bytes}
+        if request.method == "POST" and (request.url.path in caps or re.fullmatch(
+                rf"{PREFIX}/worker/jobs/[^/]+/results", request.url.path)):
+            length = request.headers.get("content-length")
+            cap = caps.get(request.url.path, limits.html_bytes)
+            if length is None:
+                return error(request, 411, "LENGTH_REQUIRED", "uploads must declare Content-Length")
+            if not length.isdigit() or int(length) > cap + MULTIPART_OVERHEAD:
+                return error(request, 413, "PAYLOAD_TOO_LARGE", f"uploads are limited to {cap} bytes")
         if request.method == "POST" and request.url.path in (f"{PREFIX}/imports", f"{PREFIX}/publishing/imports"):
             length = request.headers.get("content-length")
             if length is None:
@@ -593,12 +724,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                 "limits": {"html_bytes": limits.html_bytes, "zip_bytes": limits.zip_bytes, "manifest_bytes": limits.manifest_bytes,
                            "section_text_bytes": limits.section_text_bytes},
                 "access_mode": settings.auth_mode, "can_publish": p.can("publish"),
-                "processing": [{"engine": "power_bi", "input_types": ["pbix", "pbip"], "available": False,
-                                "reason": "Hosted processing is not available (optional R3); use the generator."},
-                               {"engine": "adf", "input_types": ["adf_git", "adf_arm", "adf_resources"],
-                                "available": False,
-                                "reason": "Hosted processing is not available (optional R3); use the generator."}],
-                "worker_status": None, "installer_available": bool(publishing.releases()), "search_available": True,
+                "processing": jobs.processing()[0], "worker_status": jobs.processing()[1], "installer_available": bool(publishing.releases()), "search_available": True,
                 "search_mode": search_mode(),
                 "can_manage_relationships": p.can("publish"), "can_administer": p.can("admin"),
                 "relationship_schema_version": "rel-rules/1"}
@@ -977,5 +1103,113 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
         return Response(data, media_type="application/vnd.microsoft.portable-executable", headers={
             "Content-Disposition": f'attachment; filename="{record["filename"]}"',
             "Content-Security-Policy": DOWNLOAD_CSP, "X-Checksum-SHA256": record["sha256"]})
+
+    # ---- processing jobs (R3, B14): browser side ---------------------------------------------
+
+    @app.post(f"{PREFIX}/jobs", status_code=202, response_model=JobOut, tags=["jobs"], responses=ERRORS)
+    async def create_job(file: UploadFile = File(..., description="A PBIX file, or a ZIP of a PBIP project"),
+                         input_type: Literal["pbix", "pbip_zip"] = Form(...),
+                         document_id: Optional[uuid.UUID] = Form(None, description="publish as a new version of this"),
+                         p: Principal = Depends(publisher)):
+        """Queue a source for a processing worker; 409 WORKER_UNAVAILABLE when none is ready."""
+        return await run_in_threadpool(jobs.submit, file.file, filename=file.filename or "", input_type=input_type,
+                                       document_id=str(document_id) if document_id else None, principal=p)
+
+    @app.get(f"{PREFIX}/jobs", response_model=JobList, tags=["jobs"], responses=ERRORS)
+    def list_jobs(p: Principal = Depends(publisher)):
+        return {"items": jobs.list(p)}
+
+    @app.get(f"{PREFIX}/jobs/{{job_id}}", response_model=JobOut, tags=["jobs"], responses=ERRORS)
+    def get_job(job_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return jobs.get(str(job_id), p)
+
+    @app.post(f"{PREFIX}/jobs/{{job_id}}/cancel", status_code=202, response_model=JobOut, tags=["jobs"],
+              responses=ERRORS)
+    def cancel_job(job_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return jobs.cancel(str(job_id), p)
+
+    @app.post(f"{PREFIX}/jobs/{{job_id}}/retry", status_code=202, response_model=JobOut, tags=["jobs"],
+              responses=ERRORS)
+    def retry_job(job_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return jobs.retry(str(job_id), p)
+
+    @app.post(f"{PREFIX}/workers", status_code=201, response_model=EnrolledWorker, tags=["workers"], responses=ERRORS)
+    def enroll_worker(body: WorkerRequest, p: Principal = Depends(admin)):
+        """Enroll a processing worker. The token is shown once."""
+        return jobs.enroll(body.label, body.input_types, p)
+
+    @app.get(f"{PREFIX}/workers", response_model=WorkerList, tags=["workers"], responses=ERRORS)
+    def list_workers(p: Principal = Depends(admin)):
+        return {"items": jobs.workers()}
+
+    @app.delete(f"{PREFIX}/workers/{{worker_id}}", status_code=204, tags=["workers"], responses=ERRORS)
+    def revoke_worker(worker_id: str, p: Principal = Depends(admin)):
+        jobs.revoke_worker(worker_id, p)
+        return Response(status_code=204)
+
+    # ---- worker namespace: worker tokens only (handoff 10) --------------------------------
+
+    def worker_principal(request: Request) -> dict:
+        require_transport(request, settings, policy.proxies)
+        if settings.auth_mode == "local" and (request.headers.get("host") or "").lower() not in policy.local_hosts:
+            raise forbidden("requests must address the loopback host")
+        return jobs.authenticate(request.headers.get("authorization"))
+
+    W = f"{PREFIX}/worker"
+
+    @app.post(f"{W}/heartbeat", status_code=204, tags=["worker"], responses=ERRORS)
+    def worker_heartbeat(body: Heartbeat, w: dict = Depends(worker_principal)):
+        jobs.heartbeat(w, engine_version=body.engine_version, extractor_version=body.extractor_version,
+                       input_types=body.input_types, readiness=body.readiness, readiness_detail=body.readiness_detail)
+        return Response(status_code=204)
+
+    @app.post(f"{W}/claim", tags=["worker"], response_model=Claim, responses={204: {"description": "No job"},
+                                                                              **ERRORS})
+    def worker_claim(w: dict = Depends(worker_principal)):
+        got = jobs.claim(w)
+        if got is None:
+            return Response(status_code=204)
+        job, token, expires = got
+        return {"job": {**jobs.public(job), "attempt_id": job["attempt_id"]}, "lease_token": token,
+                "lease_expires_at": expires, "input_download_url": f"{W}/jobs/{job['job_id']}/source"}
+
+    @app.get(f"{W}/jobs/{{job_id}}/source", tags=["worker"], responses=ERRORS)
+    def worker_source(job_id: uuid.UUID, lease_token: str = Header(..., alias="X-Lease-Token"),
+                      w: dict = Depends(worker_principal)):
+        job, chunks = jobs.source(str(job_id), w, lease_token)
+        return StreamingResponse(chunks, media_type="application/octet-stream",
+                                 headers={"Content-Length": str(job["source_bytes"])})
+
+    @app.post(f"{W}/jobs/{{job_id}}/renew", response_model=Renewal, tags=["worker"], responses=ERRORS)
+    def worker_renew(job_id: uuid.UUID, body: LeaseBody, w: dict = Depends(worker_principal)):
+        return jobs.renew(str(job_id), w, body.lease_token)
+
+    @app.post(f"{W}/jobs/{{job_id}}/progress", status_code=204, tags=["worker"], responses=ERRORS)
+    def worker_progress(job_id: uuid.UUID, body: ProgressBody, w: dict = Depends(worker_principal)):
+        jobs.progress(str(job_id), w, body.lease_token, body.stage)
+        return Response(status_code=204)
+
+    @app.post(f"{W}/jobs/{{job_id}}/results", status_code=201, response_model=Staged, tags=["worker"],
+              responses=ERRORS)
+    async def worker_results(job_id: uuid.UUID, file: UploadFile = File(...), lease_token: str = Form(...),
+                             attempt_id: str = Form(...), w: dict = Depends(worker_principal)):
+        """Stage an immutable candidate for this attempt; nothing is published yet."""
+        data = await file.read(limits.html_bytes + 1)
+        if len(data) > limits.html_bytes:
+            raise LibraryError("PAYLOAD_TOO_LARGE", f"the result exceeds the {limits.html_bytes}-byte limit", 413)
+        return await run_in_threadpool(jobs.stage_result, str(job_id), w, lease_token, attempt_id, data)
+
+    @app.post(f"{W}/jobs/{{job_id}}/complete", response_model=Outcome, tags=["worker"], responses=ERRORS)
+    def worker_complete(job_id: uuid.UUID, body: CompleteBody, w: dict = Depends(worker_principal)):
+        """The server publishes the staged result as the requesting user, under the current lease."""
+        out = jobs.complete(str(job_id), w, body.lease_token, body.attempt_id, body.staged_result_id)
+        if out["state"] == "succeeded":
+            refresh_derived()
+        return out
+
+    @app.post(f"{W}/jobs/{{job_id}}/fail", response_model=JobOut, tags=["worker"], responses=ERRORS)
+    def worker_fail(job_id: uuid.UUID, body: FailBody, w: dict = Depends(worker_principal)):
+        return jobs.fail(str(job_id), w, body.lease_token, code=body.error_code, message=body.message,
+                         retryable=body.retryable)
 
     return app

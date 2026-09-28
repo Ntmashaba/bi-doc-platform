@@ -36,6 +36,8 @@ class Settings:
     max_manifest_bytes: int = 16 * MIB
     max_zip_bytes: int = 100 * MIB
     client_search_index_bytes: int = 8 * MIB     # above this, browsers search on the server (A41)
+    max_source_bytes: int = 1024 * MIB            # processing job sources (R3)
+    source_retention_hours: int = 24              # raw sources kept after a job ends (R3)
     log_level: str = "info"
     extra_allowed_hosts: tuple = field(default_factory=tuple)
     # Local mode inside a container must listen on the container interface. That is only
@@ -92,7 +94,8 @@ class Settings:
         if not 1 <= self.port <= 65535:
             raise ConfigError("PORT must be 1-65535")
         if self.max_html_bytes < 1 or self.max_manifest_bytes < 1 or self.max_zip_bytes < 1 \
-                or self.client_search_index_bytes < 0:
+                or self.client_search_index_bytes < 0 or self.max_source_bytes < 1 \
+                or not 1 <= self.source_retention_hours <= 24 * 30:
             raise ConfigError("upload limits must be positive")
         return self
 
@@ -144,6 +147,8 @@ def from_env(env=None) -> Settings:
             max_manifest_bytes=int(env.get("MAX_MANIFEST_BYTES", str(16 * MIB))),
             max_zip_bytes=int(env.get("MAX_ZIP_BYTES", str(100 * MIB))),
             client_search_index_bytes=int(env.get("CLIENT_SEARCH_INDEX_BYTES", str(8 * MIB))),
+            max_source_bytes=int(env.get("MAX_SOURCE_BYTES", str(1024 * MIB))),
+            source_retention_hours=int(env.get("SOURCE_RETENTION_HOURS", "24")),
             log_level=env.get("LOG_LEVEL", "info"),
             extra_allowed_hosts=_list(env.get("ALLOWED_HOSTS", "")),
             local_container_bind=_container_ack(env.get(CONTAINER_BIND_ENV)),

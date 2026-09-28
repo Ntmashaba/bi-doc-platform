@@ -109,6 +109,19 @@ def _parser():
                     help="ask the library to keep M/SQL from a shared artifact that includes it")
     pb.add_argument("--json", action="store_true")
 
+    wk = sub.add_parser("worker", help="process hosted jobs for a library (optional R3)",
+                        description="Worker mode: connect with a worker token from a library administrator, then "
+                                    "run to heartbeat, claim and process jobs one at a time.")
+    wsub = wk.add_subparsers(dest="worker_command", required=True)
+    wc = wsub.add_parser("connect", help="store the library address and worker token")
+    wc.add_argument("url")
+    wc.add_argument("--token-stdin", action="store_true")
+    wr = wsub.add_parser("run", help="heartbeat, claim and process jobs until stopped")
+    wr.add_argument("--once", action="store_true", help="process at most one job, then exit")
+    wr.add_argument("--pbi-tools", help="pbi-tools executable for PBIX jobs (otherwise the configured one)")
+    wr.add_argument("--extract-timeout", type=float, default=900)
+    wsub.add_parser("disconnect", help="forget the worker connection and token")
+
     w = sub.add_parser("desktop", help="open the desktop app")
     w.add_argument("--pbi-tools")
     w.add_argument("--no-window", action="store_true", help="serve the app on loopback without opening a window")
@@ -409,6 +422,63 @@ def _export(args) -> int:
     return EXIT_OK
 
 
+def _worker(args) -> int:
+    import getpass  # noqa: PLC0415
+
+    from .credentials import STORE, delete_token, load_token, save_token  # noqa: PLC0415
+    from .doctor import config  # noqa: PLC0415
+    from .publisher import PublishError, normalize_url  # noqa: PLC0415
+    from .worker import Worker, WorkerClient  # noqa: PLC0415
+    settings = config()
+    if args.worker_command == "disconnect":
+        url = settings.pop("worker_library_url", None)
+        if url:
+            delete_token(url, "worker")
+            (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        print(f"Worker disconnected from {url}." if url else "Worker not connected.")
+        return EXIT_OK
+    if args.worker_command == "connect":
+        try:
+            url = normalize_url(args.url)
+        except PublishError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_INPUT
+        token = (sys.stdin.readline() if args.token_stdin else getpass.getpass("Worker token: ")).strip()
+        if not token:
+            print("error: no token given", file=sys.stderr)
+            return EXIT_INPUT
+        worker = Worker(WorkerClient(url, token))
+        try:
+            worker.heartbeat()
+        except PublishError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_PREREQ if exc.code == "CREDENTIAL_REJECTED" else EXIT_FAILED
+        save_token(url, token, "worker")
+        settings["worker_library_url"] = url
+        home().mkdir(parents=True, exist_ok=True)
+        (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        print(f"Worker connected to {url}. The token is kept in {STORE}.")
+        return EXIT_OK
+    url = settings.get("worker_library_url")
+    token = load_token(url, "worker") if url else None
+    if not url or not token:
+        print("error: the worker is not connected; run 'bidoc worker connect URL'", file=sys.stderr)
+        return EXIT_PREREQ
+    worker = Worker(WorkerClient(url, token), pbi_tools=args.pbi_tools or settings.get("pbi_tools"),
+                    extract_timeout=args.extract_timeout, workspace_root=home() / "worker",
+                    log=lambda m: print(m, flush=True))
+    try:
+        done = worker.run(once=args.once)
+    except PublishError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PREREQ if exc.code == "CREDENTIAL_REJECTED" else EXIT_FAILED
+    except KeyboardInterrupt:
+        worker.stop.set()
+        return EXIT_OK
+    print(f"Processed {done} job(s).")
+    return EXIT_OK
+
+
 def _desktop(args) -> int:
     from .desktop.app import run  # noqa: PLC0415
     return run(pbi_tools=args.pbi_tools, window=not args.no_window, port=args.port)
@@ -418,7 +488,8 @@ def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     return {"doctor": _doctor, "generate": _generate, "batch": _batch, "history": _history,
             "retry": _retry, "config": _config, "connect": _connect, "disconnect": _disconnect,
-            "publish": _publish, "export-library": _export, "desktop": _desktop}[args.command](args)
+            "publish": _publish, "export-library": _export, "desktop": _desktop,
+            "worker": _worker}[args.command](args)
 
 
 if __name__ == "__main__":

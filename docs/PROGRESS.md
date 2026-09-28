@@ -19,7 +19,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B11 | Done (A36 through a TLS ingress in B13) | `docs/publishing.md` |
 | B12 | Done (A12 in Edge on Windows CI) | `docs/portable-export.md`; ZIP: `docs/contracts/envelope-v1.md` |
 | B13 | Done in CI; owner steps listed in the R2 checklist | `docs/azure-deployment.md`, `docs/backup-restore.md`, `docs/performance.md`, `docs/release-checklist-r2.md` |
-| B14–B16 | Not started | |
+| B14 | Done (real unattended PBIX extraction is the B16 gate) | `docs/workers.md` |
+| B15–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -340,5 +341,58 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   their next shared publication. Manual links to them show *Needs review*. Nothing has been
   rolled out to a team yet.
 
+### 2026-09-28 — B13 merged; personal-path follow-ups (owner review)
+- Merged bi-doc-platform #14 at the owner's instruction.
+- **Owner review:** the unkeyed reference is accepted for the pilot, described as a
+  pseudonymous identifier, not anonymisation.
+- **Identity** now uses the full SHA-256 (`withheld:<64 hex>`). Labels show 8 characters,
+  lengthened automatically when two sources in a document would collide.
+- **Documented:** a reference is stable only while the original path stays the same.
+- **New tests:**
+  - collisions of short references;
+  - full-digest identity;
+  - re-projecting a redacted payload changes nothing;
+  - the library re-importing a shared artifact keeps its source IDs, and a local artifact
+    of the same model gets the same IDs;
+  - a moved file gets a new reference, and its manual link shows *Needs review* (all three
+    backends).
+
+### 2026-09-28 — B14 completed (optional R3)
+- **Worker enrollment:** an admin enrolls a worker and gets its token once
+  (`bidocwk_…`, hashed). The token reaches only `/api/v1/worker/*` and is revoked by
+  deleting the worker.
+  - A heartbeat every 30 s reports versions, input types and readiness; readiness lasts
+    90 s.
+  - `/capabilities` reports `processing` and `worker_status`.
+- **Durable jobs** (`jobs.py`): the job row is authoritative, and claims are
+  compare-and-set.
+  - 120 s leases with renewal.
+  - Expiry requeues the job up to 3 attempts; a manual retry allows 3 more.
+  - Cancellation, fail with retryable or permanent errors, 24 h source retention, and
+    `python -m bidoc_library cleanup` (run on start and by a daily Container Apps job).
+- **Server-side finalization:** the worker stages a candidate, and `complete` publishes it
+  as the requester.
+  - The store re-checks the lease inside the publication commit and marks the job
+    succeeded in the same commit: one SQLite transaction, or the Azure commit partition
+    with the job row's ETag.
+  - So a stale worker cannot publish (A39), a job publishes at most once (A16), and
+    retries return the persisted outcome.
+- **Generator worker mode:** `bidoc worker connect | run [--once] | disconnect`.
+  - One job at a time, each in its own workspace.
+  - A lease-renewal thread learns about cancellation and kills the extraction process
+    tree (A17).
+  - PBIX through the configured pbi-tools; PBIP project ZIPs extracted with safe-path and
+    size checks, sibling folders kept.
+- **Azure template:** `/api/v1/worker/*` is outside browser sign-in (token-only), and a
+  daily cleanup job is added. The template check covers both.
+- **Tests:**
+  - `test_jobs.py`: 43 tests across LocalStore, in-memory Azure and Azurite;
+  - `test_worker.py`: a real library server with the worker, including cancellation that
+    kills the process tree; runs on Linux and Windows CI.
+- **Deviation from the handoff:** worker routes are `/api/v1/worker/…`, not
+  `/workers/{id}/…` and `/jobs/{id}/renew`, so one token-only prefix can bypass ingress
+  sign-in.
+- **Not verified:** real unattended PBIX extraction under the intended account (B16).
+
 ### Next
-- B14: worker enrollment and protocol, durable job lifecycle (optional R3).
+- B15: PBIX/project upload UI, capability gating, progress and retries.

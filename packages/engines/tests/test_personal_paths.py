@@ -62,6 +62,23 @@ class Text(unittest.TestCase):
         self.assertEqual(a, withhold_personal_paths(r"C:\Users\Alice\Data\Budget.xlsx"))
         self.assertEqual(a, withhold_personal_paths("c:/users/alice/data/budget.xlsx").replace("budget", "Budget"))
 
+    def test_reference_is_the_full_digest(self):
+        import hashlib
+        out = withhold_personal_paths(r"C:\Users\Alice\Data\Budget.xlsx")
+        digest = hashlib.sha256(b"c:/users/alice/data/budget.xlsx").hexdigest()
+        self.assertTrue(out.endswith(f"[ref {digest}]"))
+
+    def test_moving_the_file_changes_the_reference(self):
+        self.assertNotEqual(withhold_personal_paths(r"C:\Users\Alice\Data\Budget.xlsx"),
+                            withhold_personal_paths(r"C:\Users\Bob\Data\Budget.xlsx"))
+
+    def test_projecting_again_changes_nothing(self):
+        payload = {"a": r'File.Contents("C:\Users\Alice\Data\Budget.xlsx")', "b": "/home/alice/x.csv"}
+        once, _ = project("power_bi", payload, query_code="included")
+        twice, omissions = project("power_bi", once, query_code="included")
+        self.assertEqual(once, twice)
+        self.assertEqual([o for o in omissions if o["reason"] == "machine_path"], [])
+
     def test_projection_covers_every_field_and_records_omissions(self):
         payload = {"documentation": {"reportLocation": r"C:\Users\Alice\Reports"},
                    "pbixSource": r"C:\Users\Alice\Reports\Sales.pbix",
@@ -100,6 +117,8 @@ class SharedPublication(unittest.TestCase):
         self.assertEqual(len({o["label"] for o in withheld}), 2)
         for o in withheld:
             self.assertRegex(o["label"], r"^Budget\.xlsx — personal location withheld \(ref [0-9a-f]{8}\)$")
+            self.assertRegex(o["bindings"][0]["endpoint"]["path"], r"^withheld:[0-9a-f]{64}$")
+            self.assertRegex(o["object_id"], r"withheld%3A[0-9a-f]{64}")
         paths = {o["bindings"][0]["endpoint"]["path"] for o in sources.values()}
         self.assertIn(r"\\fileserver\finance\rates.csv", paths)            # shared network location kept
         self.assertTrue(any("sharepoint.com" in (o["bindings"][0]["endpoint"]["url"] or "") or
@@ -109,6 +128,18 @@ class SharedPublication(unittest.TestCase):
         first = set(self.sources(self.publish("shared", out="a")))
         second = set(self.sources(self.publish("shared", SOURCES[:1] + SOURCES, out="b")))  # an extra table
         self.assertEqual(first, second)
+
+    def test_short_reference_collisions_keep_identity_and_lengthen_labels(self):
+        from bidoc_engines import power_bi
+        a, b = "ab12cd34" + "0" * 56, "ab12cd34" + "f" * 56             # same 8-character prefix
+        rows = [{"sourceKind": "file", "sourceType": "Excel workbook", "object": "Budget.xlsx", "status": "Resolved",
+                 "table": f"T{i}", "location": f"Budget.xlsx — personal location withheld [ref {r}]"}
+                for i, r in enumerate((a, b))]
+        objects, _, _ = power_bi.describe({"title": "x", "mode": "model", "sourceObjects": rows})
+        sources = [o for o in objects if o["kind"] == "source"]
+        self.assertEqual(len({o["object_id"] for o in sources}), 2)
+        self.assertEqual(len({o["label"] for o in sources}), 2)
+        self.assertTrue(all("(ref ab12cd340000)" in o["label"] or "(ref ab12cd34ffff)" in o["label"] for o in sources))
 
     def test_withheld_paths_never_produce_relationships(self):
         html = self.publish("shared")
