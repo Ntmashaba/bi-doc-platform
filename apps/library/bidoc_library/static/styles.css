@@ -54,3 +54,8 @@ ul.links li{border-top:1px solid var(--line);padding:.5rem 0}
 .reason{margin:.3rem 0 0}
 details.manual form{display:grid;gap:.5rem;margin-top:.5rem}
 @media (max-width:900px){.viewer-layout{grid-template-columns:1fr}.frame-wrap iframe{height:70vh}}
+.release dl.kv { margin: 0.5rem 0; }
+.release .notes { white-space: pre-wrap; }
+table.tokens { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+table.tokens th, table.tokens td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line, #d0d4dc); }
+input.secret { width: 100%; font-family: ui-monospace, Consolas, monospace; }

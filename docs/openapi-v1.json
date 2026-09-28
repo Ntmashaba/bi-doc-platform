@@ -178,6 +178,10 @@
       "title": "Access Mode",
       "type": "string"
      },
+     "can_administer": {
+      "title": "Can Administer",
+      "type": "boolean"
+     },
      "can_manage_relationships": {
       "title": "Can Manage Relationships",
       "type": "boolean"
@@ -244,6 +248,7 @@
      "installer_available",
      "search_available",
      "can_manage_relationships",
+     "can_administer",
      "relationship_schema_version"
     ],
     "title": "Capabilities",

@@ -56,6 +56,15 @@ class BatchIn(BaseModel):
     owner: str = Field("", max_length=200)
 
 
+class LibraryIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    token: str = Field(min_length=1, max_length=200)
+
+
+class PublishIn(BaseModel):
+    include_query_code: bool = False
+
+
 class ReviewIn(BaseModel):
     inputs: list[str] = Field(min_length=1, max_length=500)
 
@@ -168,6 +177,78 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
             return runner.retry(item_id)
         except ValueError as exc:
             raise ApiError(409, "NOT_RETRYABLE", str(exc)) from None
+
+    # ---- library connection and direct publishing (B11) -----------------------------
+
+    def _library():
+        from ..credentials import load_token  # noqa: PLC0415
+        from ..doctor import config  # noqa: PLC0415
+        url = config().get("library_url")
+        return url, (load_token(url) if url else None)
+
+    @app.get("/api/library")
+    def library_status():
+        from ..credentials import STORE  # noqa: PLC0415
+        from ..publisher import LibraryClient, PublishError  # noqa: PLC0415
+        url, token = _library()
+        if not url or not token:
+            return {"state": "not_connected", "url": url, "token_store": STORE}
+        try:
+            caps = LibraryClient(url, token).capabilities()
+        except PublishError as exc:
+            state = "credential_rejected" if exc.code == "CREDENTIAL_REJECTED" else "unreachable"
+            return {"state": state, "url": url, "message": str(exc), "token_store": STORE}
+        return {"state": "connected", "url": url, "subject": caps["subject"], "token_store": STORE}
+
+    @app.post("/api/library")
+    def library_connect(body: LibraryIn):
+        from ..credentials import save_token  # noqa: PLC0415
+        from ..doctor import config  # noqa: PLC0415
+        from ..publisher import LibraryClient, PublishError, normalize_url  # noqa: PLC0415
+        try:
+            url = normalize_url(body.url)
+            LibraryClient(url, body.token.strip()).capabilities()
+        except PublishError as exc:
+            raise ApiError(400 if exc.code in ("INVALID_URL", "INSECURE_URL", "CREDENTIAL_REJECTED") else 502,
+                           exc.code, str(exc)) from None
+        save_token(url, body.token.strip())
+        settings = config()
+        settings["library_url"] = url
+        home().mkdir(parents=True, exist_ok=True)
+        import json  # noqa: PLC0415
+        (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        return library_status()
+
+    @app.delete("/api/library")
+    def library_disconnect():
+        import json  # noqa: PLC0415
+
+        from ..credentials import delete_token  # noqa: PLC0415
+        from ..doctor import config  # noqa: PLC0415
+        settings = config()
+        url = settings.pop("library_url", None)
+        if url:
+            delete_token(url)
+            (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+        return {"state": "not_connected", "url": None}
+
+    @app.post("/api/items/{item_id}/publish")
+    def publish_item(item_id: str, body: PublishIn):
+        from ..publisher import LibraryClient, PublishError  # noqa: PLC0415
+        item = _item(item_id)
+        if item["state"] != "completed" or not item["artifact_path"]:
+            raise ApiError(409, "NOT_PUBLISHABLE", "only completed documents with a publication manifest can be "
+                                                   "published")
+        url, token = _library()
+        if not url or not token:
+            raise ApiError(409, "NOT_CONNECTED", "connect to a library first")
+        try:
+            r = LibraryClient(url, token).publish(Path(item["artifact_path"]).read_bytes(),
+                                                  filename=Path(item["artifact_path"]).name,
+                                                  query_code="included" if body.include_query_code else "withheld")
+        except PublishError as exc:
+            raise ApiError(409 if exc.status in (409, 428, 422, 401) else 502, exc.code, str(exc)) from None
+        return {**r.__dict__, "library_url": url}
 
     @app.get("/api/items/{item_id}/view", include_in_schema=False)
     def view(item_id: str):

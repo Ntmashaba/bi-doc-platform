@@ -102,6 +102,10 @@ async function render() {
         caps = caps || (await api("/capabilities")).data;
         if (r.path[0] === "import")
             await importView();
+        else if (r.path[0] === "downloads")
+            await downloadsView();
+        else if (r.path[0] === "tokens")
+            await tokensView();
         else if (r.path[0] === "documents" && r.path[1])
             await detailsView(r.path[1]);
         else if (r.path[0] === "view" && r.path[1] && r.path[2])
@@ -154,7 +158,7 @@ async function homeView(type, params) {
             timer = window.setTimeout(() => setParam("q", v, true), 250);
         } });
     const header = h("section", { class: "toolbar" }, h("nav", { class: "types", "aria-label": "Document types" }, ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"]].map(([t, label]) => h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))), searchBox, h("div", { class: "filters" }, filterSelect("business_area", "Business area", values((d) => [d.classification.business_area])), filterSelect("environment", "Environment", values((d) => [d.classification.environment])), filterSelect("owner", "Owner", values((d) => [d.classification.owner])), filterSelect("tag", "Tag", values((d) => d.tags)), caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
-        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, h("button", { type: "button", class: "secondary", onclick: () => generatorInfo(results) }, "Download generator")));
+        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null, h("a", { class: "button secondary", href: "#/downloads" }, "Download generator")));
     const results = h("section", { id: "results", "aria-live": "polite" });
     mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
     if (q && !archived) {
@@ -201,16 +205,81 @@ function documentRow(d) {
 function hitRow(hit) {
     return h("li", {}, h("div", { class: "row-head" }, typeBadge(hit.document_type), h("a", { href: href(["view", hit.document_id, hit.revision_id], { section: hit.section_id }) }, hit.title + (hit.section_title ? ` › ${hit.section_title}` : ""))), hit.snippet ? h("p", { class: "snippet" }, hit.snippet) : null);
 }
-async function generatorInfo(container) {
-    try {
-        const r = await api("/releases/latest?platform=windows-x64");
-        container.prepend(notice("info", `Generator ${r.data.version} (SHA-256 ${r.data.sha256}). `, h("a", { href: r.data.download_url }, "Download")));
+function releaseCard(r) {
+    return h("div", { class: "card release" }, h("h2", {}, `Generator ${r.version}`, r.approved ? "" : " (awaiting approval)"), !r.signed ? notice("warn", `${r.label || "Development build"}: this installer is not code-signed, so Windows may warn before it runs.`) : null, h("dl", { class: "kv" }, h("dt", {}, "Released"), h("dd", {}, date(r.approved_at || r.created_at)), h("dt", {}, "Installer"), h("dd", {}, `${r.filename} (${(r.size_bytes / 1048576).toFixed(1)} MB, Windows x64)`), h("dt", {}, "SHA-256"), h("dd", {}, h("code", {}, r.sha256)), h("dt", {}, "Also needed"), h("dd", {}, r.prerequisites.length ? r.prerequisites.join("; ") : "nothing else")), r.release_notes ? h("p", { class: "notes" }, r.release_notes) : null, r.download_url ? h("p", {}, h("a", { class: "button", href: r.download_url }, "Download installer")) : null, !r.approved && caps?.can_administer ? h("p", {}, h("button", { type: "button", onclick: async () => {
+            await api(`/releases/${encodeURIComponent(r.version)}/approve`, { method: "POST" });
+            await downloadsView();
+        } }, "Approve for download")) : null);
+}
+async function sha256Hex(file) {
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function downloadsView() {
+    const list = (await api("/releases")).data.items;
+    const upload = caps?.can_administer ? (() => {
+        const out = h("div", { "aria-live": "polite" });
+        const file = h("input", { type: "file", id: "release-file", accept: ".exe", required: true });
+        const version = h("input", { type: "text", id: "release-version", placeholder: "0.3.0", required: true });
+        const notes = h("textarea", { id: "release-notes" });
+        const prereq = h("input", { type: "text", id: "release-prereq",
+            value: "Power BI Desktop and pbi-tools (PBIX only); Microsoft Edge WebView2 Runtime" });
+        return h("form", { class: "card", onsubmit: async (e) => {
+                e.preventDefault();
+                const f = file.files?.[0];
+                if (!f)
+                    return;
+                out.replaceChildren(notice("info", "Checking and uploading…"));
+                const body = new FormData();
+                body.append("file", f, f.name);
+                body.append("version", version.value.trim());
+                body.append("sha256", await sha256Hex(f));
+                body.append("release_notes", notes.value);
+                body.append("prerequisites", JSON.stringify(prereq.value.split(";").map((x) => x.trim()).filter(Boolean)));
+                try {
+                    await api("/releases", { method: "POST", body });
+                    await downloadsView();
+                }
+                catch (err) {
+                    out.replaceChildren(notice("error", errorText(err)));
+                }
+            } }, h("h2", {}, "Add a release (administrators)"), h("p", { class: "muted small" }, "Upload the installer from the CI build. It is only offered for download after approval."), h("p", {}, h("label", { for: "release-file" }, "Installer (.exe)"), file), h("p", {}, h("label", { for: "release-version" }, "Version"), version), h("p", {}, h("label", { for: "release-prereq" }, "Also needed (separate with ;)"), prereq), h("p", {}, h("label", { for: "release-notes" }, "Release notes"), notes), h("button", { type: "submit" }, "Upload"), out);
+    })() : null;
+    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Download the generator"), h("p", { class: "muted" }, "The generator documents Power BI and Data Factory on your computer and can publish to this library."), list.length ? h("div", {}, ...list.map(releaseCard))
+        : notice("info", "No generator installer is available from this library yet. Ask your administrator for the generator."), upload);
+}
+async function tokensView() {
+    if (!caps?.can_publish) {
+        mount(h("h1", {}, "Publishing tokens"), notice("error", "Publisher role required."));
+        return;
     }
-    catch (e) {
-        container.prepend(notice("info", e instanceof ApiError && e.code === "NO_APPROVED_RELEASE"
-            ? "The generator installer is not available from this library yet. Ask your administrator for the generator."
-            : errorText(e)));
-    }
+    const items = (await api("/publish-tokens")).data.items;
+    const out = h("div", { id: "token-new", "aria-live": "polite" });
+    const label = h("input", { type: "text", id: "token-label", maxlength: "100", required: true,
+        placeholder: "e.g. Finance laptop" });
+    const days = h("select", { id: "token-days" }, ...[1, 7, 14, 30].map((d) => h("option", { value: String(d) }, `${d} day${d > 1 ? "s" : ""}`)));
+    days.value = "7";
+    const form = h("form", { class: "card", onsubmit: async (e) => {
+            e.preventDefault();
+            try {
+                const r = (await api("/publish-tokens", { method: "POST", json: { label: label.value.trim(), expires_in_days: Number(days.value) } })).data;
+                const field = h("input", { type: "text", readonly: true, value: r.token, id: "token-secret", class: "secret",
+                    "aria-label": "New publishing token" });
+                await tokensView();
+                document.getElementById("token-new")?.replaceChildren(notice("warn", "Copy this token now. It is shown only once; " +
+                    `it expires ${date(r.expires_at)}. In the generator: Library → Connect, or bidoc connect.`), field);
+                field.select();
+            }
+            catch (err) {
+                out.replaceChildren(notice("error", errorText(err)));
+            }
+        } }, h("h2", {}, "New token"), h("p", {}, h("label", { for: "token-label" }, "Name"), label), h("p", {}, h("label", { for: "token-days" }, "Valid for"), days), h("button", { type: "submit" }, "Create token"));
+    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Publishing tokens"), h("p", { class: "muted" }, "A publishing token lets the generator publish to this library as you. It can only publish; " +
+        "it cannot archive, edit or manage anything else. Revoke it when a computer is lost or no longer used."), out, form, items.length ? h("table", { class: "tokens" }, h("thead", {}, h("tr", {}, ...["Name", "Created", "Expires", "Last used", "State", ""].map((c) => h("th", {}, c)))), h("tbody", {}, ...items.map((t) => h("tr", {}, h("td", {}, t.label), h("td", {}, date(t.created_at)), h("td", {}, date(t.expires_at)), h("td", {}, t.last_used_at ? date(t.last_used_at) : "never"), h("td", {}, t.state), h("td", {}, t.state === "active" ? h("button", { type: "button", class: "secondary", onclick: async () => {
+            await api(`/publish-tokens/${t.token_id}`, { method: "DELETE" });
+            await tokensView();
+        } }, "Revoke") : "")))))
+        : h("p", { class: "muted" }, "No tokens yet."));
 }
 const LEGACY_FIELDS = [["title", "Title"], ["environment", "Environment (e.g. Production)"],
     ["business_area", "Business area"], ["owner", "Owner"]];

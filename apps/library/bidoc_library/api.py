@@ -326,6 +326,7 @@ class Capabilities(BaseModel):
     installer_available: bool
     search_available: bool
     can_manage_relationships: bool
+    can_administer: bool
     relationship_schema_version: str
 
 
@@ -591,7 +592,8 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                                 "available": False,
                                 "reason": "Hosted processing is not available (optional R3); use the generator."}],
                 "worker_status": None, "installer_available": bool(publishing.releases()), "search_available": True,
-                "can_manage_relationships": p.can("publish"), "relationship_schema_version": "rel-rules/1"}
+                "can_manage_relationships": p.can("publish"), "can_administer": p.can("admin"),
+                "relationship_schema_version": "rel-rules/1"}
 
     # ---- documents --------------------------------------------------------------
 

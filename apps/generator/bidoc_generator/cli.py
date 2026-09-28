@@ -79,6 +79,25 @@ def _parser():
     c.add_argument("--pbi-tools", help="path to pbi-tools.exe; an empty value removes it")
     c.add_argument("--json", action="store_true")
 
+    cn = sub.add_parser("connect", help="connect to a library for direct publishing",
+                        description="Checks the library and stores its URL in config.json and the publishing token "
+                                    "in Windows Credential Manager (elsewhere: a file only you can read). Create the "
+                                    "token in the library under Publishing tokens.")
+    cn.add_argument("url", help="library address, e.g. https://docs.example.com")
+    cn.add_argument("--token-stdin", action="store_true", help="read the token from standard input instead of a prompt")
+    cn.add_argument("--json", action="store_true")
+
+    sub.add_parser("disconnect", help="forget the library connection and remove the stored token")
+
+    pb = sub.add_parser("publish", help="publish generated documents to the connected library",
+                        description="Publishes envelope-v1 HTML made by bidoc generate/batch. A new version of an "
+                                    "existing document is published against its current ETag; a retry after a lost "
+                                    "response returns the original outcome.")
+    pb.add_argument("files", nargs="+", metavar="FILE")
+    pb.add_argument("--include-query-code", action="store_true",
+                    help="ask the library to keep M/SQL from a shared artifact that includes it")
+    pb.add_argument("--json", action="store_true")
+
     w = sub.add_parser("desktop", help="open the desktop app")
     w.add_argument("--pbi-tools")
     w.add_argument("--no-window", action="store_true", help="serve the app on loopback without opening a window")
@@ -275,6 +294,93 @@ def _config(args) -> int:
     return EXIT_OK
 
 
+def _connected():
+    from .credentials import load_token  # noqa: PLC0415
+    from .doctor import config  # noqa: PLC0415
+    url = config().get("library_url")
+    token = load_token(url) if url else None
+    return url, token
+
+
+def _connect(args) -> int:
+    import getpass  # noqa: PLC0415
+
+    from .credentials import STORE, save_token  # noqa: PLC0415
+    from .doctor import config  # noqa: PLC0415
+    from .publisher import LibraryClient, PublishError, normalize_url  # noqa: PLC0415
+    try:
+        url = normalize_url(args.url)
+    except PublishError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    token = (sys.stdin.readline() if args.token_stdin else getpass.getpass("Publishing token: ")).strip()
+    if not token:
+        print("error: no token given", file=sys.stderr)
+        return EXIT_INPUT
+    try:
+        caps = LibraryClient(url, token).capabilities()
+    except PublishError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PREREQ if exc.code == "CREDENTIAL_REJECTED" else EXIT_FAILED
+    save_token(url, token)
+    settings = config()
+    settings["library_url"] = url
+    home().mkdir(parents=True, exist_ok=True)
+    (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    out = {"library_url": url, "subject": caps["subject"], "library_version": caps["version"], "token_store": STORE}
+    print(json.dumps(out, indent=1) if args.json else
+          f"Connected to {url} as {caps['subject']}. The token is kept in {STORE}.")
+    return EXIT_OK
+
+
+def _disconnect(args) -> int:
+    from .credentials import delete_token  # noqa: PLC0415
+    from .doctor import config  # noqa: PLC0415
+    settings = config()
+    url = settings.pop("library_url", None)
+    if url:
+        delete_token(url)
+        (home() / "config.json").write_text(json.dumps(settings, indent=1), encoding="utf-8")
+    print(f"Disconnected from {url}." if url else "Not connected.")
+    return EXIT_OK
+
+
+def _publish(args) -> int:
+    from .publisher import LibraryClient, PublishError  # noqa: PLC0415
+    url, token = _connected()
+    if not url or not token:
+        print("error: not connected to a library; run 'bidoc connect URL'", file=sys.stderr)
+        return EXIT_PREREQ
+    client = LibraryClient(url, token)
+    results, failures = [], 0
+    for f in args.files:
+        path = Path(f)
+        try:
+            r = client.publish(path.read_bytes(), filename=path.name,
+                               query_code="included" if args.include_query_code else "withheld")
+            results.append({"file": str(path), **r.__dict__})
+            if not args.json:
+                print(f"  {r.status:9} {r.title}  ({'new document' if r.new_document else 'new version'}; "
+                      f"document {r.document_id}, revision {r.revision_id})")
+        except OSError as exc:
+            failures += 1
+            results.append({"file": str(path), "status": "failed", "error": "IO_ERROR", "message": str(exc)})
+            print(f"error: {path}: {exc}", file=sys.stderr)
+        except PublishError as exc:
+            failures += 1
+            results.append({"file": str(path), "status": "failed", "error": exc.code, "message": str(exc)})
+            print(f"error: {path.name}: {exc}", file=sys.stderr)
+            if exc.code in ("CREDENTIAL_REJECTED", "LIBRARY_UNREACHABLE", "REDIRECT_REFUSED"):
+                if args.json:
+                    print(json.dumps(results, indent=1))
+                return EXIT_PREREQ if exc.code == "CREDENTIAL_REJECTED" else EXIT_FAILED
+    if args.json:
+        print(json.dumps(results, indent=1))
+    if not failures:
+        return EXIT_OK
+    return EXIT_PARTIAL if failures < len(args.files) else EXIT_FAILED
+
+
 def _desktop(args) -> int:
     from .desktop.app import run  # noqa: PLC0415
     return run(pbi_tools=args.pbi_tools, window=not args.no_window, port=args.port)
@@ -283,7 +389,8 @@ def _desktop(args) -> int:
 def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     return {"doctor": _doctor, "generate": _generate, "batch": _batch, "history": _history,
-            "retry": _retry, "config": _config, "desktop": _desktop}[args.command](args)
+            "retry": _retry, "config": _config, "connect": _connect, "disconnect": _disconnect,
+            "publish": _publish, "desktop": _desktop}[args.command](args)
 
 
 if __name__ == "__main__":

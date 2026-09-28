@@ -155,6 +155,19 @@ async function batchView(id: string): Promise<void> {
     try { await fn(); } catch (e) { status.replaceChildren(notice("error", (e as Error).message)); }
     await refresh(); } }, label);
 
+  let connected = false;
+  try { connected = (await api<LibraryState>("/api/library")).state === "connected"; } catch { connected = false; }
+  const publish = (it: Item) => h("button", { onclick: async (ev: Event) => {
+    const btn = ev.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      const r = await api<{ status: string; new_document: boolean; title: string; library_url: string }>(
+        `/api/items/${it.item_id}/publish`, "POST", {});
+      status.replaceChildren(notice("info", `${r.status === "duplicate" ? "Already published" : "Published"}: ${r.title} ` +
+        `(${r.new_document ? "new document" : "new version"}) to ${r.library_url}.`));
+    } catch (e) { status.replaceChildren(notice("error", (e as Error).message)); btn.disabled = false; }
+  } }, "Publish");
+
   async function refresh(): Promise<void> {
     stopPolling();
     let b: Batch;
@@ -174,6 +187,7 @@ async function batchView(id: string): Promise<void> {
       h("td", { class: "actions" },
         it.artifact_path && (it.state === "completed" || it.state === "local_only")
           ? h("button", { onclick: () => openDoc(it.item_id) }, "Open") : null,
+        connected && it.state === "completed" && b.options.profile === "shared" ? publish(it) : null,
         ACTIVE.has(it.state) ? act("Cancel", () => api(`/api/items/${it.item_id}/cancel`, "POST")) : null,
         RETRYABLE.has(it.state) ? act("Retry", () => api(`/api/items/${it.item_id}/retry`, "POST")) : null))));
     if (running) timer = window.setTimeout(refresh, 1000);
@@ -192,6 +206,44 @@ async function openDoc(itemId: string): Promise<void> {
   const frame = h("iframe", { src: `/api/items/${itemId}/view`, sandbox: "allow-scripts", title: "Documentation preview",
     class: "preview-frame" });
   document.getElementById("preview")?.replaceChildren(frame);
+}
+
+// ---- library connection (B11) ------------------------------------------------------------
+
+interface LibraryState { state: "connected" | "not_connected" | "credential_rejected" | "unreachable"; url: string | null;
+  subject?: string; message?: string; token_store?: string; }
+
+async function libraryView(): Promise<void> {
+  const status = h("div", { id: "library-status", "aria-live": "polite" });
+  const url = h("input", { type: "text", id: "library-url", placeholder: "https://docs.example.com" }) as HTMLInputElement;
+  const token = h("input", { type: "password", id: "library-token", autocomplete: "off" }) as HTMLInputElement;
+  const show = (s: LibraryState) => {
+    const text: Record<string, string> = {
+      connected: `Connected to ${s.url} as ${s.subject}.`, not_connected: "Not connected.",
+      credential_rejected: `The library at ${s.url} no longer accepts the stored token (expired or revoked). Enter a new one.`,
+      unreachable: `Could not reach ${s.url}: ${s.message || ""}` };
+    status.replaceChildren(notice(s.state === "connected" ? "info" : s.state === "not_connected" ? "info" : "warn", text[s.state]),
+      s.token_store ? h("p", { class: "muted small" }, `Tokens are kept in ${s.token_store}; never in documents or logs.`) : "",
+      s.url ? h("p", {}, h("button", { type: "button", onclick: async () => { show(await api<LibraryState>("/api/library", "DELETE")); } },
+        "Disconnect")) : "");
+    if (s.url) url.value = s.url;
+  };
+  const connect = h("button", { class: "primary", type: "button", onclick: async () => {
+    connect.disabled = true;
+    try { show(await api<LibraryState>("/api/library", "POST", { url: url.value.trim(), token: token.value.trim() })); token.value = ""; }
+    catch (e) { status.replaceChildren(notice("error", (e as Error).message)); }
+    connect.disabled = false;
+  } }, "Connect");
+  mount(h("h1", {}, "Library"),
+    h("p", { class: "muted" }, "Publish generated documents straight to your team's library. Create a publishing token in the " +
+      "library (Publishing tokens), then paste it here. It is valid for 1 to 30 days and can be revoked there at any time."),
+    status,
+    h("div", { class: "card" },
+      h("label", { for: "library-url" }, "Library address"), url,
+      h("label", { for: "library-token" }, "Publishing token"), token,
+      h("p", { class: "muted small" }, "Only https:// addresses are accepted (http:// only for this computer)."),
+      h("p", {}, connect)));
+  show(await api<LibraryState>("/api/library"));
 }
 
 // ---- history and prerequisites --------------------------------------------------------
@@ -228,6 +280,7 @@ async function route(): Promise<void> {
     if (parts[0] === "batch" && parts[1]) await batchView(parts[1]);
     else if (parts[0] === "history") await historyView();
     else if (parts[0] === "prerequisites") await prerequisitesView();
+    else if (parts[0] === "library") await libraryView();
     else await startView();
   } catch (e) {
     mount(notice("error", e instanceof ApiError ? e.message : "Something went wrong. Try again."));
