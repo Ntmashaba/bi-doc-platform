@@ -60,3 +60,30 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -r requirements.txt
       - run: python packages/engines/tests/check_adf_templates.py adf-templates "$RUNNER_TEMP/adf-template-output"
+
+  frontend:
+    # TypeScript must compile to exactly the committed static files; then a real browser
+    # drives the library shell and both engines' viewers (A19, A20, A27).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install frontend tools
+        working-directory: apps/library/frontend
+        run: npm ci
+      - name: Compiled output is committed
+        working-directory: apps/library/frontend
+        run: |
+          npx tsc -p tsconfig.json
+          git diff --exit-code -- ../bidoc_library/static
+      - name: Install Chromium
+        working-directory: apps/library/frontend
+        run: npx playwright install --with-deps chromium
+      - run: python -m pip install -r requirements.txt
+      - name: Browser acceptance
+        run: python apps/library/tests/check_browser.py

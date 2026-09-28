@@ -6,3 +6,4 @@ dist/
 test.log
 spikes/w1/dist/
 spikes/w1/*.spec
+node_modules/

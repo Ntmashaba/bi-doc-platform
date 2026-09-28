@@ -826,12 +826,20 @@
      "revision_id": {
       "title": "Revision Id",
       "type": "string"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SectionTarget"
+      },
+      "title": "Sections",
+      "type": "array"
      }
     },
     "required": [
      "document_id",
      "revision_id",
      "items",
+     "sections",
      "next_cursor"
     ],
     "title": "ObjectPage",
@@ -1212,6 +1220,23 @@
      "text"
     ],
     "title": "SearchSection",
+    "type": "object"
+   },
+   "SectionTarget": {
+    "properties": {
+     "section_id": {
+      "title": "Section Id",
+      "type": "string"
+     },
+     "view": {
+      "$ref": "#/components/schemas/ObjectView"
+     }
+    },
+    "required": [
+     "section_id",
+     "view"
+    ],
+    "title": "SectionTarget",
     "type": "object"
    }
   }

@@ -160,6 +160,13 @@ class Derived:
                  "parent_object_id": o["parent_object_id"], "dynamic": o["dynamic"], "opaque": o["opaque"],
                  "coverage": o["coverage"], "view": targets.get(o["object_id"])} for o in m["objects"]]
 
+    def section_targets(self, document_id, revision_id) -> list:
+        """Navigation targets that address a section rather than an object (e.g. overview, pages)."""
+        m = self.manifest(document_id, revision_id)
+        sections = {s["id"] for s in m["sections"]}
+        return [{"section_id": t["target_id"], "view": t} for t in m["navigation"]["targets"]
+                if t["target_id"] in sections]
+
     def _generation_for(self, conn, revision_id, generation_id):
         if generation_id:
             g = conn.execute("SELECT * FROM relationship_generations WHERE generation_id=? AND state='ready'",

@@ -11,7 +11,7 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B03 | Done (PBIX via bidoc deferred to B08) | Engines 0.2.0 fixes; `packages/engines` adapters, projection, identity; `bidoc` CLI; real-input checks in CI |
 | B04 | Done | `apps/library` LocalStore: SQLite catalogue, immutable revisions, crash-safe publication (`docs/library-storage.md`) |
 | B05 | Done | HTTP API v1 (`docs/library-api.md`, `docs/openapi-v1.json`); local and gateway access |
-| B06 | In progress: B06a done (backend) | Search, relationships and manual links (`docs/relationships.md`). B06b: UI shell and viewers |
+| B06 | Done | B06a backend (`docs/relationships.md`); B06b shell and viewers (`docs/library-ui.md`) |
 | B07–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
@@ -133,8 +133,26 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - section ranking ignored heading matches (now heading first, as the handoff ranks);
   - manual-link status checked only one end.
 
+### 2026-09-28 — B06a merged; B06b completed
+- Merged bi-doc-platform #5 at the owner's instruction.
+- **Engine PRs** (0.3.0; platform pinned to their branch commits):
+  - pbi-doc-gen [#4](https://github.com/Ntmashaba/pbi-doc-gen/pull/4) (171 tests) and adf-doc-gen [#4](https://github.com/Ntmashaba/adf-doc-gen/pull/4) (35 tests);
+  - both add a framed-only `bi-doc-viewer` protocol v1 listener (parent-only, channel + revision handshake, registered views);
+  - ADF activity rows get stable IDs.
+- **Library shell** (TypeScript, strict; compiled output committed):
+  - All / Power BI / ADF with filters and browser search identical to the server's;
+  - import with manifest preview (new / new version / duplicate) and an explicit *Include query code* option;
+  - details and versions; archive/restore;
+  - sandboxed viewer with object selector and the Related documentation panel (groups, confidence, evidence, state, manual links).
+- **Power BI source navigation** now carries server/database/object, so the viewer opens the exact source.
+- **Tests:**
+  - search parity Python ↔ browser (14 query/filter cases, accented and non-Latin text); shell CSP and whitelist;
+  - Chromium acceptance through a real server: A19 browse/filter/search; A20 Power BI source → exact ADF activity inside the viewer → reverse link → Back; measure selection; A27 isolation (parent, cookies, fetch and top navigation blocked; forged messages ignored); import; no unexpected errors;
+  - new CI job `frontend`.
+- **Found and fixed:** overlapping renders could show a stale view (each render now swaps in only if it is still the latest navigation).
+
 ### Next
-- B06b: TypeScript library shell (All / Power BI / ADF, filters, browser search matching `search.py`, import, details, versions, archive), isolated viewer with Related documentation panel, postMessage navigation protocol (engine template changes), Back restoring state.
+- Merge engine PRs #4; re-pin the engines to their merge commits.
 - Then B07: R1 end-to-end gate (A19–A25, A27, A29–A35, A37, A40), including legacy import and metadata overrides.
 - Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.

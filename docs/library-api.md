@@ -1,4 +1,4 @@
-# Library HTTP API v1 (B05, B06a)
+# Library HTTP API v1 (B05, B06)
 
 OpenAPI: `docs/openapi-v1.json` (regenerate with `python -m bidoc_library.openapi > docs/openapi-v1.json`; CI fails if it is stale). Served at `/api/v1/openapi.json`.
 
@@ -45,7 +45,7 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 | `POST /documents/{id}/archive`, `/restore` | publisher | `If-Match` required; `200` with new `ETag`; `409`, `428` |
 | `GET /search-index` | viewer | `{generation, state, documents:[{…, sections}]}` for current active revisions; `ETag` + `If-None-Match` → `304`. State `ready`, `updating` or `stale` (prior snapshot, labelled) |
 | `GET /search` | viewer | server-side search with the same semantics (`bidoc_library/search.py`): `q`, type and classification filters, `tag` |
-| `GET /documents/{id}/objects` | viewer | objects of a revision (default current), with section anchor and view target |
+| `GET /documents/{id}/objects` | viewer | objects of a revision (default current), with section anchor and view target, plus `sections` (view targets for sections without an object, e.g. overview and pages) |
 | `GET /documents/{id}/relationships` | viewer | `revision_id`, `generation_id`, `object_id` (a pipeline also matches its activities); returns generation (`ready`, `updating`, `pinned`, `evidence_unavailable`), `incoming`/`outgoing` detected links with confidence and evidence, and `manual` links with status |
 | `POST /relationships/manual` | publisher | source and target document/revision/object, `kind` (`related_to`, `produces`, `consumes`, `deletes`), `reason`, `expected_catalogue_sequence`; `201` + `ETag`; `409 SELECTION_STALE`; `422 OBJECT_NOT_FOUND` |
 | `GET`, `PATCH`, `DELETE /relationships/manual/{id}`, `GET …/audit` | viewer (read) / publisher | changes need `If-Match`; delete is a tombstone; every change is audited and advances the catalogue sequence |
@@ -60,3 +60,7 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 - Metadata overrides (`PATCH /documents/{id}/metadata`).
 - Converting existing engine HTML that has no manifest (legacy import). It is currently rejected with `422 CONTRACT_INVALID`; the conversion path is planned with B06/B07 using the B01 native-payload extraction spike.
 - Publish tokens and direct desktop publishing (R2).
+
+## Library shell
+
+`GET /` serves the shell (see `docs/library-ui.md`) and `GET /static/{file}` its whitelisted assets. Both need the viewer role, like the API.
