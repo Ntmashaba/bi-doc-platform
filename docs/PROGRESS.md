@@ -12,7 +12,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B04 | Done | `apps/library` LocalStore: SQLite catalogue, immutable revisions, crash-safe publication (`docs/library-storage.md`) |
 | B05 | Done | HTTP API v1 (`docs/library-api.md`, `docs/openapi-v1.json`); local and gateway access |
 | B06 | Done | B06a backend (`docs/relationships.md`); B06b shell and viewers (`docs/library-ui.md`) |
-| B07–B16 | Not started | |
+| B07 | Done (R1 gate; A08 → B08, A10 ZIP → B12) | Evidence map: `docs/b07/R1-GATE.md`; Docker: `docs/deployment-docker.md` |
+| B08–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -151,8 +152,33 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - new CI job `frontend`.
 - **Found and fixed:** overlapping renders could show a stale view (each render now swaps in only if it is still the latest navigation).
 
+### 2026-09-28 — B06b merged; B07 (R1 gate) completed
+- Merged pbi-doc-gen #4, adf-doc-gen #4 and bi-doc-platform #6 at the owner's instruction.
+- **A37, published viewers read-only:**
+  - engines 0.4.0 PRs (pbi-doc-gen and adf-doc-gen #5) render report and factory details as text when `DATA.published` is set, with no download-to-save;
+  - the library's `reproject` sets that flag on every stored copy;
+  - local edits reach the library by regenerating.
+- **A40, metadata overrides:**
+  - migration 3 adds `revision_metadata`, `metadata_overrides` and `metadata_audit`;
+  - new routes `GET`/`PATCH /documents/{id}/metadata` and `/metadata/history`;
+  - artifacts are never touched; the sequence advances; overrides survive new revisions; stream fields give `422 IMMUTABLE_FIELD`.
+- **Legacy import:**
+  - known engine HTML without a manifest is converted: one `DATA` literal is decoded without running scripts, the schema must be supported, the result is re-rendered as shared with query code withheld, and it gets a new stream unless a target is given;
+  - unknown HTML gives `422 UNSUPPORTED_SAFE_PROJECTION`;
+  - new `POST /imports/preview`; the import view now uses the server preview and asks older documents for catalogue details.
+- **Docker:**
+  - multi-stage image built from the lock file; non-root; `/data` volume; health check;
+  - local mode inside a container requires `LOCAL_CONTAINER_BIND=published-on-host-loopback-only` and a loopback-only port publish;
+  - `check_docker.py` (A03) passed here: restart and re-creation keep the document, the secret and search; foreign Host refused; healthy;
+  - new CI job `docker`.
+- **Real data (A01):** all 29 real reports published through the API in 44 s. In every report that has measures (26), searching a measure name reaches that measure's own section and viewer. Added to the `real-pbix-samples` job.
+- **New test for A31:** a parameterised dataset used by two Copy activities binds A→B and C→D separately; adding a source keeps existing IDs.
+- **Found and fixed:**
+  - the image's runtime stage tried to re-resolve the git-pinned engines (it now installs the built wheels with `--no-deps` and runs `pip check`);
+  - my first A01 check looked for measure sections in the wrong list.
+- **Gate:** `docs/b07/R1-GATE.md` maps every R1 acceptance ID to its CI evidence.
+
 ### Next
-- Merge engine PRs #4; re-pin the engines to their merge commits.
-- Then B07: R1 end-to-end gate (A19–A25, A27, A29–A35, A37, A40), including legacy import and metadata overrides.
-- Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
-  shared projection with the *Include query code* option; adapters emitting envelope v1.
+- Merge the engine 0.4.0 PRs; re-pin the engines to their merge commits.
+- Then B08 (batch generation, PBIX through pbi-tools; A08).
+- Still open, question to the owner: shared output keeps personal source paths (for example `C:\Users\<name>\...`).

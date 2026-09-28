@@ -226,6 +226,13 @@ class Configuration(unittest.TestCase):
         s = from_env({"AUTH_MODE": "gateway", "BIND_HOST": "0.0.0.0", "GATEWAY_TRUSTED_PROXIES": "10.0.0.1, 10.1.0.0/16"})
         self.assertEqual(s.gateway_trusted_proxies, ("10.0.0.1", "10.1.0.0/16"))
 
+    def test_container_bind_needs_the_exact_acknowledgement(self):
+        for value in ("1", "yes", "true"):
+            with self.assertRaises(ConfigError):
+                from_env({"BIND_HOST": "0.0.0.0", "LOCAL_CONTAINER_BIND": value})
+        s = from_env({"BIND_HOST": "0.0.0.0", "LOCAL_CONTAINER_BIND": "published-on-host-loopback-only"})
+        self.assertEqual((s.auth_mode, s.bind_host, s.local_container_bind), ("local", "0.0.0.0", True))
+
     def test_committed_openapi_is_current(self):
         committed = (ROOT / "docs" / "openapi-v1.json").read_text(encoding="utf-8")
         self.assertEqual(committed, openapi(), "regenerate: python -m bidoc_library.openapi > docs/openapi-v1.json")

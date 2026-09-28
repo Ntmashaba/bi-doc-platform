@@ -32,6 +32,10 @@ class Settings:
     max_manifest_bytes: int = 16 * MIB
     log_level: str = "info"
     extra_allowed_hosts: tuple = field(default_factory=tuple)
+    # Local mode inside a container must listen on the container interface. That is only
+    # acceptable when the host publishes the port on its own loopback (-p 127.0.0.1:8765:8765);
+    # the operator states this explicitly. The Host check and session secret still apply.
+    local_container_bind: bool = False
 
     def validate(self) -> "Settings":
         if self.data_backend != "local":
@@ -41,8 +45,10 @@ class Settings:
         if self.auth_mode not in ("local", "gateway"):
             raise ConfigError("AUTH_MODE must be local or gateway")
         if self.auth_mode == "local":
-            if not ipaddress.ip_address(self.bind_host).is_loopback:
-                raise ConfigError("AUTH_MODE=local only binds to a loopback address; use gateway mode to share")
+            if not ipaddress.ip_address(self.bind_host).is_loopback and not self.local_container_bind:
+                raise ConfigError("AUTH_MODE=local only binds to a loopback address; use gateway mode to share. "
+                                  f"In a container published only on the host loopback, set "
+                                  f"{CONTAINER_BIND_ENV}={CONTAINER_BIND_ACK}")
         if self.auth_mode == "gateway":
             if not self.gateway_trusted_proxies:
                 raise ConfigError("AUTH_MODE=gateway needs GATEWAY_TRUSTED_PROXIES (the ingress addresses)")
@@ -53,6 +59,18 @@ class Settings:
         if self.max_html_bytes < 1 or self.max_manifest_bytes < 1:
             raise ConfigError("upload limits must be positive")
         return self
+
+
+CONTAINER_BIND_ENV = "LOCAL_CONTAINER_BIND"
+CONTAINER_BIND_ACK = "published-on-host-loopback-only"
+
+
+def _container_ack(value) -> bool:
+    if value in (None, ""):
+        return False
+    if value != CONTAINER_BIND_ACK:
+        raise ConfigError(f"{CONTAINER_BIND_ENV} must be exactly {CONTAINER_BIND_ACK!r} when set")
+    return True
 
 
 def _list(value: str) -> tuple:
@@ -76,6 +94,7 @@ def from_env(env=None) -> Settings:
             max_manifest_bytes=int(env.get("MAX_MANIFEST_BYTES", str(16 * MIB))),
             log_level=env.get("LOG_LEVEL", "info"),
             extra_allowed_hosts=_list(env.get("ALLOWED_HOSTS", "")),
+            local_container_bind=_container_ack(env.get(CONTAINER_BIND_ENV)),
         ).validate()
     except ValueError as exc:
         raise ConfigError(str(exc)) from exc
