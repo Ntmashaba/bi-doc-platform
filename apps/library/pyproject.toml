@@ -8,7 +8,15 @@ dynamic = ["version"]
 description = "BI Documentation Platform shared library: catalogue, immutable revisions, publication."
 requires-python = ">=3.11"
 # Local packages bi-doc-contracts and bi-doc-engines are installed first (requirements.txt).
-dependencies = []
+# Exact versions of these and their transitive dependencies are locked in requirements-lock.txt.
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn==0.54.0",
+    "python-multipart==0.0.32",
+]
+
+[project.optional-dependencies]
+dev = ["httpx2==2.13.1"]
 
 [tool.setuptools]
 packages = ["bidoc_library"]
