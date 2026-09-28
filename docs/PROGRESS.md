@@ -21,7 +21,7 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B13 | Done in CI; owner steps listed in the R2 checklist | `docs/azure-deployment.md`, `docs/backup-restore.md`, `docs/performance.md`, `docs/release-checklist-r2.md` |
 | B14 | Done (real unattended PBIX extraction is the B16 gate) | `docs/workers.md` |
 | B15 | Done | `docs/library-ui.md` (Process PBIX, Settings), `docs/workers.md` |
-| B16 | Not started (needs a Windows host with Power BI Desktop) | |
+| B16 | Checklist and evidence script ready; waiting on the owner's Windows run | `docs/b16/CHECKLIST.md`, `packaging/windows/b16/b16_gate.py` |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -414,6 +414,25 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   progress, the published result opening its document, failure with its error, retry,
   cancel, and settings with enrollment.
 
+### 2026-09-28 — B15 merged; B16 prepared (owner-run)
+- Merged bi-doc-platform #16 at the owner's instruction.
+- **`docs/b16/CHECKLIST.md`:** a step-by-step owner run on the worker machine as the
+  intended account.
+  - Scenarios: signed-in baseline; after a reboot before sign-in; locked; signed out
+    (only if unattended operation is claimed); the worker end to end, signed in and
+    unattended; recovery after killing the worker mid-job; cancellation.
+  - A table maps the verified conditions to what R3 may be released for.
+- **`packaging/windows/b16/b16_gate.py`:**
+  - records each run as one JSON line: real pbi-tools extraction, shared generation and
+    validation, timings, counts, versions, account, and session facts (session id, window
+    station, whether an input desktop exists, uptime);
+  - creates the Task Scheduler tasks per scenario, and removes them;
+  - runs one worker job;
+  - writes the report. A condition counts as supported only with at least 2 passes and no
+    failure in its latest 3 runs.
+- `test_b16_gate.py` runs the script with the pbi-tools stand-in on Linux and Windows CI.
+  On Windows it checks the session probes.
+
 ### Next
-- B16: real Windows unattended PBIX extraction and recovery gate. It needs a Windows host
-  with Power BI Desktop and pbi-tools under the intended account (owner-run, like W2).
+- Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
+  deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
