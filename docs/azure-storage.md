@@ -51,13 +51,54 @@ cd apps/library && python -m unittest discover -s tests -p "test_store.py" && py
 **disposable** real storage account, the same command is the live A15 run. Each test
 creates and deletes its own uniquely named table and container.
 
-## Not yet (B10b)
+## Serving the library from Azure (B10b)
 
-- The library app does not serve from Azure yet. `DATA_BACKEND=azure` is still refused.
-- Still to move to Azure before it does:
-  - derived search snapshots and relationship generations (immutable blobs plus pointer rows
-    in `documents`);
-  - manual relationship assertions and their audit (in the commit partition);
-  - managed-identity configuration (`AzureTables.from_identity`, `AzureBlobs.from_identity`
-    exist but are not wired up).
-- Backup and restore for Azure is B13.
+`DATA_BACKEND=azure` serves the whole API from Table and Blob storage:
+
+- **Catalogue:** as described above.
+- **Derived state:**
+  - Search snapshots are immutable blobs (`derived/search-{seq}-{id}.json`).
+  - Relationship generations are immutable blobs (`derived/generations/{id}.json`), each
+    listing its revision vector, detected links and the manual assertions pinned to it.
+    Per-revision index rows (partition `generations`, newest first) find the latest
+    generation containing a revision.
+  - The pointers (`derived:search`, `derived:relationships`) and the generation's `gen:{id}`
+    row switch in one `documents` transaction that also re-writes the `state` row under its
+    ETag. The switch happens only if the catalogue sequence has not moved, so a stale rebuild
+    never replaces a newer one. A generation without a `gen:` row was never switched in, and
+    is never served.
+- **Manual links:**
+  - Records (`manual:{id}`) and audit rows (`maudit:{id}:{seq}`) commit with the `state`
+    row, advancing the sequence.
+  - Validation runs against the sequence it read, and the write is refused if the sequence
+    moved. `manual.py` then re-reads and re-validates, so a link is never created against a
+    stale selection.
+- **Metadata overrides:** on the document row, audited in `meta:{doc}:{seq}`, as described
+  above.
+
+Derived state and manual links use one repository interface (`bidoc_library/repository.py`)
+that both stores implement. `derived.py` and `manual.py` contain no storage code.
+
+**Evidence:** every API-level suite runs three times: LocalStore, in-memory Azure semantics
+and Azurite. That covers search, detected and manual relationships (including pinned
+historical generations and stale-rebuild protection), metadata overrides, legacy import,
+documents, and access modes. It is 167 library tests with Azurite configured, and they run in
+the CI `azurite` job.
+
+```sh
+DATA_BACKEND=azure AUTH_MODE=gateway GATEWAY_TRUSTED_PROXIES=10.0.0.0/16 \
+AZURE_STORAGE_TABLE_ENDPOINT=https://<account>.table.core.windows.net \
+AZURE_STORAGE_BLOB_ENDPOINT=https://<account>.blob.core.windows.net \
+python -m bidoc_library
+```
+
+The identity needs the **Storage Table Data Contributor** and **Storage Blob Data
+Contributor** roles on the account. Deployment templates and the runbook are B13.
+
+## Still not done
+
+- **Live Azure (A15):** needs authorization and a disposable account; the same suites run
+  there unchanged.
+- **Backup and restore for the Azure backend:** B13.
+- **Scale:** listing and reconciliation read whole partitions; load testing comes before
+  scale-out (ADR 0002).

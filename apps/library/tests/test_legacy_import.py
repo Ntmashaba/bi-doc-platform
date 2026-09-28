@@ -57,5 +57,10 @@ class LegacyImport(ApiTest):
         self.assertApiError(pre, 422, "UNSUPPORTED_SAFE_PROJECTION")
 
 
+
+from backends import add_variants  # noqa: E402
+
+add_variants(globals(), (LegacyImport,))
+
 if __name__ == "__main__":
     unittest.main()

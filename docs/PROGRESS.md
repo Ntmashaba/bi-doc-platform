@@ -15,7 +15,7 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B07 | Done (R1 gate; A08 → B08, A10 ZIP → B12) | Evidence map: `docs/b07/R1-GATE.md`; Docker: `docs/deployment-docker.md` |
 | B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
 | B09 | Done on Windows CI (30/30); clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
-| B10 | B10a done (storage adapter, proofs, ADR 0002); B10b (serve from Azure) next; live Azure A15 needs authorization | `docs/azure-storage.md` |
+| B10 | Done against Azurite (the library serves from Azure storage); live Azure A15 needs authorization | `docs/azure-storage.md`, ADR 0002 |
 | B11–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
@@ -237,5 +237,16 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **ADR 0002:** Table Storage accepted for the pilot (cheapest option that meets the contract; limits recorded).
 - **Not done:** live Azure (A15, needs authorization and a disposable account); serving the library from Azure (B10b).
 
+### 2026-09-28 — B10a merged; B10b completed
+- Merged bi-doc-platform #10 at the owner's instruction.
+- **Repository interface** (`repository.py`): derived state and manual links now use a small interface with optimistic writes that name the sequence they read. LocalStore implements it on its existing SQLite tables; `derived.py` and `manual.py` no longer contain storage code.
+- **AzureStore** implements the same interface:
+  - search snapshots and relationship generations are immutable blobs;
+  - pointers and `gen:` rows switch in one `documents` transaction guarded by the `state` ETag, so a stale rebuild cannot win;
+  - manual links and their audit commit with the sequence.
+- **`DATA_BACKEND=azure`** is supported with managed identity (endpoints plus optional `AZURE_CLIENT_ID`) or a connection string. The Docker image now includes the Azure SDKs; I checked the built image serving from Azurite.
+- **Tests:** every API-level suite (documents, access modes, search, detected and manual relationships, metadata, legacy import) runs on LocalStore, in-memory Azure and Azurite: 167 library tests pass with Azurite. The CI `azurite` job runs them.
+- **Still open:** live Azure (A15, needs authorization); backup/restore for Azure (B13).
+
 ### Next
-- B10b: derived snapshots, relationships and manual links on Azure; `DATA_BACKEND=azure` with managed identity; then B11.
+- B11: installer download, publishing credentials and direct publish.
