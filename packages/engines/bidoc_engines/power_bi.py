@@ -158,13 +158,17 @@ def describe(payload: dict, coverage: str = "complete"):
         g["rows"].append(i)
         if s.get("table"):
             g["tables"].add(s["table"])
+    # Withheld personal paths: identity uses the full digest; labels show 8 characters,
+    # or more when two sources in this document would otherwise read the same.
+    refs = [g["ep"]["path"][9:] for g in grouped.values() if str(g["ep"].get("path") or "").startswith("withheld:")]
+    ref_len = next((n for n in (8, 12, 16, 64) if len({r[:n] for r in refs}) == len(refs)), 64)
     for sid_obj, g in grouped.items():
         s, ep = g["row"], g["ep"]
         resolved = s.get("status") == "Resolved"
         label = " ".join(x for x in (s.get("database"), ".".join(y for y in (s.get("schema"), s.get("object")) if y))
                          if x) or s.get("object") or s.get("location") or s.get("sourceType") or "source"
         if str(ep.get("path") or "").startswith("withheld:"):
-            label = f"{label.split(' — ')[0]} — personal location withheld (ref {ep['path'][9:17]})"
+            label = f"{label.split(' — ')[0]} — personal location withheld (ref {ep['path'][9:9 + ref_len]})"
         ssid = anchor("s", sid_obj)
         objects.append({"object_id": sid_obj[:512], "kind": "source", "label": label[:512], "section_id": ssid,
                         "parent_object_id": None, "dynamic": not resolved, "opaque": False, "coverage": coverage,

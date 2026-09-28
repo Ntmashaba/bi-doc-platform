@@ -340,5 +340,21 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   their next shared publication. Manual links to them show *Needs review*. Nothing has been
   rolled out to a team yet.
 
+### 2026-09-28 — B13 merged; personal-path follow-ups (owner review)
+- Merged bi-doc-platform #14 at the owner's instruction.
+- **Owner review:** the unkeyed reference is accepted for the pilot, described as a
+  pseudonymous identifier, not anonymisation.
+- **Identity** now uses the full SHA-256 (`withheld:<64 hex>`). Labels show 8 characters,
+  lengthened automatically when two sources in a document would collide.
+- **Documented:** a reference is stable only while the original path stays the same.
+- **New tests:**
+  - collisions of short references;
+  - full-digest identity;
+  - re-projecting a redacted payload changes nothing;
+  - the library re-importing a shared artifact keeps its source IDs, and a local artifact
+    of the same model gets the same IDs;
+  - a moved file gets a new reference, and its manual link shows *Needs review* (all three
+    backends).
+
 ### Next
 - B14: worker enrollment and protocol, durable job lifecycle (optional R3).
