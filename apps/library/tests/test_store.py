@@ -280,6 +280,21 @@ class CatalogueOperations(StoreTest):
         self.assertEqual(self.assertError("ARTIFACT_CORRUPT", self.store.read_artifact, out["document_id"],
                                           out["revision_id"]).status, 500)
 
+    def test_upgrade_from_first_schema(self):
+        """A catalogue created by the B04 schema (migration 1) upgrades on open."""
+        fresh = self.tmp / "fresh"
+        fresh.mkdir()
+        conn = sqlite3.connect(fresh / "catalogue.sqlite3", isolation_level=None)
+        conn.executescript("BEGIN;" + MIGRATIONS[0][2] + ";CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, "
+                           "description TEXT NOT NULL, applied_at TEXT NOT NULL);"
+                           "INSERT INTO schema_migrations VALUES (1, 'v1', 't'); COMMIT;")
+        conn.close()
+        LocalStore(fresh)                                                  # applies migration 2 on open
+        conn = sqlite3.connect(fresh / "catalogue.sqlite3")
+        self.assertEqual([r[0] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")],
+                         [m[0] for m in MIGRATIONS])
+        conn.close()
+
     def test_newer_schema_is_refused(self):
         conn = sqlite3.connect(self.tmp / "data" / "catalogue.sqlite3")
         conn.execute("INSERT INTO schema_migrations VALUES (?, 'future', 'now')", (MIGRATIONS[-1][0] + 1,))

@@ -23,7 +23,10 @@ from bidoc_contracts import SCHEMA_VERSION, Limits
 from . import __version__
 from .access import AccessPolicy, Principal, forbidden, load_session_secret
 from .config import Settings
+from .derived import Derived
 from .errors import LibraryError
+from .manual import ManualLinks
+from .search import search as run_search
 from .store import LocalStore
 
 log = logging.getLogger("bidoc_library")
@@ -131,6 +134,108 @@ class Processing(BaseModel):
     reason: Optional[str]
 
 
+class SearchSection(BaseModel):
+    id: str
+    title: str
+    text: str
+
+
+class SearchDocument(BaseModel):
+    document_id: str
+    revision_id: str
+    document_type: Literal["power_bi", "adf"]
+    classification: Classification
+    title: str
+    tags: list[str]
+    sections: list[SearchSection]
+
+
+class SearchIndex(BaseModel):
+    generation: int
+    state: Literal["ready", "updating", "stale"]
+    documents: list[SearchDocument]
+
+
+class SearchHit(BaseModel):
+    document_id: str
+    revision_id: str
+    title: str
+    document_type: str
+    section_id: Optional[str]
+    section_title: Optional[str]
+    snippet: str
+
+
+class SearchResults(BaseModel):
+    generation: int
+    state: str
+    items: list[SearchHit]
+
+
+class ObjectView(BaseModel):
+    target_id: str
+    view_id: str
+    args: dict
+
+
+class DocumentObject(BaseModel):
+    object_id: str
+    kind: str
+    label: str
+    section_id: str
+    parent_object_id: Optional[str]
+    dynamic: bool
+    opaque: bool
+    coverage: str
+    view: Optional[ObjectView]
+
+
+class ObjectPage(BaseModel):
+    document_id: str
+    revision_id: str
+    items: list[DocumentObject]
+    next_cursor: Optional[str]
+
+
+class ManualLinkIn(BaseModel):
+    source_document_id: uuid.UUID
+    source_revision_id: uuid.UUID
+    source_object_id: Optional[str] = None
+    target_document_id: uuid.UUID
+    target_revision_id: uuid.UUID
+    target_object_id: Optional[str] = None
+    expected_catalogue_sequence: int
+    kind: Literal["related_to", "produces", "consumes", "deletes"]
+    reason: str
+
+
+class ManualLinkPatch(BaseModel):
+    kind: Optional[Literal["related_to", "produces", "consumes", "deletes"]] = None
+    reason: Optional[str] = None
+    target_document_id: Optional[uuid.UUID] = None
+    target_revision_id: Optional[uuid.UUID] = None
+    target_object_id: Optional[str] = None
+    expected_catalogue_sequence: Optional[int] = None
+
+
+class ManualLink(BaseModel):
+    relationship_id: str
+    source_document_id: str
+    source_revision_id: str
+    source_object_id: Optional[str]
+    target_document_id: str
+    target_revision_id: str
+    target_object_id: Optional[str]
+    kind: str
+    reason: str
+    creator_subject: Optional[str]
+    created_at: str
+    updated_at: str
+    etag: str
+    status: str
+    version: int
+
+
 class Capabilities(BaseModel):
     version: str
     manifest_versions: list[int]
@@ -141,6 +246,8 @@ class Capabilities(BaseModel):
     worker_status: Optional[str]
     installer_available: bool
     search_available: bool
+    can_manage_relationships: bool
+    relationship_schema_version: str
 
 
 ERRORS = {code: {"model": ErrorResponse} for code in (400, 401, 403, 404, 409, 413, 422, 428)}
@@ -170,6 +277,16 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
     if settings.auth_mode == "local" and session_secret is None:
         session_secret = load_session_secret(settings.local_data_dir)
     policy = AccessPolicy(settings, session_secret)
+    derived = Derived(store)
+    manual = ManualLinks(store, derived)
+
+    def refresh_derived() -> str:
+        """Bring search/relationships up to date after a committed change; never fails the change."""
+        try:
+            return "ready" if derived.refresh()["state"] == "ready" else "pending"
+        except Exception:  # noqa: BLE001 - the change is committed; reads will retry and label state
+            log.exception("derived state rebuild failed")
+            return "failed"
     app = FastAPI(title="BI Documentation Platform library", version=__version__,
                   description="Shared Power BI and Data Factory documentation library, API v1.",
                   openapi_url=f"{PREFIX}/openapi.json", docs_url=None, redoc_url=None)
@@ -265,7 +382,8 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
                                {"engine": "adf", "input_types": ["adf_git", "adf_arm", "adf_resources"],
                                 "available": False,
                                 "reason": "Hosted processing is not available (optional R3); use the generator."}],
-                "worker_status": None, "installer_available": False, "search_available": False}
+                "worker_status": None, "installer_available": False, "search_available": True,
+                "can_manage_relationships": p.can("publish"), "relationship_schema_version": "rel-rules/1"}
 
     # ---- documents --------------------------------------------------------------
 
@@ -320,6 +438,7 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
 
     def _archive(action, document_id, if_match, p):
         doc = action(str(document_id), _if_match(if_match), p.subject)
+        refresh_derived()
         return JSONResponse(doc, headers={"ETag": _etag_header(doc["etag"])})
 
     @app.post(f"{PREFIX}/documents/{{document_id}}/archive", response_model=Document, tags=["documents"],
@@ -353,14 +472,101 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
             store.publish, data, subject=p.subject, idempotency_key=idempotency_key,
             expected_etag=_if_match(if_match), target_document_id=str(target_document_id) if target_document_id else None,
             query_code=query_code)
+        indexing = await run_in_threadpool(refresh_derived)
         body = {"import_id": outcome["import_id"], "document_id": outcome["document_id"],
                 "revision_id": outcome["revision_id"], "status": "completed", "duplicate": outcome["duplicate"],
-                "catalogue_sequence": outcome["catalogue_sequence"], "indexing_state": outcome["indexing_state"]}
+                "catalogue_sequence": outcome["catalogue_sequence"], "indexing_state": indexing}
         return JSONResponse(body, status_code=200 if outcome["duplicate"] else 201)
 
     @app.get(f"{PREFIX}/imports/{{import_id}}", response_model=ImportStatus, tags=["imports"], responses=ERRORS)
     def get_import(import_id: uuid.UUID, p: Principal = Depends(publisher)):
         return store.get_import(str(import_id))
+
+    # ---- search -----------------------------------------------------------------
+
+    @app.get(f"{PREFIX}/search-index", response_model=SearchIndex, tags=["search"],
+             responses={304: {"description": "Not modified"}, **ERRORS})
+    def search_index(request: Request, p: Principal = Depends(reader)):
+        index = derived.search_index()
+        etag = _etag_header(f"search-{index['generation']}-{index['state']}")
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return JSONResponse(index, headers={"ETag": etag, "Cache-Control": "private, no-cache"})
+
+    @app.get(f"{PREFIX}/search", response_model=SearchResults, tags=["search"], responses=ERRORS)
+    def search(q: Optional[str] = Query(None, max_length=500),
+               document_type: Optional[Literal["power_bi", "adf"]] = None, business_area: Optional[str] = None,
+               environment: Optional[str] = None, owner: Optional[str] = None, tag: Optional[str] = None,
+               limit: int = Query(50, ge=1, le=200), p: Principal = Depends(reader)):
+        index = derived.search_index()
+        items = run_search(index["documents"], q, document_type=document_type, business_area=business_area,
+                           environment=environment, owner=owner, tag=tag)[:limit]
+        return {"generation": index["generation"], "state": index["state"], "items": items}
+
+    # ---- objects and relationships ------------------------------------------------
+
+    def _revision(document_id, revision_id, p):
+        doc = get_document(document_id, Response(), p)
+        rev = str(revision_id) if revision_id else doc["current_revision_id"]
+        store.read_artifact(str(document_id), rev)              # committed and intact, or 404
+        return rev
+
+    @app.get(f"{PREFIX}/documents/{{document_id}}/objects", response_model=ObjectPage, tags=["relationships"],
+             responses=ERRORS)
+    def objects(document_id: uuid.UUID, revision_id: Optional[uuid.UUID] = None, cursor: Optional[int] = None,
+                limit: int = Query(200, ge=1, le=1000), p: Principal = Depends(reader)):
+        rev = _revision(document_id, revision_id, p)
+        items = derived.objects(str(document_id), rev)
+        start = cursor or 0
+        return {"document_id": str(document_id), "revision_id": rev, "items": items[start:start + limit],
+                "next_cursor": str(start + limit) if start + limit < len(items) else None}
+
+    @app.get(f"{PREFIX}/documents/{{document_id}}/relationships", tags=["relationships"], responses=ERRORS)
+    def relationships(document_id: uuid.UUID, revision_id: Optional[uuid.UUID] = None,
+                      generation_id: Optional[uuid.UUID] = None, object_id: Optional[str] = Query(None, max_length=512),
+                      p: Principal = Depends(reader)):
+        _revision(document_id, revision_id, p)
+        return derived.relationships(str(document_id), revision_id=str(revision_id) if revision_id else None,
+                                     generation_id=str(generation_id) if generation_id else None,
+                                     object_id=object_id, can_see_archived=p.can("publish"))
+
+    def _link_response(record, status=200):
+        return JSONResponse(record, status_code=status, headers={"ETag": _etag_header(record["etag"])})
+
+    @app.post(f"{PREFIX}/relationships/manual", response_model=ManualLink, status_code=201, tags=["relationships"],
+              responses=ERRORS)
+    def create_manual(body: ManualLinkIn, p: Principal = Depends(publisher)):
+        data = {k: (str(v) if isinstance(v, uuid.UUID) else v) for k, v in body.model_dump().items()}
+        record = manual.create(data, p.subject)
+        refresh_derived()
+        return _link_response(record, 201)
+
+    @app.get(f"{PREFIX}/relationships/manual/{{relationship_id}}", response_model=ManualLink, tags=["relationships"],
+             responses=ERRORS)
+    def get_manual(relationship_id: uuid.UUID, p: Principal = Depends(reader)):
+        return _link_response(manual.get(str(relationship_id)))
+
+    @app.patch(f"{PREFIX}/relationships/manual/{{relationship_id}}", response_model=ManualLink,
+               tags=["relationships"], responses=ERRORS)
+    def patch_manual(relationship_id: uuid.UUID, body: ManualLinkPatch,
+                     if_match: Optional[str] = Header(None, alias="If-Match"), p: Principal = Depends(publisher)):
+        changes = {k: (str(v) if isinstance(v, uuid.UUID) else v)
+                   for k, v in body.model_dump(exclude_unset=True).items()}
+        record = manual.update(str(relationship_id), _if_match(if_match), changes, p.subject)
+        refresh_derived()
+        return _link_response(record)
+
+    @app.delete(f"{PREFIX}/relationships/manual/{{relationship_id}}", status_code=204, tags=["relationships"],
+                responses=ERRORS)
+    def delete_manual(relationship_id: uuid.UUID, if_match: Optional[str] = Header(None, alias="If-Match"),
+                      p: Principal = Depends(publisher)):
+        manual.delete(str(relationship_id), _if_match(if_match), p.subject)
+        refresh_derived()
+        return Response(status_code=204)
+
+    @app.get(f"{PREFIX}/relationships/manual/{{relationship_id}}/audit", tags=["relationships"], responses=ERRORS)
+    def manual_audit(relationship_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return {"items": manual.audit(str(relationship_id))}
 
     # ---- releases (installer distribution arrives in B11) ---------------------------
 

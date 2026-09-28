@@ -89,7 +89,7 @@ class Documents(ApiTest):
         r = self.upload(self.artifact())
         self.assertEqual(r.status_code, 201, r.text)
         out = r.json()
-        self.assertEqual((out["status"], out["duplicate"], out["indexing_state"]), ("completed", False, "pending"))
+        self.assertEqual((out["status"], out["duplicate"], out["indexing_state"]), ("completed", False, "ready"))
         doc = self.client.get(f"/api/v1/documents/{out['document_id']}")
         self.assertEqual(doc.headers["ETag"], f'"{doc.json()["etag"]}"')
         self.assertEqual(doc.json()["current_revision_id"], out["revision_id"])
