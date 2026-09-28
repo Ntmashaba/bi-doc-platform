@@ -3,12 +3,14 @@
 R3 is optional. Without it, people document PBIX files with the generator on their own
 computer, and nothing here changes that. With it, a publisher can upload a PBIX or a
 PBIP project ZIP to the library, and an enrolled Windows worker processes it with the
-same engines. The upload screen itself is B15; this page covers the protocol and the
-worker.
+same engines. People use it from **Process PBIX** in the library (`#/processing`, B15).
+Administrators enroll and revoke workers under **Settings** (`docs/library-ui.md`). This
+page covers the protocol and the worker.
 
 ## Enrolling a worker
 
-1. An administrator enrolls the worker. The token is shown once:
+1. An administrator enrolls the worker under **Settings → Enroll a worker**, or through
+   the API. The token is shown once:
 
    ```sh
    POST /api/v1/workers  {"label": "build-01", "input_types": ["pbix", "pbip_zip"]}

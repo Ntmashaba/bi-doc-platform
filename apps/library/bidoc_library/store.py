@@ -97,6 +97,8 @@ def _cursor_decode(cursor):
 
 
 class LocalStore(LocalRepository):
+    backend = "local"
+
     def __init__(self, data_dir, *, limits: Limits = Limits(), faults=(), clock=_now,
                  cleanup_grace_seconds: float = 3600):
         self.root = Path(data_dir)

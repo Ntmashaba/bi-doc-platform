@@ -144,6 +144,69 @@ const step = (name) => console.log("  ok " + name);
   assert.strictEqual(await page.getByText(secret).count(), 0);            // never shown again
   step("downloads unavailable state; token shown once and revoked (B11)");
 
+  // Processing (R3, B15): capability gating, upload, live progress, result, failure, retry, cancel.
+  const W = { Authorization: `Bearer ${process.env.WORKER_TOKEN}` };
+  const worker = async (path, body, extra = {}) => {
+    const r = await fetch(`${URL}/api/v1/worker${path}`, { method: "POST", headers: { ...W, ...extra.headers },
+      body: body instanceof FormData ? body : JSON.stringify(body), ...(body instanceof FormData ? {} :
+        { headers: { ...W, "Content-Type": "application/json" } }) });
+    return { status: r.status, data: r.status === 204 ? null : await r.json() };
+  };
+  await page.goto(URL + "/#/processing");
+  await page.getByText("No processing worker is ready").waitFor();
+  assert.ok(await page.getByRole("button", { name: "Upload and process" }).isDisabled());
+  await page.getByRole("link", { name: "Download the generator" }).waitFor();
+  const beat = { engine_version: "e2e", input_types: ["pbix", "pbip_zip"], readiness: "ready" };
+  assert.strictEqual((await worker("/heartbeat", beat)).status, 204);
+  await page.reload();
+  await page.getByRole("button", { name: "Upload and process" }).waitFor();
+  assert.ok(!(await page.getByRole("button", { name: "Upload and process" }).isDisabled()));
+  await page.getByLabel("PBIX file or project ZIP").setInputFiles(process.env.PROCESS_FILE);
+  await page.getByRole("button", { name: "Upload and process" }).click();
+  await page.getByText("is queued").waitFor();
+  const row = page.locator("tr[data-job]").first();
+  await row.locator(".job-state", { hasText: "Waiting for a worker" }).waitFor();
+  let claim = (await worker("/claim", {})).data;
+  await worker(`/jobs/${claim.job.job_id}/progress`, { lease_token: claim.lease_token, stage: "extracting" });
+  await row.locator(".job-state", { hasText: "Processing — extracting" }).waitFor({ timeout: 10000 });
+  const form = new FormData();
+  form.append("lease_token", claim.lease_token);
+  form.append("attempt_id", claim.job.attempt_id);
+  form.append("file", new Blob([require("fs").readFileSync(process.env.PROCESS_RESULT)], { type: "text/html" }), "document.html");
+  const staged = await worker(`/jobs/${claim.job.job_id}/results`, form);
+  assert.strictEqual(staged.status, 201, JSON.stringify(staged.data));
+  const done = await worker(`/jobs/${claim.job.job_id}/complete`, { lease_token: claim.lease_token,
+    attempt_id: claim.job.attempt_id, staged_result_id: staged.data.staged_result_id });
+  assert.strictEqual(done.data.state, "succeeded");
+  await row.locator(".job-state", { hasText: "Published" }).waitFor({ timeout: 10000 });
+  await row.getByRole("link", { name: "Open document" }).click();
+  await page.getByRole("heading", { name: "Processed report" }).waitFor();
+  step("processing: gated until a worker is ready; upload, live progress, published result (B15)");
+
+  await page.goto(URL + "/#/processing");
+  await page.getByLabel("PBIX file or project ZIP").setInputFiles(process.env.PROCESS_FILE);
+  await page.getByRole("button", { name: "Upload and process" }).click();
+  await page.getByText("is queued").waitFor();
+  claim = (await worker("/claim", {})).data;
+  await worker(`/jobs/${claim.job.job_id}/fail`, { lease_token: claim.lease_token, error_code: "EXTRACTION_FAILED",
+    message: "Power BI Desktop could not open the file.", retryable: false });
+  const failedRow = page.locator(`tr[data-job="${claim.job.job_id}"]`);
+  await failedRow.getByText("Power BI Desktop could not open the file.").waitFor({ timeout: 10000 });
+  await failedRow.getByRole("button", { name: "Retry" }).click();
+  await failedRow.locator(".job-state", { hasText: "Waiting for a worker" }).waitFor();
+  await failedRow.getByRole("button", { name: "Cancel" }).click();
+  await failedRow.locator(".job-state", { hasText: "Cancelled" }).waitFor();
+  step("processing: failure shows its error; retry and cancel (B15)");
+
+  await page.goto(URL + "/#/settings");
+  await page.getByRole("cell", { name: "Local folder" }).waitFor();
+  await page.getByRole("cell", { name: "E2E worker" }).waitFor();
+  await page.getByLabel("Name").fill("Second worker");
+  await page.getByRole("button", { name: "Enroll" }).click();
+  assert.match(await page.getByLabel("New worker token").inputValue(), /^bidocwk_[0-9a-f]{16}_[A-Za-z0-9_-]{43}$/);
+  await page.getByRole("cell", { name: "Second worker" }).waitFor();
+  step("settings: storage, health, worker readiness; enroll shows the token once");
+
   const shellCsp = (await page.request.get(URL + "/")).headers()["content-security-policy"];
   assert.match(shellCsp, /script-src 'self'/);
   assert.deepStrictEqual(failed, []);

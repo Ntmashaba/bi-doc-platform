@@ -10,6 +10,8 @@ Source: `apps/library/frontend/src/*.ts` (TypeScript 5.9, strict). Compiled with
 | `#/import` | Choose an HTML file. The preview reads its manifest without running it and shows title, type, generation date and whether it will be a **new document**, a **new version of** an existing one (its ETag is sent as `If-Match`) or a **duplicate**. **Include query code** is off by default and says cleaning is not a guarantee. The idempotency key is kept per file, so a retry never publishes twice. |
 | `#/documents/{id}` | Details, classification, generation and publication dates, version history with Open and Download, Archive/Restore with confirmation. |
 | `#/view/{id}/{revision}?object=&generation=&section=` | Breadcrumbs, object selector, Download, the sandboxed viewer and the **Related documentation** panel. |
+| `#/processing` | **Process PBIX** (publishers; R3, B15). Upload a `.pbix` or a `.zip` of a PBIP project as a new document or a new version of an existing Power BI document. The upload shows its progress. While no worker is ready, the page says so, links to the generator, and the upload button is disabled; the server refuses too (`409 WORKER_UNAVAILABLE`). The job list refreshes every 2 s while work is active, showing state and stage, the attempt when it is retried, the error on failure, **Open document** on success, and **Cancel** or **Retry** as applicable. |
+| `#/settings` | Library version, access mode, storage, health, search mode, processing-worker status and last heartbeat. Administrators also see the workers (readiness, inputs, versions, last heartbeat, **Revoke**) and can **Enroll** one; its token is shown once. No secrets are shown otherwise. |
 
 ## Related documentation panel
 

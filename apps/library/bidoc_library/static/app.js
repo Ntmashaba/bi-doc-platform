@@ -106,6 +106,14 @@ async function render() {
             await downloadsView();
         else if (r.path[0] === "tokens")
             await tokensView();
+        else if (r.path[0] === "processing") {
+            caps = (await api("/capabilities")).data;
+            await processingView();
+        }
+        else if (r.path[0] === "settings") {
+            caps = (await api("/capabilities")).data;
+            await settingsView();
+        }
         else if (r.path[0] === "documents" && r.path[1])
             await detailsView(r.path[1]);
         else if (r.path[0] === "view" && r.path[1] && r.path[2])
@@ -161,7 +169,7 @@ async function homeView(type, params) {
             timer = window.setTimeout(() => setParam("q", v, true), 250);
         } });
     const header = h("section", { class: "toolbar" }, h("nav", { class: "types", "aria-label": "Document types" }, ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"]].map(([t, label]) => h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))), searchBox, h("div", { class: "filters" }, filterSelect("business_area", "Business area", values((d) => [d.classification.business_area])), filterSelect("environment", "Environment", values((d) => [d.classification.environment])), filterSelect("owner", "Owner", values((d) => [d.classification.owner])), filterSelect("tag", "Tag", values((d) => d.tags)), caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
-        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null, h("a", { class: "button secondary", href: "#/downloads" }, "Download generator")));
+        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/processing" }, "Process PBIX") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null, h("a", { class: "button secondary", href: "#/downloads" }, "Download generator"), h("a", { class: "button secondary", href: "#/settings" }, "Settings")));
     const results = h("section", { id: "results", "aria-live": "polite" });
     mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
     if (q && !archived) {
@@ -299,6 +307,178 @@ async function tokensView() {
             await tokensView();
         } }, "Revoke") : "")))))
         : h("p", { class: "muted" }, "No tokens yet."));
+}
+const JOB_STATE = { queued: "Waiting for a worker", leased: "Starting", running: "Processing",
+    publishing: "Publishing", cancel_requested: "Cancelling", succeeded: "Published", failed: "Failed", cancelled: "Cancelled" };
+const JOB_STAGE = { downloading: "downloading the source", extracting: "extracting",
+    analysing: "analysing", rendering: "rendering", uploading: "uploading the result" };
+const ACTIVE_JOB = new Set(["queued", "leased", "running", "publishing", "cancel_requested"]);
+function bytes(n) {
+    return n >= 1 << 30 ? `${(n / (1 << 30)).toFixed(1)} GB` : n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+function jobRow(j, refresh) {
+    const act = async (verb) => {
+        try {
+            await api(`/jobs/${j.job_id}/${verb}`, { method: "POST" });
+        }
+        catch (e) {
+            alert(errorText(e));
+        }
+        refresh();
+    };
+    const status = JOB_STATE[j.state] || j.state;
+    return h("tr", { "data-job": j.job_id, "data-state": j.state }, h("td", {}, j.filename || "(unnamed)", h("br", {}), h("span", { class: "muted small" }, `${j.input_type === "pbix" ? "PBIX" : "Project ZIP"}, ${bytes(j.source_bytes)}`)), h("td", { class: "job-state" }, status, j.stage && ACTIVE_JOB.has(j.state) ? ` — ${JOB_STAGE[j.stage] || j.stage}` : "", j.attempt > 1 && ACTIVE_JOB.has(j.state) ? h("span", { class: "muted small" }, ` (attempt ${j.attempt} of ${j.max_attempts})`) : null, j.cancel_outcome === "too_late" ? h("span", { class: "muted small" }, " (cancelled too late: already published)") : null), h("td", {}, date(j.created_at)), h("td", {}, j.state === "succeeded" && j.output_document_id
+        ? h("a", { href: href(["documents", j.output_document_id]) }, "Open document")
+        : j.error ? h("span", { class: "job-error" }, `${j.error.message || j.error.code} (${j.error.code})`) : ""), h("td", {}, ACTIVE_JOB.has(j.state) && j.state !== "cancel_requested"
+        ? h("button", { type: "button", class: "secondary", onclick: () => act("cancel") }, "Cancel")
+        : j.state === "failed" || j.state === "cancelled"
+            ? h("button", { type: "button", class: "secondary", onclick: () => act("retry") }, "Retry") : ""));
+}
+function uploadSource(file, inputType, documentId, progress) {
+    // XMLHttpRequest, not fetch, so a large upload can show its progress.
+    return new Promise((resolve, reject) => {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("input_type", inputType);
+        if (documentId)
+            form.append("document_id", documentId);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", API + "/jobs");
+        xhr.setRequestHeader("X-Requested-With", "bidoc");
+        xhr.setRequestHeader("Accept", "application/json");
+        if (SESSION)
+            xhr.setRequestHeader("X-Bidoc-Session", SESSION);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) {
+            progress.max = e.total;
+            progress.value = e.loaded;
+        } };
+        xhr.onload = () => {
+            let data = {};
+            try {
+                data = JSON.parse(xhr.responseText || "{}");
+            }
+            catch { /* keep empty */ }
+            if (xhr.status >= 200 && xhr.status < 300)
+                resolve(data);
+            else
+                reject(new ApiError(xhr.status, data.error?.code || "HTTP_" + xhr.status, data.error?.message || xhr.statusText));
+        };
+        xhr.onerror = () => reject(new Error("The upload was interrupted. Check the connection and try again."));
+        xhr.send(form);
+    });
+}
+async function processingView() {
+    if (!caps?.can_publish) {
+        mount(h("h1", {}, "Process PBIX"), notice("error", "Publisher role required."));
+        return;
+    }
+    const pbi = caps.processing.find((p) => p.engine === "power_bi");
+    const available = !!pbi?.available;
+    const jobsBody = h("tbody", {});
+    const table = h("table", { class: "tokens jobs" }, h("thead", {}, h("tr", {}, ...["Source", "Status", "Submitted", "Result", ""].map((c) => h("th", {}, c)))), jobsBody);
+    const empty = h("p", { class: "muted" }, "No uploads yet.");
+    const mySeq = renderSeq;
+    let timer = 0;
+    const refresh = async () => {
+        window.clearTimeout(timer);
+        if (mySeq !== renderSeq)
+            return; // navigated away: stop polling
+        const items = (await api("/jobs")).data.items;
+        jobsBody.replaceChildren(...items.map((j) => jobRow(j, () => { void refresh(); })));
+        table.hidden = !items.length;
+        empty.hidden = !!items.length;
+        if (items.some((j) => ACTIVE_JOB.has(j.state)))
+            timer = window.setTimeout(() => { void refresh(); }, 2000); // live progress while work is active
+    };
+    const out = h("div", { id: "upload-status", "aria-live": "polite" });
+    const file = h("input", { type: "file", id: "source-file", accept: ".pbix,.zip", required: true });
+    const docs = (await api("/documents?document_type=power_bi&limit=200")).data.items;
+    const targetSel = h("select", { id: "source-target" }, h("option", { value: "" }, "A new document"), ...docs.map((d) => h("option", { value: d.document_id }, `New version of ${d.title}`)));
+    const bar = h("progress", { id: "upload-progress", value: "0", max: "1", hidden: true });
+    const submit = h("button", { type: "submit", disabled: !available }, "Upload and process");
+    const form = h("form", { class: "card", onsubmit: async (e) => {
+            e.preventDefault();
+            const f = file.files?.[0];
+            if (!f)
+                return;
+            const lower = f.name.toLowerCase();
+            const inputType = lower.endsWith(".pbix") ? "pbix" : lower.endsWith(".zip") ? "pbip_zip" : "";
+            if (!inputType) {
+                out.replaceChildren(notice("error", "Choose a .pbix file or a .zip of a Power BI project (.pbip)."));
+                return;
+            }
+            if (f.size > caps.limits.source_bytes) {
+                out.replaceChildren(notice("error", `This file is larger than the library accepts (${bytes(caps.limits.source_bytes)}).`));
+                return;
+            }
+            submit.disabled = true;
+            bar.hidden = false;
+            out.replaceChildren(notice("info", `Uploading ${f.name}…`));
+            try {
+                await uploadSource(f, inputType, targetSel.value, bar);
+                out.replaceChildren(notice("info", `${f.name} is queued. Progress appears below; you can leave this page.`));
+                form.reset();
+            }
+            catch (err) {
+                out.replaceChildren(notice("error", err instanceof ApiError && err.code === "WORKER_UNAVAILABLE"
+                    ? "No processing worker is ready right now. Try again later, or use the generator on your computer." : errorText(err)));
+            }
+            finally {
+                submit.disabled = !available;
+                bar.hidden = true;
+            }
+            await refresh();
+        } }, h("h2", {}, "Upload a report"), h("p", {}, h("label", { for: "source-file" }, "PBIX file or project ZIP"), file), h("p", {}, h("label", { for: "source-target" }, "Publish as"), targetSel), h("p", { class: "muted small" }, "The worker extracts and documents the report, then the library publishes it as you, " +
+        "without query code. The uploaded file is deleted within a day of processing."), submit, bar);
+    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Process PBIX"), available ? null : notice("warn", pbi?.reason || "Processing is not available.", " ", h("a", { href: "#/downloads" }, "Download the generator"), " to document reports on your computer."), form, out, h("h2", {}, "Your uploads"), empty, table);
+    await refresh();
+}
+async function settingsView() {
+    const c = caps;
+    let health = "ready";
+    try {
+        await api("/health/ready");
+    }
+    catch {
+        health = "not ready (storage unavailable)";
+    }
+    const rows = [["Library version", c.version], ["Access mode", c.access_mode],
+        ["Storage", c.storage_backend === "azure" ? "Azure Table and Blob storage" : "Local folder"], ["Health", health],
+        ["Search", c.search_mode === "server" ? "on the server (large library)" : "in the browser"],
+        ["Processing worker", { ready: "ready", unavailable: "enrolled, not ready", none_enrolled: "none enrolled" }[c.worker_status || ""] || "—"],
+        ["Last worker heartbeat", c.worker_last_heartbeat_at ? date(c.worker_last_heartbeat_at) : "never"]];
+    const parts = [h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Settings"),
+        h("table", { class: "tokens settings" }, h("tbody", {}, ...rows.map(([k, v]) => h("tr", {}, h("th", {}, k), h("td", {}, v)))))];
+    if (c.can_administer) {
+        const workers = (await api("/workers")).data.items;
+        const out = h("div", { id: "worker-new", "aria-live": "polite" });
+        const label = h("input", { type: "text", id: "worker-label", maxlength: "100", required: true,
+            placeholder: "e.g. Reporting server" });
+        const form = h("form", { class: "card", onsubmit: async (e) => {
+                e.preventDefault();
+                try {
+                    const r = (await api("/workers", { method: "POST", json: { label: label.value.trim() } })).data;
+                    await settingsView();
+                    const field = h("input", { type: "text", readonly: true, value: r.token, id: "worker-secret", class: "secret",
+                        "aria-label": "New worker token" });
+                    document.getElementById("worker-new")?.replaceChildren(notice("warn", "Copy this token now; it is shown only once. " +
+                        "On the worker machine: bidoc worker connect " + location.origin + ", then bidoc worker run."), field);
+                    field.select();
+                }
+                catch (err) {
+                    out.replaceChildren(notice("error", errorText(err)));
+                }
+            } }, h("h2", {}, "Enroll a worker"), h("p", {}, h("label", { for: "worker-label" }, "Name"), label), h("button", { type: "submit" }, "Enroll"));
+        parts.push(h("h2", {}, "Processing workers"), out, workers.length ? h("table", { class: "tokens workers" }, h("thead", {}, h("tr", {}, ...["Name", "Status", "Inputs", "Versions", "Last heartbeat", ""].map((x) => h("th", {}, x)))), h("tbody", {}, ...workers.map((w) => h("tr", {}, h("td", {}, w.label), h("td", {}, w.revoked_at ? "revoked" : w.ready ? "ready" : "not ready", w.readiness_detail ? h("span", { class: "muted small" }, ` — ${w.readiness_detail}`) : null), h("td", {}, w.input_types.join(", ") || "—"), h("td", { class: "small" }, [w.engine_version, w.extractor_version].filter(Boolean).join("; ") || "—"), h("td", {}, w.last_heartbeat_at ? date(w.last_heartbeat_at) : "never"), h("td", {}, w.revoked_at ? "" : h("button", { type: "button", class: "secondary", onclick: async () => {
+                if (!confirm(`Revoke ${w.label}? Its token stops working and any job it holds goes back to the queue.`))
+                    return;
+                await api(`/workers/${w.worker_id}`, { method: "DELETE" });
+                await settingsView();
+            } }, "Revoke"))))))
+            : h("p", { class: "muted" }, "No workers enrolled. Processing is optional: people can always use the generator."), form);
+    }
+    mount(...parts);
 }
 const LEGACY_FIELDS = [["title", "Title"], ["environment", "Environment (e.g. Production)"],
     ["business_area", "Business area"], ["owner", "Owner"]];

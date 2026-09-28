@@ -59,3 +59,7 @@ details.manual form{display:grid;gap:.5rem;margin-top:.5rem}
 table.tokens { width: 100%; border-collapse: collapse; margin-top: 1rem; }
 table.tokens th, table.tokens td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line, #d0d4dc); }
 input.secret { width: 100%; font-family: ui-monospace, Consolas, monospace; }
+/* processing (R3) */
+#upload-progress { width: 100%; max-width: 32rem; margin-left: .75rem; vertical-align: middle; }
+.job-error { color: var(--bad); }
+table.settings th { width: 14rem; }

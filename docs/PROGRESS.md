@@ -20,7 +20,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B12 | Done (A12 in Edge on Windows CI) | `docs/portable-export.md`; ZIP: `docs/contracts/envelope-v1.md` |
 | B13 | Done in CI; owner steps listed in the R2 checklist | `docs/azure-deployment.md`, `docs/backup-restore.md`, `docs/performance.md`, `docs/release-checklist-r2.md` |
 | B14 | Done (real unattended PBIX extraction is the B16 gate) | `docs/workers.md` |
-| B15–B16 | Not started | |
+| B15 | Done | `docs/library-ui.md` (Process PBIX, Settings), `docs/workers.md` |
+| B16 | Not started (needs a Windows host with Power BI Desktop) | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -394,5 +395,25 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   sign-in.
 - **Not verified:** real unattended PBIX extraction under the intended account (B16).
 
+### 2026-09-28 — B14 merged; B15 completed
+- Merged bi-doc-platform #15 at the owner's instruction. The Windows CI failure it hit (a
+  ZIP test relied on backslash names, which Windows `zipfile` rewrites) was fixed before
+  the merge: the check now also reads the raw entry name.
+- **Process PBIX** (`#/processing`, publishers):
+  - capability-gated: a clear unavailable notice with a generator link, and a disabled
+    upload, until a worker is ready;
+  - uploads with a progress bar, as a new document or a new version of an existing one;
+  - a job list that refreshes every 2 s while work is active, with state, stage and
+    attempt, the error, **Open document**, **Cancel** and **Retry**.
+- **Settings** (`#/settings`): version, access mode, storage, health, search mode and
+  worker status with last heartbeat. Administrators also get a worker list (readiness,
+  inputs, versions, heartbeat, Revoke) and enrollment (token shown once).
+- `/capabilities` adds `storage_backend`, `limits.source_bytes` and
+  `worker_last_heartbeat_at`.
+- **Browser acceptance:** Node acts as the worker. It covers gating, upload, live
+  progress, the published result opening its document, failure with its error, retry,
+  cancel, and settings with enrollment.
+
 ### Next
-- B15: PBIX/project upload UI, capability gating, progress and retries.
+- B16: real Windows unattended PBIX extraction and recovery gate. It needs a Windows host
+  with Power BI Desktop and pbi-tools under the intended account (owner-run, like W2).
