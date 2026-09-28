@@ -9,13 +9,13 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from importlib import resources as _resources
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -81,6 +81,48 @@ class Document(BaseModel):
     updated_at: str
     etag: str
     publication: Publication
+
+
+class MetadataValues(BaseModel):
+    title: str
+    description: str
+    tags: list[str]
+    business_area: str
+    owner: str
+
+
+class OverrideProvenance(BaseModel):
+    value: Any
+    subject: Optional[str]
+    reason: str
+    set_at: str
+    catalogue_sequence: int
+
+
+class DocumentMetadata(BaseModel):
+    document_id: str
+    revision_id: str
+    effective: MetadataValues
+    revision: MetadataValues = Field(description="What the current revision's immutable artifact says")
+    overrides: dict[str, OverrideProvenance]
+    immutable: dict[str, str] = Field(description="Stream fields; never editable through metadata")
+    etag: str
+    catalogue_sequence: int
+
+
+class MetadataPatch(BaseModel):
+    model_config = {"extra": "allow"}   # unknown and immutable fields get a precise error from the store
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class MetadataChange(BaseModel):
+    catalogue_sequence: int
+    subject: Optional[str]
+    reason: str
+    changes: dict[str, Any]
+    before: MetadataValues
+    after: MetadataValues
+    occurred_at: str
 
 
 class DocumentPage(BaseModel):
@@ -439,6 +481,33 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
             raise LibraryError("NOT_FOUND", "document not found", 404)
         response.headers["ETag"] = _etag_header(doc["etag"])
         return doc
+
+    @app.get(f"{PREFIX}/documents/{{document_id}}/metadata", response_model=DocumentMetadata, tags=["documents"],
+             responses=ERRORS)
+    def get_metadata(document_id: uuid.UUID, response: Response, p: Principal = Depends(reader)):
+        get_document(document_id, response, p)          # same visibility rules as the document
+        meta = store.get_metadata(str(document_id))
+        response.headers["ETag"] = _etag_header(meta["etag"])
+        return meta
+
+    @app.patch(f"{PREFIX}/documents/{{document_id}}/metadata", response_model=DocumentMetadata,
+               tags=["documents"], responses=ERRORS)
+    def patch_metadata(document_id: uuid.UUID, body: MetadataPatch,
+                       if_match: Optional[str] = Header(None, alias="If-Match"),
+                       p: Principal = Depends(publisher)):
+        """Catalogue overrides for title, description, tags, business_area and owner (null removes one).
+
+        Stored artifacts are never modified; environment and scope are immutable stream fields.
+        """
+        changes = {k: v for k, v in (body.model_extra or {}).items()}
+        meta = store.set_metadata(str(document_id), changes, body.reason, _if_match(if_match), p.subject)
+        refresh_derived()
+        return JSONResponse(meta, headers={"ETag": _etag_header(meta["etag"])})
+
+    @app.get(f"{PREFIX}/documents/{{document_id}}/metadata/history", response_model=list[MetadataChange],
+             tags=["documents"], responses=ERRORS)
+    def metadata_history(document_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return store.metadata_history(str(document_id))
 
     @app.get(f"{PREFIX}/documents/{{document_id}}/revisions", response_model=RevisionPage, tags=["documents"],
              responses=ERRORS)

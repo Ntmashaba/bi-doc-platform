@@ -38,7 +38,7 @@ def reproject(manifest: dict, *, query_code: str = "withheld"):
         omissions.sort(key=lambda o: (o["path"], o["reason"]))
     descriptor = manifest["publication"]["scope_descriptor"]
     coverage = "selection" if descriptor.get("kind") == "selection" else "complete"
-    data = dict(data, title=manifest["title"])
+    data = dict(data, title=manifest["title"], published=True)   # engines render this read-only (A37)
     objects, sections, targets = adapter.describe(data, coverage)
     sections, trimmed = fit_sections(sections)
     stored = copy.deepcopy(manifest)

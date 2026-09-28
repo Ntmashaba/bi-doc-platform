@@ -138,6 +138,24 @@ MIGRATIONS = [
     CREATE INDEX detected_by_source ON detected_relationships (generation_id, source_document_id);
     CREATE INDEX detected_by_target ON detected_relationships (generation_id, target_document_id)
     """),
+    (3, "catalogue metadata overrides and their audit", """
+    -- documents.title/description/tags/business_area/owner hold the effective (overridden) values;
+    -- revision_metadata keeps what the current revision's artifact says.
+    ALTER TABLE documents ADD COLUMN revision_metadata TEXT;
+    UPDATE documents SET revision_metadata = json_object('title', title, 'description', description,
+        'tags', json(tags), 'business_area', business_area, 'owner', owner);
+    CREATE TABLE metadata_overrides (
+        document_id TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL,    -- value: JSON
+        subject TEXT, reason TEXT NOT NULL, set_at TEXT NOT NULL, catalogue_sequence INTEGER NOT NULL,
+        PRIMARY KEY (document_id, field)
+    );
+    CREATE TABLE metadata_audit (                 -- every override change, with the sequence it committed at
+        audit_id INTEGER PRIMARY KEY AUTOINCREMENT, catalogue_sequence INTEGER NOT NULL UNIQUE,
+        document_id TEXT NOT NULL, subject TEXT, reason TEXT NOT NULL, changes TEXT NOT NULL,
+        before TEXT NOT NULL, after TEXT NOT NULL, occurred_at TEXT NOT NULL
+    );
+    CREATE INDEX metadata_audit_by_document ON metadata_audit (document_id, audit_id)
+    """),
 ]
 
 

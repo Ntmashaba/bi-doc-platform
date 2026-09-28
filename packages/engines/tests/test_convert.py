@@ -39,6 +39,13 @@ class Reproject(unittest.TestCase):
         self.assertNotIn(ADF_MARKERS["sql_literal"].encode(), stored)
         self.assertNotEqual(manifest["content_sha256"], local["content_sha256"])
 
+    def test_published_copy_is_marked_read_only(self):
+        # A37: the library copy carries the published flag the engine templates honour.
+        stored, manifest = reproject(self.manifests["local"])
+        self.assertTrue(manifest["native_payload"]["data"]["published"])
+        self.assertNotIn(b'"published": true', b"") ; self.assertIn(b'"published":true', stored.replace(b" ", b""))
+        self.assertIn(b"published, read-only copy", stored)
+
     def test_withheld_code_is_never_restored(self):
         shared = self.manifests["shared"]
         _, manifest = reproject(shared, query_code="included")

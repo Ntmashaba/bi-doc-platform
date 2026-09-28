@@ -210,6 +210,60 @@
     "title": "Document",
     "type": "object"
    },
+   "DocumentMetadata": {
+    "properties": {
+     "catalogue_sequence": {
+      "title": "Catalogue Sequence",
+      "type": "integer"
+     },
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "effective": {
+      "$ref": "#/components/schemas/MetadataValues"
+     },
+     "etag": {
+      "title": "Etag",
+      "type": "string"
+     },
+     "immutable": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "Stream fields; never editable through metadata",
+      "title": "Immutable",
+      "type": "object"
+     },
+     "overrides": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/OverrideProvenance"
+      },
+      "title": "Overrides",
+      "type": "object"
+     },
+     "revision": {
+      "$ref": "#/components/schemas/MetadataValues",
+      "description": "What the current revision's immutable artifact says"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "document_id",
+     "revision_id",
+     "effective",
+     "revision",
+     "overrides",
+     "immutable",
+     "etag",
+     "catalogue_sequence"
+    ],
+    "title": "DocumentMetadata",
+    "type": "object"
+   },
    "DocumentObject": {
     "properties": {
      "coverage": {
@@ -799,6 +853,107 @@
     "title": "ManualLinkPatch",
     "type": "object"
    },
+   "MetadataChange": {
+    "properties": {
+     "after": {
+      "$ref": "#/components/schemas/MetadataValues"
+     },
+     "before": {
+      "$ref": "#/components/schemas/MetadataValues"
+     },
+     "catalogue_sequence": {
+      "title": "Catalogue Sequence",
+      "type": "integer"
+     },
+     "changes": {
+      "additionalProperties": true,
+      "title": "Changes",
+      "type": "object"
+     },
+     "occurred_at": {
+      "title": "Occurred At",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     }
+    },
+    "required": [
+     "catalogue_sequence",
+     "subject",
+     "reason",
+     "changes",
+     "before",
+     "after",
+     "occurred_at"
+    ],
+    "title": "MetadataChange",
+    "type": "object"
+   },
+   "MetadataPatch": {
+    "additionalProperties": true,
+    "properties": {
+     "reason": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "MetadataPatch",
+    "type": "object"
+   },
+   "MetadataValues": {
+    "properties": {
+     "business_area": {
+      "title": "Business Area",
+      "type": "string"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "owner": {
+      "title": "Owner",
+      "type": "string"
+     },
+     "tags": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "description",
+     "tags",
+     "business_area",
+     "owner"
+    ],
+    "title": "MetadataValues",
+    "type": "object"
+   },
    "ObjectPage": {
     "properties": {
      "document_id": {
@@ -867,6 +1022,45 @@
      "args"
     ],
     "title": "ObjectView",
+    "type": "object"
+   },
+   "OverrideProvenance": {
+    "properties": {
+     "catalogue_sequence": {
+      "title": "Catalogue Sequence",
+      "type": "integer"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "set_at": {
+      "title": "Set At",
+      "type": "string"
+     },
+     "subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Subject"
+     },
+     "value": {
+      "title": "Value"
+     }
+    },
+    "required": [
+     "value",
+     "subject",
+     "reason",
+     "set_at",
+     "catalogue_sequence"
+    ],
+    "title": "OverrideProvenance",
     "type": "object"
    },
    "Processing": {
@@ -1828,6 +2022,374 @@
      }
     },
     "summary": "Archive",
+    "tags": [
+     "documents"
+    ]
+   }
+  },
+  "/api/v1/documents/{document_id}/metadata": {
+   "get": {
+    "operationId": "get_metadata_api_v1_documents__document_id__metadata_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DocumentMetadata"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Get Metadata",
+    "tags": [
+     "documents"
+    ]
+   },
+   "patch": {
+    "description": "Catalogue overrides for title, description, tags, business_area and owner (null removes one).\n\nStored artifacts are never modified; environment and scope are immutable stream fields.",
+    "operationId": "patch_metadata_api_v1_documents__document_id__metadata_patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MetadataPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DocumentMetadata"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Patch Metadata",
+    "tags": [
+     "documents"
+    ]
+   }
+  },
+  "/api/v1/documents/{document_id}/metadata/history": {
+   "get": {
+    "operationId": "metadata_history_api_v1_documents__document_id__metadata_history_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MetadataChange"
+         },
+         "title": "Response Metadata History Api V1 Documents  Document Id  Metadata History Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Metadata History",
     "tags": [
      "documents"
     ]
