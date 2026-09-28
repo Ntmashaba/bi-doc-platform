@@ -441,6 +441,8 @@ class Capabilities(BaseModel):
     worker_status: Optional[str]
     installer_available: bool
     search_available: bool
+    storage_backend: Literal["local", "azure"]
+    worker_last_heartbeat_at: Optional[str] = Field(None, description="latest heartbeat of any enrolled worker")
     search_mode: Literal["client", "server"] = Field(
         description="client: download /search-index and search in the browser; server: the index is too large, "
                     "so load /search-index?sections=false for the catalogue and query /search")
@@ -722,7 +724,9 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
     def capabilities(p: Principal = Depends(reader)):
         return {"version": __version__, "manifest_versions": [SCHEMA_VERSION],
                 "limits": {"html_bytes": limits.html_bytes, "zip_bytes": limits.zip_bytes, "manifest_bytes": limits.manifest_bytes,
-                           "section_text_bytes": limits.section_text_bytes},
+                           "section_text_bytes": limits.section_text_bytes, "source_bytes": settings.max_source_bytes},
+                "storage_backend": getattr(store, "backend", "local"),
+                "worker_last_heartbeat_at": jobs.last_heartbeat(),
                 "access_mode": settings.auth_mode, "can_publish": p.can("publish"),
                 "processing": jobs.processing()[0], "worker_status": jobs.processing()[1], "installer_available": bool(publishing.releases()), "search_available": True,
                 "search_mode": search_mode(),

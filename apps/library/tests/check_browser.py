@@ -52,6 +52,11 @@ def main():
         from bidoc_engines import adf as adf_engine        # an older document: engine HTML, no manifest
         old = tmp / "old-factory.html"
         old.write_text(adf_engine.render(adf_engine.load(adf_factory(tmp / "old"), "adf_git")), encoding="utf-8")
+        from bidoc_library.access import Principal
+        worker = app.state.jobs.enroll("E2E worker", None, Principal("setup", frozenset({"admin"})))
+        processed = build("power_bi", pbi_model(tmp / "processed"), "bim", "Processed report")
+        fake_pbix = tmp / "Quarterly.pbix"
+        fake_pbix.write_bytes(b"PK\x03\x04 stand-in PBIX for the upload screen")
         server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
@@ -63,6 +68,7 @@ def main():
                 time.sleep(0.1)
         env = dict(os.environ, LIB_URL=f"http://127.0.0.1:{port}", PBI_DOC=pbi["document_id"],
                    ADF_DOC=adf["document_id"], IMPORT_FILE=str(extra), LEGACY_FILE=str(old),
+                   WORKER_TOKEN=worker["token"], PROCESS_FILE=str(fake_pbix), PROCESS_RESULT=str(processed),
                    NODE_PATH=str(ROOT / "apps" / "library" / "frontend" / "node_modules"))
         if Path("/opt/pw-browsers/chromium").exists() and "CHROMIUM_PATH" not in env:
             env["CHROMIUM_PATH"] = "/opt/pw-browsers/chromium"

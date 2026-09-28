@@ -154,6 +154,11 @@ class Jobs:
             if self.store.rec_put("worker", w["worker_id"], w, w["_v"]):
                 return
 
+    def last_heartbeat(self):
+        beats = [w["last_heartbeat_at"] for w in self.store.rec_list("worker")
+                 if not w.get("revoked_at") and w.get("last_heartbeat_at")]
+        return max(beats) if beats else None
+
     def processing(self) -> tuple[list[dict], str]:
         """(capabilities processing list, worker status) for /capabilities."""
         workers = [w for w in self.store.rec_list("worker") if not w.get("revoked_at")]

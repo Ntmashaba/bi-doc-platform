@@ -103,9 +103,13 @@ class Availability(JobTest):
         self.assertEqual((r.status_code, r.json()["error"]["code"]), (409, "WORKER_UNAVAILABLE"))
         worker = self.enroll()
         self.assertEqual(self.c.get("/api/v1/capabilities").json()["worker_status"], "unavailable")
+        self.assertIsNone(self.c.get("/api/v1/capabilities").json()["worker_last_heartbeat_at"])
         self.ready(worker)
         caps = self.c.get("/api/v1/capabilities").json()
         self.assertEqual((caps["worker_status"], caps["processing"][0]["available"]), ("ready", True))
+        self.assertEqual(caps["worker_last_heartbeat_at"], self.clock())
+        self.assertEqual(caps["storage_backend"], getattr(self.store, "backend", "local"))
+        self.assertEqual(caps["limits"]["source_bytes"], 1024 ** 3)
         self.clock.advance(91)                                                  # readiness expires after 90 s
         self.assertFalse(self.c.get("/api/v1/capabilities").json()["processing"][0]["available"])
         self.assertEqual(self.submit().status_code, 409)

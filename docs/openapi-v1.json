@@ -291,9 +291,29 @@
       "title": "Search Mode",
       "type": "string"
      },
+     "storage_backend": {
+      "enum": [
+       "local",
+       "azure"
+      ],
+      "title": "Storage Backend",
+      "type": "string"
+     },
      "version": {
       "title": "Version",
       "type": "string"
+     },
+     "worker_last_heartbeat_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "latest heartbeat of any enrolled worker",
+      "title": "Worker Last Heartbeat At"
      },
      "worker_status": {
       "anyOf": [
@@ -317,6 +337,7 @@
      "worker_status",
      "installer_available",
      "search_available",
+     "storage_backend",
      "search_mode",
      "can_manage_relationships",
      "can_administer",
