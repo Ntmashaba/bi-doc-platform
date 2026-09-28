@@ -11,8 +11,8 @@ requires-python = ">=3.11"
 # (requirements.txt does). It is not listed here so pip never looks it up on PyPI.
 dependencies = [
     # Pinned engine revisions; see docs/PROGRESS.md for the recorded versions.
-    "pbi-doc-gen @ git+https://github.com/Ntmashaba/pbi-doc-gen@3d2750bc689be56dff6e8cd4c4f425368df0bc3f",
-    "adf-doc-gen @ git+https://github.com/Ntmashaba/adf-doc-gen@98ab008102bbfbf09c0d6236d493f4bb506726bd",
+    "pbi-doc-gen @ git+https://github.com/Ntmashaba/pbi-doc-gen@aac0a325c75fc5212126486b6bde515eeb0cebde",
+    "adf-doc-gen @ git+https://github.com/Ntmashaba/adf-doc-gen@960b4bc165efff415d1adb4932fb39196fc9eff1",
 ]
 
 [tool.setuptools]

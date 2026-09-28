@@ -179,6 +179,6 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Gate:** `docs/b07/R1-GATE.md` maps every R1 acceptance ID to its CI evidence.
 
 ### Next
-- Merge the engine 0.4.0 PRs; re-pin the engines to their merge commits.
+- Engine 0.4.0 PRs merged; engines re-pinned to pbi-doc-gen `aac0a32` and adf-doc-gen `960b4bc`.
 - Then B08 (batch generation, PBIX through pbi-tools; A08).
 - Still open, question to the owner: shared output keeps personal source paths (for example `C:\Users\<name>\...`).
