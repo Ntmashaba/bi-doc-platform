@@ -7,8 +7,9 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | ID | Status | Notes |
 |---|---|---|
 | B01 | Done except Windows packaging spike (blocked: no Windows host) | Findings: `docs/b01/BASELINE.md`; scripts: `spikes/b01/` |
-| B02 | In progress | Envelope v1 schema, validator, hash and golden fixtures done; identity/binding mappings drafted. Remaining: ADF scope descriptors, legacy-import native-schema mapping, freeze review |
-| B03–B16 | Not started | |
+| B02 | Done | Envelope v1, scope keys, projection and identity specs frozen (pre-release): `docs/contracts/` |
+| B03 | In progress | |
+| B04–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -50,7 +51,14 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Identity/binding draft `docs/contracts/identity-and-bindings-v1.md`. Found: TMDL reader and BIM path both drop `lineageTag` (B03 engine change).
 - Added Linux CI for the contracts package (fails on skipped tests).
 
+### 2026-09-28 — PRs merged; B02 completed
+- Merged at the owner's instruction: bi-doc-platform #1, pbi-doc-gen #2, adf-doc-gen #2. Branches restarted from the new `main`.
+- Scope keys: `bidoc_contracts.scope` derives `scope_key` from the descriptor; the validator rejects mismatches (29 contract tests OK).
+- `docs/contracts/projection-v1.md`: shared projection with the code-field inventory found by marker seeding, always-on
+  credential/URL/entered-data/machine-path rules, and the A29 gate. DAX stays (not query code).
+- Snapshot rule: the envelope is attached only to a complete snapshot; ADF skipped files mean local-only output.
+- Envelope, projection and identity specs marked frozen (pre-release).
+
 ### Next
-- B02: ADF scope descriptors (factory vs. selection), native-schema mapping for legacy import (`pbi-doc-gen/2`, `adf-doc-gen/2`), then freeze.
 - B03: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.

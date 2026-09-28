@@ -63,7 +63,7 @@ def power_bi():
         "generated_at": "2026-09-28T12:00:00Z", "generator": {"name": "bi-doc-generator", "version": "0.1.0"},
         "source": {"kind": "pbip", "label": "Retail Sales.pbip"},
         "publication": {"asset_id": "3c2b1a09-8f7e-4d6c-a5b4-c3d2e1f00918", "environment_key": "production",
-                        "scope_key": "full", "scope_descriptor": {"kind": "full_project"}, "snapshot_state": "complete"},
+                        "scope_key": "model_and_report", "scope_descriptor": {"kind": "model_and_report"}, "snapshot_state": "complete"},
         "projection": {"policy_version": "shared-projection/1", "native_schema": "pbi-doc-gen/2", "profile": "shared",
                        "options": {"query_code": "withheld"},
                        "omissions": [{"path": "/model/tables/0/partitions/0/source/expression",

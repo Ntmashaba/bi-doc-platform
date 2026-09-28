@@ -1,4 +1,6 @@
-# Object identity and endpoint bindings v1 (B02 draft)
+# Object identity and endpoint bindings v1
+
+Status: frozen for B03 (pre-release).
 
 Engine revisions surveyed: pbi-doc-gen `a7d5565`, adf-doc-gen `7c8cfe5` (see `docs/b01/BASELINE.md` §5). IDs are scoped to a `document_id`. The algorithms below are versioned by `identity_version`; any change is a new version with a migration and a manual-link review report.
 
