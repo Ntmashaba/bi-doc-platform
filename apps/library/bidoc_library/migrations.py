@@ -112,6 +112,32 @@ MIGRATIONS = [
         subject TEXT, occurred_at TEXT NOT NULL, before TEXT, after TEXT
     );
     """),
+    (2, "derived snapshots, generation members and pinned manual assertions", """
+    ALTER TABLE derived_state ADD COLUMN snapshot_key TEXT;
+    CREATE TABLE generation_members (             -- the exact revision vector a generation was built from
+        generation_id TEXT NOT NULL, document_id TEXT NOT NULL, revision_id TEXT NOT NULL,
+        PRIMARY KEY (generation_id, document_id)
+    );
+    CREATE INDEX generation_members_by_revision ON generation_members (revision_id);
+    CREATE TABLE generation_manual (               -- manual assertions as they stood for a generation
+        generation_id TEXT NOT NULL, relationship_id TEXT NOT NULL, version INTEGER NOT NULL, record TEXT NOT NULL,
+        PRIMARY KEY (generation_id, relationship_id)
+    );
+    ALTER TABLE manual_relationships ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+    -- Relationship IDs are stable across generations: key detected rows by both.
+    DROP INDEX detected_by_source;
+    DROP INDEX detected_by_target;
+    DROP TABLE detected_relationships;
+    CREATE TABLE detected_relationships (
+        generation_id TEXT NOT NULL, relationship_id TEXT NOT NULL,
+        source_document_id TEXT NOT NULL, source_revision_id TEXT NOT NULL, source_object_id TEXT NOT NULL,
+        target_document_id TEXT NOT NULL, target_revision_id TEXT NOT NULL, target_object_id TEXT NOT NULL,
+        kind TEXT NOT NULL, confidence TEXT NOT NULL, evidence TEXT NOT NULL, rule_version TEXT NOT NULL,
+        PRIMARY KEY (generation_id, relationship_id)
+    );
+    CREATE INDEX detected_by_source ON detected_relationships (generation_id, source_document_id);
+    CREATE INDEX detected_by_target ON detected_relationships (generation_id, target_document_id)
+    """),
 ]
 
 

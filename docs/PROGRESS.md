@@ -11,7 +11,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B03 | Done (PBIX via bidoc deferred to B08) | Engines 0.2.0 fixes; `packages/engines` adapters, projection, identity; `bidoc` CLI; real-input checks in CI |
 | B04 | Done | `apps/library` LocalStore: SQLite catalogue, immutable revisions, crash-safe publication (`docs/library-storage.md`) |
 | B05 | Done | HTTP API v1 (`docs/library-api.md`, `docs/openapi-v1.json`); local and gateway access |
-| B06–B16 | Not started | |
+| B06 | In progress: B06a done (backend) | Search, relationships and manual links (`docs/relationships.md`). B06b: UI shell and viewers |
+| B07–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -113,7 +114,27 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Found:** unhandled 500s lacked `X-Request-ID` (answered outside the middleware); fixed and tested.
 - **Deferred with reason:** legacy HTML import (no manifest) → B06/B07; metadata overrides → B06.
 
+### 2026-09-28 — B05 merged; B06a (backend) completed
+- Merged bi-doc-platform #4 at the owner's instruction. B06 is split in two for reviewability: B06a backend (this PR) and B06b frontend.
+- **`packages/relationships`** (`rel-rules/1`):
+  - exact_static and possible `produces`; `deletes` and `reads` kept apart;
+  - contradictions reject a match (server, port, instance, database, account, container, known environment);
+  - case-only differences, folder-contains-file and dynamic/opaque resolutions are `possible`. 10 tests (A20–A22, A30).
+- **Derived state** (`derived.py`):
+  - search snapshots and relationship generations, rebuilt synchronously and committed only at a still-current sequence;
+  - generations pin revision vectors and manual assertion versions; historical links stay reproducible (A23, A33).
+- **Search:** reference semantics (`search.py`), `GET /search-index` (ETag/304) and `GET /search`.
+- **Relationships API:** objects and relationships per revision/generation/object; manual links with create/patch/delete, audit, `SELECTION_STALE`, `needs_review` (A24).
+- **Migration 2:** generation members, pinned manual records, and detected rows keyed by generation. The upgrade from a B04 catalogue is tested.
+- **Tests:** library 45, relationships 10, engines 27, contracts 29, CLI 4, all OK.
+- **Scale (A41-style, 124 real documents):** index 580 KB (≈ 4.7 KB/doc), full rebuild 1.1 s, search 2.8 ms.
+- **Found while testing:**
+  - detected-relationship IDs clashed across generations (schema key fixed in the unmerged migration);
+  - section ranking ignored heading matches (now heading first, as the handoff ranks);
+  - manual-link status checked only one end.
+
 ### Next
-- B06: mixed-library UI shell, isolated viewers with the navigation protocol, content search (browser index + API), type filters, contextual relationships.
+- B06b: TypeScript library shell (All / Power BI / ADF, filters, browser search matching `search.py`, import, details, versions, archive), isolated viewer with Related documentation panel, postMessage navigation protocol (engine template changes), Back restoring state.
+- Then B07: R1 end-to-end gate (A19–A25, A27, A29–A35, A37, A40), including legacy import and metadata overrides.
 - Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.

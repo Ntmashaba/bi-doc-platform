@@ -3,5 +3,6 @@
 # Engine revisions are pinned in packages/engines/pyproject.toml.
 -e packages/contracts[dev]
 -e packages/engines
+-e packages/relationships
 -e apps/generator
 -e apps/library[dev]

@@ -43,6 +43,10 @@
       "title": "Access Mode",
       "type": "string"
      },
+     "can_manage_relationships": {
+      "title": "Can Manage Relationships",
+      "type": "boolean"
+     },
      "can_publish": {
       "title": "Can Publish",
       "type": "boolean"
@@ -69,6 +73,10 @@
       },
       "title": "Processing",
       "type": "array"
+     },
+     "relationship_schema_version": {
+      "title": "Relationship Schema Version",
+      "type": "string"
      },
      "search_available": {
       "title": "Search Available",
@@ -99,7 +107,9 @@
      "processing",
      "worker_status",
      "installer_available",
-     "search_available"
+     "search_available",
+     "can_manage_relationships",
+     "relationship_schema_version"
     ],
     "title": "Capabilities",
     "type": "object"
@@ -198,6 +208,72 @@
      "publication"
     ],
     "title": "Document",
+    "type": "object"
+   },
+   "DocumentObject": {
+    "properties": {
+     "coverage": {
+      "title": "Coverage",
+      "type": "string"
+     },
+     "dynamic": {
+      "title": "Dynamic",
+      "type": "boolean"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "object_id": {
+      "title": "Object Id",
+      "type": "string"
+     },
+     "opaque": {
+      "title": "Opaque",
+      "type": "boolean"
+     },
+     "parent_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parent Object Id"
+     },
+     "section_id": {
+      "title": "Section Id",
+      "type": "string"
+     },
+     "view": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ObjectView"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "object_id",
+     "kind",
+     "label",
+     "section_id",
+     "parent_object_id",
+     "dynamic",
+     "opaque",
+     "coverage",
+     "view"
+    ],
+    "title": "DocumentObject",
     "type": "object"
    },
    "DocumentPage": {
@@ -464,6 +540,327 @@
     "title": "ImportStatus",
     "type": "object"
    },
+   "ManualLink": {
+    "properties": {
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "creator_subject": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Creator Subject"
+     },
+     "etag": {
+      "title": "Etag",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "relationship_id": {
+      "title": "Relationship Id",
+      "type": "string"
+     },
+     "source_document_id": {
+      "title": "Source Document Id",
+      "type": "string"
+     },
+     "source_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Object Id"
+     },
+     "source_revision_id": {
+      "title": "Source Revision Id",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "target_document_id": {
+      "title": "Target Document Id",
+      "type": "string"
+     },
+     "target_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Object Id"
+     },
+     "target_revision_id": {
+      "title": "Target Revision Id",
+      "type": "string"
+     },
+     "updated_at": {
+      "title": "Updated At",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "relationship_id",
+     "source_document_id",
+     "source_revision_id",
+     "source_object_id",
+     "target_document_id",
+     "target_revision_id",
+     "target_object_id",
+     "kind",
+     "reason",
+     "creator_subject",
+     "created_at",
+     "updated_at",
+     "etag",
+     "status",
+     "version"
+    ],
+    "title": "ManualLink",
+    "type": "object"
+   },
+   "ManualLinkIn": {
+    "properties": {
+     "expected_catalogue_sequence": {
+      "title": "Expected Catalogue Sequence",
+      "type": "integer"
+     },
+     "kind": {
+      "enum": [
+       "related_to",
+       "produces",
+       "consumes",
+       "deletes"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "source_document_id": {
+      "format": "uuid",
+      "title": "Source Document Id",
+      "type": "string"
+     },
+     "source_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source Object Id"
+     },
+     "source_revision_id": {
+      "format": "uuid",
+      "title": "Source Revision Id",
+      "type": "string"
+     },
+     "target_document_id": {
+      "format": "uuid",
+      "title": "Target Document Id",
+      "type": "string"
+     },
+     "target_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Object Id"
+     },
+     "target_revision_id": {
+      "format": "uuid",
+      "title": "Target Revision Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "source_document_id",
+     "source_revision_id",
+     "target_document_id",
+     "target_revision_id",
+     "expected_catalogue_sequence",
+     "kind",
+     "reason"
+    ],
+    "title": "ManualLinkIn",
+    "type": "object"
+   },
+   "ManualLinkPatch": {
+    "properties": {
+     "expected_catalogue_sequence": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Catalogue Sequence"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "enum": [
+         "related_to",
+         "produces",
+         "consumes",
+         "deletes"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Kind"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "target_document_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Document Id"
+     },
+     "target_object_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Object Id"
+     },
+     "target_revision_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Revision Id"
+     }
+    },
+    "title": "ManualLinkPatch",
+    "type": "object"
+   },
+   "ObjectPage": {
+    "properties": {
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/DocumentObject"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "next_cursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Cursor"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "document_id",
+     "revision_id",
+     "items",
+     "next_cursor"
+    ],
+    "title": "ObjectPage",
+    "type": "object"
+   },
+   "ObjectView": {
+    "properties": {
+     "args": {
+      "additionalProperties": true,
+      "title": "Args",
+      "type": "object"
+     },
+     "target_id": {
+      "title": "Target Id",
+      "type": "string"
+     },
+     "view_id": {
+      "title": "View Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "target_id",
+     "view_id",
+     "args"
+    ],
+    "title": "ObjectView",
+    "type": "object"
+   },
    "Processing": {
     "properties": {
      "available": {
@@ -626,6 +1023,195 @@
      "next_cursor"
     ],
     "title": "RevisionPage",
+    "type": "object"
+   },
+   "SearchDocument": {
+    "properties": {
+     "classification": {
+      "$ref": "#/components/schemas/Classification"
+     },
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "document_type": {
+      "enum": [
+       "power_bi",
+       "adf"
+      ],
+      "title": "Document Type",
+      "type": "string"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     },
+     "sections": {
+      "items": {
+       "$ref": "#/components/schemas/SearchSection"
+      },
+      "title": "Sections",
+      "type": "array"
+     },
+     "tags": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "document_id",
+     "revision_id",
+     "document_type",
+     "classification",
+     "title",
+     "tags",
+     "sections"
+    ],
+    "title": "SearchDocument",
+    "type": "object"
+   },
+   "SearchHit": {
+    "properties": {
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "document_type": {
+      "title": "Document Type",
+      "type": "string"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     },
+     "section_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Section Id"
+     },
+     "section_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Section Title"
+     },
+     "snippet": {
+      "title": "Snippet",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "document_id",
+     "revision_id",
+     "title",
+     "document_type",
+     "section_id",
+     "section_title",
+     "snippet"
+    ],
+    "title": "SearchHit",
+    "type": "object"
+   },
+   "SearchIndex": {
+    "properties": {
+     "documents": {
+      "items": {
+       "$ref": "#/components/schemas/SearchDocument"
+      },
+      "title": "Documents",
+      "type": "array"
+     },
+     "generation": {
+      "title": "Generation",
+      "type": "integer"
+     },
+     "state": {
+      "enum": [
+       "ready",
+       "updating",
+       "stale"
+      ],
+      "title": "State",
+      "type": "string"
+     }
+    },
+    "required": [
+     "generation",
+     "state",
+     "documents"
+    ],
+    "title": "SearchIndex",
+    "type": "object"
+   },
+   "SearchResults": {
+    "properties": {
+     "generation": {
+      "title": "Generation",
+      "type": "integer"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/SearchHit"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "state": {
+      "title": "State",
+      "type": "string"
+     }
+    },
+    "required": [
+     "generation",
+     "state",
+     "items"
+    ],
+    "title": "SearchResults",
+    "type": "object"
+   },
+   "SearchSection": {
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "title",
+     "text"
+    ],
+    "title": "SearchSection",
     "type": "object"
    }
   }
@@ -1219,6 +1805,326 @@
     "summary": "Archive",
     "tags": [
      "documents"
+    ]
+   }
+  },
+  "/api/v1/documents/{document_id}/objects": {
+   "get": {
+    "operationId": "objects_api_v1_documents__document_id__objects_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "revision_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "uuid",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revision Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 200,
+       "maximum": 1000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ObjectPage"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Objects",
+    "tags": [
+     "relationships"
+    ]
+   }
+  },
+  "/api/v1/documents/{document_id}/relationships": {
+   "get": {
+    "operationId": "relationships_api_v1_documents__document_id__relationships_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "revision_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "uuid",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revision Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "generation_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "uuid",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Generation Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "object_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 512,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Object Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Relationships",
+    "tags": [
+     "relationships"
     ]
    }
   },
@@ -2057,6 +2963,598 @@
     ]
    }
   },
+  "/api/v1/relationships/manual": {
+   "post": {
+    "operationId": "create_manual_api_v1_relationships_manual_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ManualLinkIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ManualLink"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Create Manual",
+    "tags": [
+     "relationships"
+    ]
+   }
+  },
+  "/api/v1/relationships/manual/{relationship_id}": {
+   "delete": {
+    "operationId": "delete_manual_api_v1_relationships_manual__relationship_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "relationship_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Relationship Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Delete Manual",
+    "tags": [
+     "relationships"
+    ]
+   },
+   "get": {
+    "operationId": "get_manual_api_v1_relationships_manual__relationship_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "relationship_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Relationship Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ManualLink"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Get Manual",
+    "tags": [
+     "relationships"
+    ]
+   },
+   "patch": {
+    "operationId": "patch_manual_api_v1_relationships_manual__relationship_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "relationship_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Relationship Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ManualLinkPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ManualLink"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Patch Manual",
+    "tags": [
+     "relationships"
+    ]
+   }
+  },
+  "/api/v1/relationships/manual/{relationship_id}/audit": {
+   "get": {
+    "operationId": "manual_audit_api_v1_relationships_manual__relationship_id__audit_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "relationship_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Relationship Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Manual Audit",
+    "tags": [
+     "relationships"
+    ]
+   }
+  },
   "/api/v1/releases/latest": {
    "get": {
     "operationId": "latest_release_api_v1_releases_latest_get",
@@ -2276,6 +3774,326 @@
     "summary": "Release Download",
     "tags": [
      "releases"
+    ]
+   }
+  },
+  "/api/v1/search": {
+   "get": {
+    "operationId": "search_api_v1_search_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "in": "query",
+      "name": "document_type",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "power_bi",
+          "adf"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Document Type"
+      }
+     },
+     {
+      "in": "query",
+      "name": "business_area",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Business Area"
+      }
+     },
+     {
+      "in": "query",
+      "name": "environment",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Environment"
+      }
+     },
+     {
+      "in": "query",
+      "name": "owner",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Owner"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tag",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Tag"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "maximum": 200,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchResults"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Search",
+    "tags": [
+     "search"
+    ]
+   }
+  },
+  "/api/v1/search-index": {
+   "get": {
+    "operationId": "search_index_api_v1_search_index_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchIndex"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "304": {
+      "description": "Not modified"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Search Index",
+    "tags": [
+     "search"
     ]
    }
   }

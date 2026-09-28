@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi-doc-relationships"
+dynamic = ["version"]
+description = "Versioned Power BI <-> Data Factory endpoint matching (rel-rules/1)."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+packages = ["bidoc_relationships"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bidoc_relationships.__version__" }
