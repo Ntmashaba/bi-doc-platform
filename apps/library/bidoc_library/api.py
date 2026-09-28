@@ -9,13 +9,13 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from importlib import resources as _resources
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -81,6 +81,72 @@ class Document(BaseModel):
     updated_at: str
     etag: str
     publication: Publication
+
+
+class MetadataValues(BaseModel):
+    title: str
+    description: str
+    tags: list[str]
+    business_area: str
+    owner: str
+
+
+class OverrideProvenance(BaseModel):
+    value: Any
+    subject: Optional[str]
+    reason: str
+    set_at: str
+    catalogue_sequence: int
+
+
+class DocumentMetadata(BaseModel):
+    document_id: str
+    revision_id: str
+    effective: MetadataValues
+    revision: MetadataValues = Field(description="What the current revision's immutable artifact says")
+    overrides: dict[str, OverrideProvenance]
+    immutable: dict[str, str] = Field(description="Stream fields; never editable through metadata")
+    etag: str
+    catalogue_sequence: int
+
+
+class MetadataPatch(BaseModel):
+    model_config = {"extra": "allow"}   # unknown and immutable fields get a precise error from the store
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class MetadataChange(BaseModel):
+    catalogue_sequence: int
+    subject: Optional[str]
+    reason: str
+    changes: dict[str, Any]
+    before: MetadataValues
+    after: MetadataValues
+    occurred_at: str
+
+
+LEGACY_METADATA_HELP = ("JSON object with any of title, description, tags, business_area, environment, owner; "
+                        "used only when the file is legacy engine HTML without a manifest")
+
+
+class ImportPreview(BaseModel):
+    input: Literal["envelope", "legacy"]
+    document_type: Literal["power_bi", "adf"]
+    document_id: Optional[str] = Field(description="null for legacy input: a new stream identity is assigned")
+    outcome: Literal["new_document", "new_version", "duplicate"]
+    duplicate_of: Optional[dict[str, str]]
+    title: str
+    description: str
+    tags: list[str]
+    classification: Classification
+    generator: dict[str, str]
+    source: dict[str, str]
+    native_schema: str
+    query_code: Literal["withheld", "included"]
+    omissions: list[dict[str, str]]
+    coverage_warnings: list[str]
+    object_count: int
+    section_count: int
 
 
 class DocumentPage(BaseModel):
@@ -440,6 +506,33 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
         response.headers["ETag"] = _etag_header(doc["etag"])
         return doc
 
+    @app.get(f"{PREFIX}/documents/{{document_id}}/metadata", response_model=DocumentMetadata, tags=["documents"],
+             responses=ERRORS)
+    def get_metadata(document_id: uuid.UUID, response: Response, p: Principal = Depends(reader)):
+        get_document(document_id, response, p)          # same visibility rules as the document
+        meta = store.get_metadata(str(document_id))
+        response.headers["ETag"] = _etag_header(meta["etag"])
+        return meta
+
+    @app.patch(f"{PREFIX}/documents/{{document_id}}/metadata", response_model=DocumentMetadata,
+               tags=["documents"], responses=ERRORS)
+    def patch_metadata(document_id: uuid.UUID, body: MetadataPatch,
+                       if_match: Optional[str] = Header(None, alias="If-Match"),
+                       p: Principal = Depends(publisher)):
+        """Catalogue overrides for title, description, tags, business_area and owner (null removes one).
+
+        Stored artifacts are never modified; environment and scope are immutable stream fields.
+        """
+        changes = {k: v for k, v in (body.model_extra or {}).items()}
+        meta = store.set_metadata(str(document_id), changes, body.reason, _if_match(if_match), p.subject)
+        refresh_derived()
+        return JSONResponse(meta, headers={"ETag": _etag_header(meta["etag"])})
+
+    @app.get(f"{PREFIX}/documents/{{document_id}}/metadata/history", response_model=list[MetadataChange],
+             tags=["documents"], responses=ERRORS)
+    def metadata_history(document_id: uuid.UUID, p: Principal = Depends(publisher)):
+        return store.metadata_history(str(document_id))
+
     @app.get(f"{PREFIX}/documents/{{document_id}}/revisions", response_model=RevisionPage, tags=["documents"],
              responses=ERRORS)
     def list_revisions(document_id: uuid.UUID, cursor: Optional[str] = None,
@@ -490,9 +583,12 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
     @app.post(f"{PREFIX}/imports", response_model=ImportOutcome, status_code=201, tags=["imports"],
               responses={200: {"model": ImportOutcome, "description": "Duplicate of an earlier import"},
                          411: {"model": ErrorResponse}, **ERRORS})
-    async def create_import(file: UploadFile = File(..., description="Envelope-v1 HTML artifact"),
+    async def create_import(file: UploadFile = File(..., description="Envelope-v1 HTML artifact, or known legacy "
+                                                                     "engine HTML to convert"),
                             target_document_id: Optional[uuid.UUID] = Form(None),
                             query_code: Literal["withheld", "included"] = Form("withheld"),
+                            legacy_metadata: Optional[str] = Form(None, max_length=10000,
+                                                                  description=LEGACY_METADATA_HELP),
                             idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1,
                                                           max_length=200),
                             if_match: Optional[str] = Header(None, alias="If-Match"),
@@ -503,12 +599,25 @@ def create_app(settings: Settings, store: LocalStore | None = None, session_secr
         outcome = await run_in_threadpool(
             store.publish, data, subject=p.subject, idempotency_key=idempotency_key,
             expected_etag=_if_match(if_match), target_document_id=str(target_document_id) if target_document_id else None,
-            query_code=query_code)
+            query_code=query_code, legacy_metadata=legacy_metadata)
         indexing = await run_in_threadpool(refresh_derived)
         body = {"import_id": outcome["import_id"], "document_id": outcome["document_id"],
                 "revision_id": outcome["revision_id"], "status": "completed", "duplicate": outcome["duplicate"],
                 "catalogue_sequence": outcome["catalogue_sequence"], "indexing_state": indexing}
         return JSONResponse(body, status_code=200 if outcome["duplicate"] else 201)
+
+    @app.post(f"{PREFIX}/imports/preview", response_model=ImportPreview, tags=["imports"],
+              responses={411: {"model": ErrorResponse}, **ERRORS})
+    async def preview_import(file: UploadFile = File(...),
+                             query_code: Literal["withheld", "included"] = Form("withheld"),
+                             legacy_metadata: Optional[str] = Form(None, max_length=10000,
+                                                                   description=LEGACY_METADATA_HELP),
+                             p: Principal = Depends(publisher)):
+        """Detected identity, title, outcome and projection omissions; nothing is stored."""
+        data = await file.read(limits.html_bytes + 1)
+        if len(data) > limits.html_bytes:
+            raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {limits.html_bytes}-byte limit", 413)
+        return await run_in_threadpool(store.preview, data, legacy_metadata=legacy_metadata, query_code=query_code)
 
     @app.get(f"{PREFIX}/imports/{{import_id}}", response_model=ImportStatus, tags=["imports"], responses=ERRORS)
     def get_import(import_id: uuid.UUID, p: Principal = Depends(publisher)):

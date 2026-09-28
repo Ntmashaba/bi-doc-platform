@@ -131,7 +131,7 @@ class Documents(ApiTest):
     def test_malformed_and_invalid_uploads(self):
         r = self.client.post("/api/v1/imports", files={"file": ("d.html", b"x", "text/html")}, headers=MUTATE)
         self.assertApiError(r, 400, "INVALID_REQUEST")                        # no Idempotency-Key
-        self.assertApiError(self.upload(b"<html>not an artifact</html>"), 422, "CONTRACT_INVALID")
+        self.assertApiError(self.upload(b"<html>not an artifact</html>"), 422, "UNSUPPORTED_SAFE_PROJECTION")
         self.assertApiError(self.upload(self.artifact(), target_document_id="not-a-uuid"), 400, "INVALID_REQUEST")
         self.assertApiError(self.client.get("/api/v1/documents/not-a-uuid"), 400, "INVALID_REQUEST")
         self.assertApiError(self.client.get("/api/v1/documents/00000000-0000-4000-8000-000000000000"), 404,
@@ -225,6 +225,13 @@ class Configuration(unittest.TestCase):
                 from_env(env)
         s = from_env({"AUTH_MODE": "gateway", "BIND_HOST": "0.0.0.0", "GATEWAY_TRUSTED_PROXIES": "10.0.0.1, 10.1.0.0/16"})
         self.assertEqual(s.gateway_trusted_proxies, ("10.0.0.1", "10.1.0.0/16"))
+
+    def test_container_bind_needs_the_exact_acknowledgement(self):
+        for value in ("1", "yes", "true"):
+            with self.assertRaises(ConfigError):
+                from_env({"BIND_HOST": "0.0.0.0", "LOCAL_CONTAINER_BIND": value})
+        s = from_env({"BIND_HOST": "0.0.0.0", "LOCAL_CONTAINER_BIND": "published-on-host-loopback-only"})
+        self.assertEqual((s.auth_mode, s.bind_host, s.local_container_bind), ("local", "0.0.0.0", True))
 
     def test_committed_openapi_is_current(self):
         committed = (ROOT / "docs" / "openapi-v1.json").read_text(encoding="utf-8")

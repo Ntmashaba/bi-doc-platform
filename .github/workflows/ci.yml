@@ -43,6 +43,8 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -r requirements.txt
       - run: python packages/engines/tests/check_real_pbix_samples.py pbix-samples "$RUNNER_TEMP/real-pbix-output"
+      - name: A01 on real reports (publish, search a measure, open it)
+        run: python apps/library/tests/check_real_library.py pbix-samples
 
   adf-templates:
     # Every template in Microsoft's Azure-DataFactory repository (real ARM exports).
@@ -87,3 +89,17 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Browser acceptance
         run: python apps/library/tests/check_browser.py
+
+  docker:
+    # A03: the library image builds from the lock file, runs as non-root, refuses an
+    # unacknowledged local bind, and keeps documents across restart and re-creation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: docker build -t bidoc-library .
+      - run: python -m pip install -r requirements.txt
+      - name: Container persistence and access checks
+        run: python apps/library/tests/check_docker.py bidoc-library

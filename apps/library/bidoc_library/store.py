@@ -18,6 +18,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -26,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from bidoc_contracts import ContractError, Limits, validate_artifact
+from bidoc_engines import legacy
 from bidoc_engines.convert import UnsupportedProjection, reproject
 
 from .errors import LibraryError, conflict, not_found
@@ -34,6 +36,43 @@ from .migrations import migrate
 
 class SimulatedCrash(Exception):
     """Raised by fault injection in tests to stop publication at a named point."""
+
+
+OVERRIDABLE = ("title", "description", "tags", "business_area", "owner")
+_TRIMMED = re.compile(r"^\S(.*\S)?$", re.S)
+
+
+def validate_overrides(changes) -> dict:
+    """Field rules mirror envelope v1; environment and scope are immutable stream fields."""
+    if not isinstance(changes, dict) or not changes:
+        raise LibraryError("INVALID_REQUEST", "give at least one metadata field to change")
+    immutable = sorted(set(changes) & {"environment", "environment_key", "scope_key", "asset_id", "document_type"})
+    if immutable:
+        raise LibraryError("IMMUTABLE_FIELD", f"{', '.join(immutable)} cannot be changed through metadata", 422,
+                           {"fields": immutable})
+    unknown = sorted(set(changes) - set(OVERRIDABLE))
+    if unknown:
+        raise LibraryError("INVALID_REQUEST", f"unknown metadata fields: {', '.join(unknown)}")
+
+    def text(field, value, lo, hi, trimmed=False):
+        if not isinstance(value, str) or not lo <= len(value) <= hi or (trimmed and not _TRIMMED.match(value)):
+            raise LibraryError("INVALID_REQUEST", f"{field} must be text of {lo} to {hi} characters"
+                               + (" without surrounding spaces" if trimmed else ""))
+    for field, value in changes.items():
+        if value is None:
+            continue
+        if field == "title":
+            text(field, value, 1, 200, True)
+        elif field == "description":
+            text(field, value, 0, 2000)
+        elif field == "tags":
+            if not isinstance(value, list) or len(value) > 20 or len(set(map(str, value))) != len(value):
+                raise LibraryError("INVALID_REQUEST", "tags must be up to 20 distinct values")
+            for tag in value:
+                text("each tag", tag, 1, 50, True)
+        else:
+            text(field, value, 0, 200)
+    return changes
 
 
 def _now() -> str:
@@ -126,15 +165,21 @@ class LocalStore:
     # ---- publication ------------------------------------------------------------
 
     def publish(self, data: bytes, *, subject: str, idempotency_key: str, expected_etag: str | None = None,
-                target_document_id: str | None = None, query_code: str = "withheld") -> dict:
+                target_document_id: str | None = None, query_code: str = "withheld",
+                legacy_metadata=None) -> dict:
         if not idempotency_key or len(idempotency_key) > 200:
             raise LibraryError("INVALID_REQUEST", "an Idempotency-Key of 1-200 characters is required")
         if query_code not in ("withheld", "included"):
             raise LibraryError("INVALID_REQUEST", "query_code must be withheld or included")
         if len(data) > self.limits.html_bytes:
             raise LibraryError("PAYLOAD_TOO_LARGE", f"the document exceeds the {self.limits.html_bytes}-byte limit", 413)
+        try:
+            legacy_metadata = legacy.parse_metadata(legacy_metadata)
+        except ValueError as exc:
+            raise LibraryError("INVALID_REQUEST", str(exc)) from None
         submitted = _sha256(data)
-        request = _sha256(json.dumps([submitted, target_document_id, expected_etag, query_code]).encode())
+        request = _sha256(json.dumps([submitted, target_document_id, expected_etag, query_code]
+                                     + ([legacy_metadata] if legacy_metadata else [])).encode())
 
         with self._db() as conn:
             existing = conn.execute("SELECT * FROM imports WHERE subject=? AND idempotency_key=?",
@@ -157,7 +202,8 @@ class LocalStore:
         if duplicate is not None:
             return self._record_duplicate(import_id, duplicate)
         try:
-            return self._publish(import_id, data, subject, expected_etag, target_document_id, query_code, submitted)
+            return self._publish(import_id, data, subject, expected_etag, target_document_id, query_code, submitted,
+                                 legacy_metadata)
         except LibraryError as exc:
             self._fail(import_id, exc)
             raise
@@ -178,13 +224,72 @@ class LocalStore:
             self.reconcile()
         return self._replay(import_id)
 
-    def _publish(self, import_id, data, subject, expected_etag, target_document_id, query_code, submitted):
+    def _convert_legacy(self, data, metadata, target_document_id):
+        """Known engine HTML without a manifest: extract, project and re-render (new stream unless targeted)."""
+        stream = {}
+        if target_document_id:
+            doc = self.get_document(target_document_id)
+            with self._db() as conn:
+                row = conn.execute("SELECT environment FROM documents WHERE document_id=?",
+                                   (target_document_id,)).fetchone()
+            stream = {"document_id": doc["document_id"], "asset_id": doc["publication"]["asset_id"],
+                      "environment": row["environment"]}
+        try:
+            artifact, _ = legacy.convert(data, metadata, **stream)
+            manifest = validate_artifact(artifact, limits=self.limits)
+        except UnsupportedProjection as exc:
+            raise LibraryError("UNSUPPORTED_SAFE_PROJECTION", str(exc), 422) from None
+        except ContractError as exc:
+            raise LibraryError("CONTRACT_INVALID", f"conversion failed: {exc}", 422) from None
+        manifest["projection"]["coverage_warnings"].append(legacy.DETAILS_NOT_KEPT)
+        return manifest
+
+    def preview(self, data: bytes, *, legacy_metadata=None, query_code: str = "withheld") -> dict:
+        """What an import would publish, without writing anything (handoff section 4 import preview)."""
+        try:
+            manifest = validate_artifact(data, limits=self.limits)
+            kind = "envelope"
+        except ContractError as exc:
+            if exc.code != "MANIFEST_MISSING":
+                raise LibraryError("CONTRACT_INVALID", str(exc), 422, {"contract_code": exc.code}) from None
+            try:
+                manifest = self._convert_legacy(data, legacy.parse_metadata(legacy_metadata), None)
+            except ValueError as err:
+                raise LibraryError("INVALID_REQUEST", str(err)) from None
+            kind = "legacy"
+        try:
+            _, stored = reproject(manifest, query_code=query_code)
+        except UnsupportedProjection as exc:
+            raise LibraryError("UNSUPPORTED_SAFE_PROJECTION", str(exc), 422) from None
+        with self._db() as conn:
+            existing = conn.execute("SELECT document_id, etag FROM documents WHERE document_id=?",
+                                    (manifest["document_id"],)).fetchone()
+            duplicate = conn.execute("SELECT document_id, revision_id FROM revisions WHERE "
+                                     "submitted_artifact_sha256=? AND status='committed'", (_sha256(data),)).fetchone()
+        cls = stored["classification"]
+        return {"input": kind, "document_type": stored["document_type"],
+                "document_id": None if kind == "legacy" else stored["document_id"],
+                "outcome": ("duplicate" if duplicate else "new_version" if existing else "new_document"),
+                "duplicate_of": dict(duplicate) if duplicate else None,
+                "title": stored["title"], "description": stored["description"], "tags": stored["tags"],
+                "classification": cls, "generator": stored["generator"], "source": stored["source"],
+                "native_schema": stored["projection"]["native_schema"],
+                "query_code": stored["projection"]["options"]["query_code"],
+                "omissions": stored["projection"]["omissions"],
+                "coverage_warnings": stored["projection"]["coverage_warnings"],
+                "object_count": len(stored["objects"]), "section_count": len(stored["sections"])}
+
+    def _publish(self, import_id, data, subject, expected_etag, target_document_id, query_code, submitted,
+                 legacy_metadata=None):
         try:
             manifest = validate_artifact(data, limits=self.limits)
         except ContractError as exc:
-            raise LibraryError(exc.code if exc.code in ("ARTIFACT_TOO_LARGE",) else "CONTRACT_INVALID",
-                               str(exc), 413 if exc.code == "ARTIFACT_TOO_LARGE" else 422,
-                               {"contract_code": exc.code, "issues": exc.issues[:20]}) from None
+            if exc.code == "MANIFEST_MISSING":
+                manifest = self._convert_legacy(data, legacy_metadata or {}, target_document_id)
+            else:
+                raise LibraryError(exc.code if exc.code in ("ARTIFACT_TOO_LARGE",) else "CONTRACT_INVALID",
+                                   str(exc), 413 if exc.code == "ARTIFACT_TOO_LARGE" else 422,
+                                   {"contract_code": exc.code, "issues": exc.issues[:20]}) from None
         document_id, revision_id = manifest["document_id"], manifest["revision_id"]
         if target_document_id and target_document_id != document_id:
             raise LibraryError("INVALID_REQUEST", "target_document_id does not match the artifact's document_id")
@@ -274,19 +379,23 @@ class LocalStore:
                 seq = conn.execute("UPDATE catalogue_state SET sequence = sequence + 1 WHERE id=1 "
                                    "RETURNING sequence").fetchone()[0]
                 cls, etag = manifest["classification"], uuid.uuid4().hex
-                values = (manifest["title"], manifest["description"], json.dumps(manifest["tags"]),
-                          cls["business_area"], cls["environment"], cls["owner"], rev["revision_id"], now, etag)
+                revision_meta = {"title": manifest["title"], "description": manifest["description"],
+                                 "tags": manifest["tags"], "business_area": cls["business_area"],
+                                 "owner": cls["owner"]}
+                eff = self._effective(conn, rev["document_id"], revision_meta)   # overrides survive new revisions
+                values = (eff["title"], eff["description"], json.dumps(eff["tags"]), eff["business_area"],
+                          cls["environment"], eff["owner"], json.dumps(revision_meta), rev["revision_id"], now, etag)
                 if doc is None:
                     conn.execute("INSERT INTO documents (document_id, document_type, asset_id, environment_key, "
                                  "scope_key, title, description, tags, business_area, environment, owner, "
-                                 "current_revision_id, created_at, updated_at, etag) "
-                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                 "revision_metadata, current_revision_id, created_at, updated_at, etag) "
+                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                  (rev["document_id"], rev["document_type"], pub["asset_id"], pub["environment_key"],
-                                  pub["scope_key"], *values[:7], now, now, etag))
+                                  pub["scope_key"], *values[:8], now, now, etag))
                 else:
                     conn.execute("UPDATE documents SET title=?, description=?, tags=?, business_area=?, "
-                                 "environment=?, owner=?, current_revision_id=?, updated_at=?, etag=? "
-                                 "WHERE document_id=?", (*values, rev["document_id"]))
+                                 "environment=?, owner=?, revision_metadata=?, current_revision_id=?, updated_at=?, "
+                                 "etag=? WHERE document_id=?", (*values, rev["document_id"]))
                 event = conn.execute("INSERT INTO publication_events (catalogue_sequence, kind, document_id, "
                                      "revision_id, stored_artifact_sha256, subject, occurred_at) "
                                      "VALUES (?, 'publish', ?, ?, ?, ?, ?)",
@@ -482,6 +591,84 @@ class LocalStore:
 
     def restore(self, document_id, expected_etag, subject) -> dict:
         return self._set_archived(document_id, expected_etag, subject, False)
+
+    # ---- metadata overrides (A40) ----------------------------------------------
+
+    @staticmethod
+    def _effective(conn, document_id, revision_meta) -> dict:
+        eff = dict(revision_meta)
+        for row in conn.execute("SELECT field, value FROM metadata_overrides WHERE document_id=?", (document_id,)):
+            eff[row["field"]] = json.loads(row["value"])
+        return eff
+
+    def get_metadata(self, document_id) -> dict:
+        """Effective metadata, the current revision's own metadata, and who overrode what."""
+        with self._db() as conn:
+            doc = conn.execute("SELECT * FROM documents WHERE document_id=?", (document_id,)).fetchone()
+            if doc is None:
+                raise not_found("document")
+            rows = conn.execute("SELECT * FROM metadata_overrides WHERE document_id=? ORDER BY field",
+                                (document_id,)).fetchall()
+            seq = conn.execute("SELECT sequence FROM catalogue_state WHERE id=1").fetchone()[0]
+        revision_meta = json.loads(doc["revision_metadata"])
+        effective = dict(revision_meta)
+        overrides = {}
+        for r in rows:
+            effective[r["field"]] = json.loads(r["value"])
+            overrides[r["field"]] = {"value": effective[r["field"]], "subject": r["subject"], "reason": r["reason"],
+                                     "set_at": r["set_at"], "catalogue_sequence": r["catalogue_sequence"]}
+        return {"document_id": document_id, "revision_id": doc["current_revision_id"], "effective": effective,
+                "revision": revision_meta, "overrides": overrides,
+                "immutable": {"environment": doc["environment"], "environment_key": doc["environment_key"],
+                              "scope_key": doc["scope_key"], "asset_id": doc["asset_id"]},
+                "etag": doc["etag"], "catalogue_sequence": seq}
+
+    def set_metadata(self, document_id, changes: dict, reason, expected_etag, subject) -> dict:
+        """Apply overrides (None removes one). Artifacts are untouched; the sequence advances."""
+        if not expected_etag:
+            raise LibraryError("PRECONDITION_REQUIRED", "If-Match is required", 428)
+        changes = validate_overrides(changes)
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 1000:
+            raise LibraryError("INVALID_REQUEST", "a reason of 1 to 1000 characters is required")
+        with self._db() as conn, self._tx(conn):
+            doc = conn.execute("SELECT * FROM documents WHERE document_id=?", (document_id,)).fetchone()
+            if doc is None:
+                raise not_found("document")
+            if doc["etag"] != expected_etag:
+                raise conflict("REVISION_CONFLICT", "the document changed since it was read", current_etag=doc["etag"])
+            revision_meta = json.loads(doc["revision_metadata"])
+            before = self._effective(conn, document_id, revision_meta)
+            now, etag = self.now(), uuid.uuid4().hex
+            seq = conn.execute("UPDATE catalogue_state SET sequence = sequence + 1 WHERE id=1 "
+                               "RETURNING sequence").fetchone()[0]
+            for field, value in changes.items():
+                if value is None:
+                    conn.execute("DELETE FROM metadata_overrides WHERE document_id=? AND field=?", (document_id, field))
+                else:
+                    conn.execute("INSERT INTO metadata_overrides (document_id, field, value, subject, reason, set_at, "
+                                 "catalogue_sequence) VALUES (?,?,?,?,?,?,?) ON CONFLICT (document_id, field) DO "
+                                 "UPDATE SET value=excluded.value, subject=excluded.subject, reason=excluded.reason, "
+                                 "set_at=excluded.set_at, catalogue_sequence=excluded.catalogue_sequence",
+                                 (document_id, field, json.dumps(value), subject, reason.strip(), now, seq))
+            after = self._effective(conn, document_id, revision_meta)
+            conn.execute("UPDATE documents SET title=?, description=?, tags=?, business_area=?, owner=?, "
+                         "updated_at=?, etag=? WHERE document_id=?",
+                         (after["title"], after["description"], json.dumps(after["tags"]), after["business_area"],
+                          after["owner"], now, etag, document_id))
+            conn.execute("INSERT INTO metadata_audit (catalogue_sequence, document_id, subject, reason, changes, "
+                         "before, after, occurred_at) VALUES (?,?,?,?,?,?,?,?)",
+                         (seq, document_id, subject, reason.strip(), json.dumps(changes), json.dumps(before),
+                          json.dumps(after), now))
+        return self.get_metadata(document_id)
+
+    def metadata_history(self, document_id) -> list[dict]:
+        self.get_document(document_id)
+        with self._db() as conn:
+            rows = conn.execute("SELECT * FROM metadata_audit WHERE document_id=? ORDER BY audit_id",
+                                (document_id,)).fetchall()
+        return [{"catalogue_sequence": r["catalogue_sequence"], "subject": r["subject"], "reason": r["reason"],
+                 "changes": json.loads(r["changes"]), "before": json.loads(r["before"]),
+                 "after": json.loads(r["after"]), "occurred_at": r["occurred_at"]} for r in rows]
 
     # ---- backup -----------------------------------------------------------------
 
