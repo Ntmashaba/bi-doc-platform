@@ -157,11 +157,12 @@ class LocalStore(LocalRepository):
                 raise conflict("REVISION_BYTES_CONFLICT", "a different artifact is already stored for this revision")
         finally:
             tmp.unlink(missing_ok=True)
-        dir_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        if os.name != "nt":                        # make the new directory entry durable (POSIX);
+            dir_fd = os.open(path.parent, os.O_RDONLY)   # Windows cannot open a directory this way,
+            try:                                   # and NTFS journals the link itself
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
 
     # ---- publication ------------------------------------------------------------
 
@@ -423,7 +424,8 @@ class LocalStore(LocalRepository):
             row = conn.execute("SELECT * FROM imports WHERE import_id=?", (import_id,)).fetchone()
         if row is None:
             raise not_found("import")
-        return {"import_id": row["import_id"], "state": row["state"], "document_id": row["document_id"],
+        return {"import_id": row["import_id"], "subject": row["subject"], "state": row["state"],
+                "document_id": row["document_id"],
                 "revision_id": row["revision_id"], "duplicate": row["duplicate_of"] is not None,
                 "catalogue_sequence": row["catalogue_sequence"], "committed_event_id": row["committed_event_id"],
                 "indexing_state": "pending" if row["state"] == "committed" else None,

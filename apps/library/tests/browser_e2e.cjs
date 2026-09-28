@@ -113,6 +113,20 @@ const step = (name) => console.log("  ok " + name);
   assert.strictEqual(await legacyFrame.locator("#det-owner").count(), 0);
   step("legacy import converts; published viewer is read-only (A37)");
 
+  // Downloads: honest unavailable state; publishing tokens: shown once, then revocable (B11).
+  await page.goto(URL + "/#/downloads");
+  await page.getByText("No generator installer is available from this library yet.").waitFor();
+  await page.goto(URL + "/#/tokens");
+  await page.getByLabel("Name").fill("E2E laptop");
+  await page.getByRole("button", { name: "Create token" }).click();
+  const secret = await page.getByLabel("New publishing token").inputValue();
+  assert.match(secret, /^bidocpt_[0-9a-f]{16}_[A-Za-z0-9_-]{43}$/);
+  await page.getByRole("cell", { name: "E2E laptop" }).waitFor();
+  await page.getByRole("button", { name: "Revoke" }).click();
+  await page.getByRole("cell", { name: "revoked" }).waitFor();
+  assert.strictEqual(await page.getByText(secret).count(), 0);            // never shown again
+  step("downloads unavailable state; token shown once and revoked (B11)");
+
   const shellCsp = (await page.request.get(URL + "/")).headers()["content-security-policy"];
   assert.match(shellCsp, /script-src 'self'/);
   assert.deepStrictEqual(failed, []);

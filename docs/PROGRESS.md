@@ -16,7 +16,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
 | B09 | Done on Windows CI (30/30); clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
 | B10 | Done against Azurite (the library serves from Azure storage); live Azure A15 needs authorization | `docs/azure-storage.md`, ADR 0002 |
-| B11–B16 | Not started | |
+| B11 | Done (A36 through a real ingress is part of B13) | `docs/publishing.md` |
+| B12–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -248,5 +249,24 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Tests:** every API-level suite (documents, access modes, search, detected and manual relationships, metadata, legacy import) runs on LocalStore, in-memory Azure and Azurite: 167 library tests pass with Azurite. The CI `azurite` job runs them.
 - **Still open:** live Azure (A15, needs authorization); backup/restore for Azure (B13).
 
+### 2026-09-28 — B10b merged; B11 completed
+- Merged bi-doc-platform #11 at the owner's instruction.
+- **Publishing tokens:**
+  - scoped (`publish` only), 1–30 days, shown once, stored as a SHA-256 hash;
+  - issue, list and revoke through browser identity with CSRF; admin revoke-subject for publisher-role removal;
+  - every action audited; migration 4 locally, and a `tokens` partition on Azure.
+- **`/api/v1/publishing/*`:**
+  - token-only and fail-closed with one generic 401; HTTPS required outside loopback (`X-Forwarded-Proto` only from trusted proxies);
+  - uses the same import path as browser imports; imports are private to the token's subject; safe readback of results;
+  - a token reaches nothing else.
+- **Releases:** admin upload with a server-checked SHA-256, separate approval, immutable versions, integrity-checked download. The library UI gets a Downloads page (with an honest unavailable state) and a Publishing tokens page.
+- **Generator:**
+  - `bidoc connect`, `publish` and `disconnect`; the token goes in Windows Credential Manager (an owner-only file elsewhere);
+  - HTTPS-only URLs, redirects refused, stable idempotency keys with retries;
+  - desktop Library screen and per-item Publish.
+- **Found and fixed:** the generator missed the library's lowercase `etag` header, so new versions were refused with 428. It now reads headers case-insensitively.
+- **Tests:** library publishing suites on all three backends; generator against a real library server; Credential Manager on Windows CI; browser steps for tokens and downloads.
+- **Open:** A36 through an actual ingress (B13, with the templates).
+
 ### Next
-- B11: installer download, publishing credentials and direct publish.
+- B12: ZIP assets and portable offline export.

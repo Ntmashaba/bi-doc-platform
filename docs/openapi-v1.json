@@ -1,6 +1,56 @@
 {
  "components": {
   "schemas": {
+   "Body_add_release_api_v1_releases_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "label": {
+      "default": "development build (unsigned)",
+      "title": "Label",
+      "type": "string"
+     },
+     "platform": {
+      "const": "windows-x64",
+      "default": "windows-x64",
+      "title": "Platform",
+      "type": "string"
+     },
+     "prerequisites": {
+      "default": "[]",
+      "title": "Prerequisites",
+      "type": "string"
+     },
+     "release_notes": {
+      "default": "",
+      "title": "Release Notes",
+      "type": "string"
+     },
+     "sha256": {
+      "title": "Sha256",
+      "type": "string"
+     },
+     "signed": {
+      "default": false,
+      "title": "Signed",
+      "type": "boolean"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "version",
+     "sha256"
+    ],
+    "title": "Body_add_release_api_v1_releases_post",
+    "type": "object"
+   },
    "Body_create_import_api_v1_imports_post": {
     "properties": {
      "file": {
@@ -86,11 +136,51 @@
     "title": "Body_preview_import_api_v1_imports_preview_post",
     "type": "object"
    },
+   "Body_publishing_import_api_v1_publishing_imports_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "description": "Envelope-v1 HTML artifact",
+      "title": "File",
+      "type": "string"
+     },
+     "query_code": {
+      "default": "withheld",
+      "enum": [
+       "withheld",
+       "included"
+      ],
+      "title": "Query Code",
+      "type": "string"
+     },
+     "target_document_id": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Target Document Id"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_publishing_import_api_v1_publishing_imports_post",
+    "type": "object"
+   },
    "Capabilities": {
     "properties": {
      "access_mode": {
       "title": "Access Mode",
       "type": "string"
+     },
+     "can_administer": {
+      "title": "Can Administer",
+      "type": "boolean"
      },
      "can_manage_relationships": {
       "title": "Can Manage Relationships",
@@ -158,6 +248,7 @@
      "installer_available",
      "search_available",
      "can_manage_relationships",
+     "can_administer",
      "relationship_schema_version"
     ],
     "title": "Capabilities",
@@ -788,6 +879,99 @@
     "title": "ImportStatus",
     "type": "object"
    },
+   "IssuedToken": {
+    "properties": {
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "expires_at": {
+      "title": "Expires At",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_used_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Used At"
+     },
+     "revoked_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked At"
+     },
+     "revoked_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked By"
+     },
+     "scopes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+     },
+     "state": {
+      "enum": [
+       "active",
+       "expired",
+       "revoked"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "subject": {
+      "title": "Subject",
+      "type": "string"
+     },
+     "token": {
+      "description": "Shown once. Store it in the generator; the library keeps only a hash",
+      "title": "Token",
+      "type": "string"
+     },
+     "token_id": {
+      "title": "Token Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "token_id",
+     "subject",
+     "label",
+     "scopes",
+     "created_at",
+     "expires_at",
+     "revoked_at",
+     "revoked_by",
+     "last_used_at",
+     "state",
+     "token"
+    ],
+    "title": "IssuedToken",
+    "type": "object"
+   },
    "ManualLink": {
     "properties": {
      "created_at": {
@@ -1318,6 +1502,253 @@
     "title": "Publication",
     "type": "object"
    },
+   "PublishingCapabilities": {
+    "properties": {
+     "limits": {
+      "additionalProperties": true,
+      "title": "Limits",
+      "type": "object"
+     },
+     "manifest_versions": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Manifest Versions",
+      "type": "array"
+     },
+     "query_code_options": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Query Code Options",
+      "type": "array"
+     },
+     "subject": {
+      "title": "Subject",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "version",
+     "manifest_versions",
+     "limits",
+     "query_code_options",
+     "subject"
+    ],
+    "title": "PublishingCapabilities",
+    "type": "object"
+   },
+   "PublishingDocument": {
+    "properties": {
+     "current_revision_id": {
+      "title": "Current Revision Id",
+      "type": "string"
+     },
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "document_type": {
+      "title": "Document Type",
+      "type": "string"
+     },
+     "etag": {
+      "title": "Etag",
+      "type": "string"
+     },
+     "publication": {
+      "additionalProperties": true,
+      "title": "Publication",
+      "type": "object"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "document_id",
+     "document_type",
+     "title",
+     "current_revision_id",
+     "etag",
+     "publication"
+    ],
+    "title": "PublishingDocument",
+    "type": "object"
+   },
+   "PublishingResult": {
+    "properties": {
+     "artifact_sha256": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Artifact Sha256"
+     },
+     "catalogue_sequence": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Catalogue Sequence"
+     },
+     "current_revision_id": {
+      "title": "Current Revision Id",
+      "type": "string"
+     },
+     "document_id": {
+      "title": "Document Id",
+      "type": "string"
+     },
+     "duplicate": {
+      "title": "Duplicate",
+      "type": "boolean"
+     },
+     "import_id": {
+      "title": "Import Id",
+      "type": "string"
+     },
+     "revision_id": {
+      "title": "Revision Id",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "import_id",
+     "document_id",
+     "revision_id",
+     "current_revision_id",
+     "title",
+     "artifact_sha256",
+     "catalogue_sequence",
+     "duplicate"
+    ],
+    "title": "PublishingResult",
+    "type": "object"
+   },
+   "Release": {
+    "properties": {
+     "approved": {
+      "title": "Approved",
+      "type": "boolean"
+     },
+     "approved_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approved At"
+     },
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "download_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Download Url"
+     },
+     "filename": {
+      "title": "Filename",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "platform": {
+      "title": "Platform",
+      "type": "string"
+     },
+     "prerequisites": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Prerequisites",
+      "type": "array"
+     },
+     "release_notes": {
+      "title": "Release Notes",
+      "type": "string"
+     },
+     "sha256": {
+      "title": "Sha256",
+      "type": "string"
+     },
+     "signed": {
+      "title": "Signed",
+      "type": "boolean"
+     },
+     "size_bytes": {
+      "title": "Size Bytes",
+      "type": "integer"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "version",
+     "platform",
+     "filename",
+     "sha256",
+     "size_bytes",
+     "release_notes",
+     "prerequisites",
+     "signed",
+     "label",
+     "created_at",
+     "approved",
+     "approved_at",
+     "download_url"
+    ],
+    "title": "Release",
+    "type": "object"
+   },
+   "ReleaseList": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Release"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "ReleaseList",
+    "type": "object"
+   },
    "Revision": {
     "properties": {
      "artifact_sha256": {
@@ -1625,6 +2056,147 @@
      "view"
     ],
     "title": "SectionTarget",
+    "type": "object"
+   },
+   "SubjectRequest": {
+    "properties": {
+     "subject": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Subject",
+      "type": "string"
+     }
+    },
+    "required": [
+     "subject"
+    ],
+    "title": "SubjectRequest",
+    "type": "object"
+   },
+   "TokenInfo": {
+    "properties": {
+     "created_at": {
+      "title": "Created At",
+      "type": "string"
+     },
+     "expires_at": {
+      "title": "Expires At",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_used_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Used At"
+     },
+     "revoked_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked At"
+     },
+     "revoked_by": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revoked By"
+     },
+     "scopes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+     },
+     "state": {
+      "enum": [
+       "active",
+       "expired",
+       "revoked"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "subject": {
+      "title": "Subject",
+      "type": "string"
+     },
+     "token_id": {
+      "title": "Token Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "token_id",
+     "subject",
+     "label",
+     "scopes",
+     "created_at",
+     "expires_at",
+     "revoked_at",
+     "revoked_by",
+     "last_used_at",
+     "state"
+    ],
+    "title": "TokenInfo",
+    "type": "object"
+   },
+   "TokenList": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/TokenInfo"
+      },
+      "title": "Items",
+      "type": "array"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "TokenList",
+    "type": "object"
+   },
+   "TokenRequest": {
+    "properties": {
+     "expires_in_days": {
+      "maximum": 30.0,
+      "minimum": 1.0,
+      "title": "Expires In Days",
+      "type": "integer"
+     },
+     "label": {
+      "description": "e.g. the machine the generator runs on",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label",
+     "expires_in_days"
+    ],
+    "title": "TokenRequest",
     "type": "object"
    }
   }
@@ -3866,6 +4438,1047 @@
     ]
    }
   },
+  "/api/v1/publish-tokens": {
+   "get": {
+    "operationId": "list_tokens_api_v1_publish_tokens_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "all",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "All",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TokenList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "List Tokens",
+    "tags": [
+     "publishing"
+    ]
+   },
+   "post": {
+    "description": "A publishing token for the desktop generator. The secret is returned once and never stored.",
+    "operationId": "issue_token_api_v1_publish_tokens_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/TokenRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IssuedToken"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Issue Token",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publish-tokens/revoke-subject": {
+   "post": {
+    "description": "Revoke all of a subject's tokens, e.g. when their publisher role is removed.",
+    "operationId": "revoke_subject_api_v1_publish_tokens_revoke_subject_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SubjectRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Revoke Subject",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publish-tokens/{token_id}": {
+   "delete": {
+    "operationId": "revoke_token_api_v1_publish_tokens__token_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "token_id",
+      "required": true,
+      "schema": {
+       "pattern": "^[0-9a-f]{16}$",
+       "title": "Token Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Revoke Token",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publishing/capabilities": {
+   "get": {
+    "operationId": "publishing_capabilities_api_v1_publishing_capabilities_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PublishingCapabilities"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Publishing Capabilities",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publishing/documents/{document_id}": {
+   "get": {
+    "description": "The current ETag of one explicitly requested document, to publish a new version of it.",
+    "operationId": "publishing_document_api_v1_publishing_documents__document_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "document_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Document Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PublishingDocument"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Publishing Document",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publishing/imports": {
+   "post": {
+    "operationId": "publishing_import_api_v1_publishing_imports_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": true,
+      "schema": {
+       "maxLength": 200,
+       "minLength": 1,
+       "title": "Idempotency-Key",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "If-Match",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "If-Match"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_publishing_import_api_v1_publishing_imports_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOutcome"
+        }
+       }
+      },
+      "description": "Duplicate of an earlier import"
+     },
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportOutcome"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "411": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Length Required"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Publishing Import",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publishing/imports/{import_id}": {
+   "get": {
+    "operationId": "publishing_import_status_api_v1_publishing_imports__import_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "import_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Import Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportStatus"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Publishing Import Status",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
+  "/api/v1/publishing/results/{import_id}": {
+   "get": {
+    "description": "Safe readback of an own committed import: what the library now holds.",
+    "operationId": "publishing_result_api_v1_publishing_results__import_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "import_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Import Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PublishingResult"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Publishing Result",
+    "tags": [
+     "publishing"
+    ]
+   }
+  },
   "/api/v1/relationships/manual": {
    "post": {
     "operationId": "create_manual_api_v1_relationships_manual_post",
@@ -4458,6 +6071,227 @@
     ]
    }
   },
+  "/api/v1/releases": {
+   "get": {
+    "description": "Approved releases; administrators also see ones awaiting approval.",
+    "operationId": "list_releases_api_v1_releases_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ReleaseList"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "List Releases",
+    "tags": [
+     "releases"
+    ]
+   },
+   "post": {
+    "operationId": "add_release_api_v1_releases_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_add_release_api_v1_releases_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Release"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "411": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Length Required"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Add Release",
+    "tags": [
+     "releases"
+    ]
+   }
+  },
   "/api/v1/releases/latest": {
    "get": {
     "operationId": "latest_release_api_v1_releases_latest_get",
@@ -4478,7 +6312,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/Release"
+        }
        }
       },
       "description": "Successful Response"
@@ -4565,6 +6401,118 @@
      }
     },
     "summary": "Latest Release",
+    "tags": [
+     "releases"
+    ]
+   }
+  },
+  "/api/v1/releases/{version}/approve": {
+   "post": {
+    "operationId": "approve_release_api_v1_releases__version__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "version",
+      "required": true,
+      "schema": {
+       "title": "Version",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Release"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Approve Release",
     "tags": [
      "releases"
     ]
