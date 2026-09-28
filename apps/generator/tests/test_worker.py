@@ -31,7 +31,9 @@ def project_zip(model_bim: Path, extra=None) -> bytes:
             {"semanticModel": {"path": "Sales.SemanticModel"}}]}))
         zf.writestr("Sales/Sales.SemanticModel/model.bim", model_bim.read_text(encoding="utf-8"))
         for name, data in (extra or {}).items():
-            zf.writestr(name, data)
+            info = zipfile.ZipInfo("placeholder")
+            info.filename = name                          # raw name, even "\\" on Windows
+            zf.writestr(info, data)
     return buf.getvalue()
 
 

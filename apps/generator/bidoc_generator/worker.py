@@ -111,7 +111,8 @@ def extract_project_zip(archive: Path, root: Path) -> Path:
         for info in infos:
             name = info.filename
             parts = PurePosixPath(name).parts
-            if not name or name.startswith("/") or "\\" in name or ":" in name.split("/")[0] \
+            raw = info.orig_filename                     # before Windows turns "\\" into "/"
+            if not name or name.startswith("/") or "\\" in name or "\\" in raw or ":" in name.split("/")[0] \
                     or any(p in ("..", ".") for p in parts):
                 raise ValueError(f"unsafe path in the project ZIP: {name!r}")
             if info.flag_bits & 0x1:
