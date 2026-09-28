@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -60,7 +61,34 @@ class Cli(unittest.TestCase):
         self.assertTrue(report["inputs"]["pbip"]["available"])
         self.assertTrue(report["inputs"]["adf_git"]["available"])
         self.assertFalse(report["inputs"]["pbix"]["available"])          # PBIX never blocks PBIP/ADF (A07)
-        self.assertIn("B08", report["inputs"]["pbix"]["reason"])
+        self.assertIn("pbi-tools not found", report["inputs"]["pbix"]["reason"])
+
+    def test_pbix_without_prerequisites_exits_3(self):                   # A07
+        pbix = self.tmp / "r.pbix"
+        pbix.write_bytes(b"PK")
+        code, _, err = run(["generate", "--engine", "power_bi", "--source", str(pbix), "--kind", "pbix",
+                            "--output-dir", str(self.tmp / "out"), "--pbi-tools", str(self.tmp / "missing.exe")])
+        self.assertEqual(code, 3)
+        self.assertIn("PBIP, model and ADF inputs still work", err)
+
+    def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
+        home = self.tmp / "home"
+        os.environ["BIDOC_HOME"] = str(home)
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        other = adf_factory(self.tmp / "other")
+        code, out, _ = run(["batch", str(self.factory), str(self.tmp / "missing"), str(other),
+                            "--output-dir", str(self.tmp / "out"), "--json"])
+        self.assertEqual(code, 5)
+        batch = json.loads(out)
+        self.assertEqual([i["state"] for i in batch["items"]], ["completed", "failed", "completed"])
+        code, out, _ = run(["history", "--json"])
+        self.assertEqual(json.loads(out)[0]["batch_id"], batch["batch_id"])
+        failed = batch["items"][1]["item_id"]
+        adf_factory(self.tmp / "missing")
+        code, out, _ = run(["retry", failed, "--json"])
+        self.assertEqual((code, json.loads(out)["state"]), (0, "completed"))
+        self.assertEqual(run(["retry", failed])[0], 2)                   # completed items are not retried
+        self.assertEqual(run(["batch", str(self.tmp / "nope"), "--output-dir", str(self.tmp / "o")])[0], 4)
 
 
 if __name__ == "__main__":

@@ -31,8 +31,12 @@ def native_schema(payload) -> str:
     return f"{ENGINE}/{payload.get('schemaVersion')}"
 
 
-def load(source: Path, kind: str, title: str | None = None) -> dict:
-    """Run the engine on a PBIP project, a model (TMDL folder or model.bim) or a PBIR report."""
+def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = None) -> dict:
+    """Run the engine on a PBIP project, a model (TMDL folder or model.bim) or a PBIR report.
+
+    `pbix`: for an extract made from a PBIX, the PBIX itself (the engine reads PBIR report
+    definitions and custom visual names from it, as a zip, without running anything).
+    """
     source = Path(source)
     if not source.exists():
         raise InputError(f"input not found: {source}")
@@ -58,7 +62,7 @@ def load(source: Path, kind: str, title: str | None = None) -> dict:
             with tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp) / source.name
                 shutil.copytree(source, work)
-                model, report = load_extracted(work, work.with_suffix(".pbix"), True)
+                model, report = load_extracted(work, Path(pbix) if pbix else work.with_suffix(".pbix"), True)
             project_title = source.name
         else:
             raise InputError(f"unsupported Power BI input kind {kind!r}; supported: {', '.join(SOURCE_KINDS)}")

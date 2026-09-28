@@ -18,7 +18,7 @@ from . import __version__
 from .build import ADAPTERS, NotPublishable, build_artifact
 from .identity import IdentityDecisionRequired, environment_key, resolve
 
-ENGINE_KINDS = {"power_bi": ("pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
+ENGINE_KINDS = {"power_bi": ("pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
 STAGES = ("validating", "analysing", "rendering", "completed")
 
 
@@ -39,6 +39,7 @@ class GenerateRequest:
     business_area: str = ""
     owner: str = ""
     mapping_dir: str = ""                  # local identity mapping when the source is read-only
+    extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
 
 
 @dataclass
@@ -107,7 +108,14 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
     source = Path(request.source_path)
     try:
         stage("validating")
-        payload = adapter.load(source, request.source_kind, request.title)
+        if request.source_kind == "pbix":
+            # The generator app extracts the PBIX (pbi-tools, child process) first. Identity,
+            # label and hash stay with the PBIX; content comes from its extract.
+            if not request.extracted_path or not source.is_file():
+                raise adapter.InputError("a PBIX input needs the PBIX file and its pbi-tools extract")
+            payload = adapter.load(Path(request.extracted_path), "extracted", request.title or source.stem, pbix=source)
+        else:
+            payload = adapter.load(source, request.source_kind, request.title)
         stage("analysing")
         descriptor, complete, _ = adapter.scope(payload)
         out_dir = Path(request.output_dir)

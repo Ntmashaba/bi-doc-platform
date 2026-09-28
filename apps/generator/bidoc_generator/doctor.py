@@ -59,8 +59,18 @@ def diagnose(pbi_tools: str | None = None) -> dict:
     reasons = [r for r, bad in (("PBIX extraction runs on Windows only", not windows),
                                 ("pbi-tools not found", not tools),
                                 ("Power BI Desktop not found", not desktop)) if bad]
-    # PBIX generation through the platform generator arrives in B08; say so rather than pretend.
-    reasons.append("PBIX generation through bidoc is not implemented yet (planned for B08); "
-                   "use pbi-doc-gen --pbix directly")
-    ready["pbix"] = {"available": False, "reason": "; ".join(reasons)}
-    return {"platform": f"{platform.system()} {platform.release()}", "checks": checks, "inputs": ready}
+    if not pbi_ok:
+        reasons.append("pbi-doc-gen is not installed")
+    ready["pbix"] = {"available": not reasons, "reason": "; ".join(reasons) or None}
+    return {"platform": f"{platform.system()} {platform.release()}", "checks": checks, "inputs": ready,
+            "pbi_tools": tools}
+
+
+def home() -> Path:
+    """Where the generator keeps history, workspaces and identity mappings."""
+    configured = os.environ.get("BIDOC_HOME")
+    if configured:
+        return Path(configured)
+    if platform.system() == "Windows":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "bidoc"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "bidoc"

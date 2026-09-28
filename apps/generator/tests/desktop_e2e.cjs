@@ -1,0 +1,59 @@
+/* Browser acceptance for the generator desktop UI (served without a window).
+   Run through check_desktop_browser.py. Env: APP_URL, FACTORY, PBIX, MISSING, OUT_DIR; CHROMIUM_PATH optional. */
+const { chromium } = require("playwright");
+const assert = require("assert");
+
+const URL = process.env.APP_URL;
+const step = (name) => console.log("  ok " + name);
+
+(async () => {
+  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+  const page = await browser.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text())) errors.push(m.text()); });
+
+  await page.goto(URL + "/#/prerequisites");
+  await page.getByRole("heading", { name: "Prerequisites" }).waitFor();
+  await page.getByText("never need Power BI Desktop or pbi-tools").waitFor();
+  step("prerequisites per input type");
+
+  await page.goto(URL + "/#/");
+  await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
+  await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
+  await page.getByRole("button", { name: "Review inputs" }).click();
+  await page.getByRole("cell", { name: "Data Factory Git folder" }).waitFor();
+  await page.getByText("not found", { exact: true }).waitFor();
+  await page.getByText("PBIX generation is unavailable").waitFor();
+  step("batch review shows each input before anything runs");
+
+  await page.getByRole("button", { name: "Generate 2 of 3" }).click();
+  await page.getByText("Finished: 1 of 3 succeeded.").waitFor({ timeout: 30000 });
+  const states = await page.locator("td.state").allTextContents();
+  assert.deepStrictEqual(states, ["Completed", "Failed", "Failed"]);
+  step("per-item states; one success survives two failures");
+
+  await page.getByRole("button", { name: "Open" }).click();
+  const frame = page.frameLocator("iframe.preview-frame");
+  await frame.locator("h1").first().waitFor({ timeout: 10000 });
+  assert.ok(await frame.getByText("Loads daily sales.").count() > 0);
+  const sandbox = await page.locator("iframe.preview-frame").getAttribute("sandbox");
+  assert.strictEqual(sandbox, "allow-scripts");
+  const reachParent = await page.frames()[1].evaluate(() => { try { return String(window.parent.document.title); } catch (e) { return "blocked"; } });
+  assert.strictEqual(reachParent, "blocked");
+  step("document opens in an isolated preview");
+
+  // Fix the missing input, then retry only that item.
+  require("fs").cpSync(process.env.FACTORY, process.env.MISSING, { recursive: true });
+  await page.locator("tr", { hasText: "missing-factory" }).getByRole("button", { name: "Retry" }).click();
+  await page.getByText("Finished: 2 of 3 succeeded.").waitFor({ timeout: 30000 });
+  step("failed item retried on its own");
+
+  await page.getByRole("link", { name: "History" }).first().click();
+  await page.getByText("2 of 3 succeeded").waitFor();
+  step("history lists the batch");
+
+  assert.deepStrictEqual(errors, []);
+  step("no console errors");
+  await browser.close();
+})().catch((e) => { console.error(e); process.exit(1); });
