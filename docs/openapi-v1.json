@@ -221,6 +221,15 @@
       "title": "Search Available",
       "type": "boolean"
      },
+     "search_mode": {
+      "description": "client: download /search-index and search in the browser; server: the index is too large, so load /search-index?sections=false for the catalogue and query /search",
+      "enum": [
+       "client",
+       "server"
+      ],
+      "title": "Search Mode",
+      "type": "string"
+     },
      "version": {
       "title": "Version",
       "type": "string"
@@ -247,6 +256,7 @@
      "worker_status",
      "installer_available",
      "search_available",
+     "search_mode",
      "can_manage_relationships",
      "can_administer",
      "relationship_schema_version"
@@ -2009,11 +2019,17 @@
      "state": {
       "title": "State",
       "type": "string"
+     },
+     "total": {
+      "description": "all matches; items holds the first `limit`",
+      "title": "Total",
+      "type": "integer"
      }
     },
     "required": [
      "generation",
      "state",
+     "total",
      "items"
     ],
     "title": "SearchResults",
@@ -6631,6 +6647,7 @@
   },
   "/api/v1/search": {
    "get": {
+    "description": "The same matching and ranking as the browser search (search semantics v1).",
     "operationId": "search_api_v1_search_get",
     "parameters": [
      {
@@ -6740,7 +6757,7 @@
       "required": false,
       "schema": {
        "default": 50,
-       "maximum": 200,
+       "maximum": 500,
        "minimum": 1,
        "title": "Limit",
        "type": "integer"
@@ -6847,7 +6864,20 @@
   },
   "/api/v1/search-index": {
    "get": {
+    "description": "The whole search index, or with `sections=false` only the catalogue fields (server search mode).",
     "operationId": "search_index_api_v1_search_index_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "sections",
+      "required": false,
+      "schema": {
+       "default": true,
+       "title": "Sections",
+       "type": "boolean"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {

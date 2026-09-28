@@ -34,6 +34,23 @@ const step = (name) => console.log("  ok " + name);
   await page.getByText("No matching results").waitFor();
   step("browse, filter and search");
 
+  // Server search mode (A41): a library whose index is too large for the browser.
+  const serverCalls = [];
+  const ctx2 = await browser.newContext();
+  const p2 = await ctx2.newPage();
+  await p2.route("**/api/v1/capabilities", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), search_mode: "server" } });
+  });
+  p2.on("request", (r) => { const u = new globalThis.URL(r.url()); if (u.pathname.startsWith("/api/v1/search")) serverCalls.push(u.pathname + u.search); });
+  await p2.goto(URL + "/#/?q=copy%20daily");
+  await p2.locator("ol.hits > li").first().waitFor();
+  assert.match(await p2.locator("ol.hits > li").first().innerText(), /Copy daily/);
+  assert.ok(serverCalls.some((c) => c.startsWith("/api/v1/search-index?sections=false")), serverCalls.join());
+  assert.ok(serverCalls.some((c) => c.startsWith("/api/v1/search?")), serverCalls.join());
+  await ctx2.close();
+  step("server search mode gives the same hits");
+
   // Power BI viewer: upstream producer, exact (A20)
   const pbiRev = await page.evaluate(async (id) => (await (await fetch(`/api/v1/documents/${id}`)).json()).current_revision_id, process.env.PBI_DOC);
   await page.goto(`${URL}/#/view/${process.env.PBI_DOC}/${pbiRev}`);

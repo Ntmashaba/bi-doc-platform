@@ -17,12 +17,16 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
 | `AZURE_STORAGE_CONNECTION_STRING` | — | `azure` with a connection string instead (Azurite, development). Give either this or both endpoints |
 | `AZURE_STORAGE_TABLE`, `AZURE_STORAGE_CONTAINER` | `bidoc`, `bidoc` | created if missing |
 | `LOCAL_DATA_DIR` | `bidoc-data` | persistent local disk; one library process per folder |
-| `AUTH_MODE` | `local` | `local` or `gateway`; `entra` is refused until B13. There is never an unauthenticated fallback |
+| `AUTH_MODE` | `local` | `local`, `gateway` or `entra`. There is never an unauthenticated fallback |
 | `BIND_HOST`, `PORT` | `127.0.0.1`, `8765` | local mode refuses any non-loopback address |
-| `GATEWAY_TRUSTED_PROXIES` | — | required in gateway mode: ingress addresses/CIDRs allowed to assert identity |
+| `GATEWAY_TRUSTED_PROXIES` | — | required in gateway and entra modes: addresses/CIDRs allowed to assert identity |
+| `ENTRA_TENANT_ID` | — | required in entra mode: the directory ID; sign-ins from other tenants get `401` |
+| `ENTRA_ROLE_MAP` | `BiDoc.Viewer=viewer,BiDoc.Publisher=publisher,BiDoc.Admin=admin` | Entra app role values to library roles |
+| `ENTRA_DEFAULT_ROLES` | — | roles for a signed-in user with no app role; empty means `403` |
 | `GATEWAY_SUBJECT_HEADER`, `GATEWAY_ROLES_HEADER`, `GATEWAY_DEFAULT_ROLES` | `X-Forwarded-User`, `X-Forwarded-Roles`, `viewer` | roles are `viewer`, `publisher`, `admin` |
 | `MAX_HTML_BYTES`, `MAX_MANIFEST_BYTES` | 25 MiB, 16 MiB | pilot defaults |
 | `MAX_ZIP_BYTES` | 100 MiB | ZIP profile uploads (see `docs/contracts/envelope-v1.md`) |
+| `CLIENT_SEARCH_INDEX_BYTES` | 8 MiB | above this, browsers use server search (`docs/performance.md`) |
 | `ALLOWED_HOSTS` | — | extra Host values accepted in local mode |
 
 ## Access
@@ -32,6 +36,7 @@ LOCAL_DATA_DIR=./bidoc-data python -m bidoc_library          # http://127.0.0.1:
   - A cross-site `Origin` is refused.
   - Changes need `X-Bidoc-Session: <LOCAL_DATA_DIR/session-secret>` and `X-Requested-With: bidoc`.
 - **gateway:** identity headers are trusted only from `GATEWAY_TRUSTED_PROXIES`; anything else gets `401`. Changes need `X-Requested-With: bidoc`, which a cross-site form or simple request cannot send.
+- **entra:** Azure Container Apps or App Service built-in authentication signs the user in, and the library reads the validated `X-MS-CLIENT-PRINCIPAL`, only from `GATEWAY_TRUSTED_PROXIES` and only for `ENTRA_TENANT_ID`. The subject is the Entra object ID. Changes need `X-Requested-With: bidoc`. See `docs/azure-deployment.md`.
 - **Errors:** `401` means missing or invalid identity; `403` means insufficient role. Archived documents are visible only to publishers.
 
 ## Routes

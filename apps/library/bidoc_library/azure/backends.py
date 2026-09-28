@@ -49,6 +49,12 @@ class MemoryTables:
             keys = sorted(k for k in self._rows if k[0] == partition and k[1].startswith(prefix))
             return [copy.deepcopy(self._rows[k]) for k in keys]
 
+    def scan(self):
+        """Every entity in every partition (backup only)."""
+        with self._lock:
+            self.calls += 1
+            return [copy.deepcopy(self._rows[k]) for k in sorted(self._rows)]
+
     def transact(self, partition: str, ops: list) -> None:
         if not 0 < len(ops) <= MAX_BATCH:
             raise ValueError("a transaction holds 1 to 100 operations")
@@ -134,6 +140,12 @@ class AzureTables:
             params.update(lo=prefix, hi=prefix + "￿")
         return sorted((self._plain(e) for e in self._client.query_entities(f, parameters=params)),
                       key=lambda e: e["RowKey"])
+
+    def scan(self):
+        """Every entity in every partition (backup only)."""
+        self.calls += 1
+        return sorted((self._plain(e) for e in self._client.list_entities()),
+                      key=lambda e: (e["PartitionKey"], e["RowKey"]))
 
     def transact(self, partition, ops):
         from azure.core.exceptions import HttpResponseError, ResourceExistsError, ResourceModifiedError  # noqa: PLC0415
