@@ -79,6 +79,17 @@ def _parser():
     c.add_argument("--pbi-tools", help="path to pbi-tools.exe; an empty value removes it")
     c.add_argument("--json", action="store_true")
 
+    ex = sub.add_parser("export-library", help="write a portable offline library (opens from file://)",
+                        description="Re-renders the given documents with the trusted engines and writes a folder with "
+                                    "index.html (catalogue, search, viewer and related-object links). It works with "
+                                    "the network off and never changes by itself; run it again to refresh it.")
+    ex.add_argument("output_dir")
+    ex.add_argument("inputs", nargs="+", metavar="INPUT", help="generated .html documents, or folders of them")
+    ex.add_argument("--only", action="append", metavar="DOCUMENT_ID",
+                    help="export only these documents; links to the others show as Not included")
+    ex.add_argument("--title", default="BI documentation")
+    ex.add_argument("--json", action="store_true")
+
     cn = sub.add_parser("connect", help="connect to a library for direct publishing",
                         description="Checks the library and stores its URL in config.json and the publishing token "
                                     "in Windows Credential Manager (elsewhere: a file only you can read). Create the "
@@ -381,6 +392,23 @@ def _publish(args) -> int:
     return EXIT_PARTIAL if failures < len(args.files) else EXIT_FAILED
 
 
+def _export(args) -> int:
+    from .export import ExportError, export_library  # noqa: PLC0415
+    try:
+        meta = export_library(args.inputs, args.output_dir, only=args.only, title=args.title)
+    except ExportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    if args.json:
+        print(json.dumps(meta, indent=1))
+    else:
+        print(f"Wrote {Path(args.output_dir) / 'index.html'}: {len(meta['documents'])} document(s), "
+              f"{meta['relationships']} link(s).")
+        for w in meta["warnings"]:
+            print(f"  warning: {w}", file=sys.stderr)
+    return EXIT_OK
+
+
 def _desktop(args) -> int:
     from .desktop.app import run  # noqa: PLC0415
     return run(pbi_tools=args.pbi_tools, window=not args.no_window, port=args.port)
@@ -390,7 +418,7 @@ def main(argv=None) -> int:
     args = _parser().parse_args(argv)
     return {"doctor": _doctor, "generate": _generate, "batch": _batch, "history": _history,
             "retry": _retry, "config": _config, "connect": _connect, "disconnect": _disconnect,
-            "publish": _publish, "desktop": _desktop}[args.command](args)
+            "publish": _publish, "export-library": _export, "desktop": _desktop}[args.command](args)
 
 
 if __name__ == "__main__":

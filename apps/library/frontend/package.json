@@ -3,8 +3,8 @@
   "private": true,
   "description": "Library shell (TypeScript). Build output is committed to ../bidoc_library/static; production needs no Node.",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.offline.json",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.offline.json --noEmit"
   },
   "devDependencies": {
     "typescript": "5.9.3",

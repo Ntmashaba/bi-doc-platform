@@ -25,6 +25,7 @@ bidoc = "bidoc_generator.cli:main"
 packages = ["bidoc_generator", "bidoc_generator.desktop"]
 
 [tool.setuptools.package-data]
+"bidoc_generator" = ["offline_static/*"]
 "bidoc_generator.desktop" = ["static/*"]
 
 [tool.setuptools.dynamic]

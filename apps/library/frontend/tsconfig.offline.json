@@ -11,15 +11,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "outDir": "../bidoc_library/static",
+    "outDir": "../../generator/bidoc_generator/offline_static",
     "rootDir": "src",
     "newLine": "lf",
     "removeComments": false
   },
   "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "src/offline.ts"
+    "src/offline.ts",
+    "src/search.ts",
+    "src/protocol.ts"
   ]
 }

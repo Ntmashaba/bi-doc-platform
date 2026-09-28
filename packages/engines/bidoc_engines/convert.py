@@ -49,3 +49,27 @@ def reproject(manifest: dict, *, query_code: str = "withheld"):
                     "options": {"query_code": query_code}, "omissions": omissions,
                     "coverage_warnings": submitted["coverage_warnings"] + ([trimmed] if trimmed else [])})
     return assemble(adapter.render(data), stored, adapter.VIEW_IDS), stored
+
+
+def rerender(manifest: dict, *, read_only: bool = True):
+    """Re-render an artifact with the trusted renderer, keeping its projection and identity.
+
+    Used for portable exports: the output never carries a copied script, only the engine's
+    own code over the (already validated) native payload. `read_only` shows metadata as
+    text, as in the library.
+    """
+    document_type = manifest["document_type"]
+    adapter = ADAPTERS[document_type]
+    native = manifest["projection"]["native_schema"]
+    if native not in SUPPORTED_NATIVE_SCHEMAS[document_type]:
+        raise UnsupportedProjection(f"no trusted renderer for native schema {native!r}")
+    descriptor = manifest["publication"]["scope_descriptor"]
+    coverage = "selection" if descriptor.get("kind") == "selection" else "complete"
+    data = dict(manifest["native_payload"]["data"], title=manifest["title"], published=read_only)
+    objects, sections, targets = adapter.describe(data, coverage)
+    sections, _ = fit_sections(sections)
+    stored = copy.deepcopy(manifest)
+    stored.pop("assets", None)
+    stored.update(native_payload=dict(manifest["native_payload"], data=data), objects=objects, sections=sections,
+                  navigation={"targets": targets}, identity_version=adapter.IDENTITY_VERSION, content_sha256="0" * 64)
+    return assemble(adapter.render(data), stored, adapter.VIEW_IDS), stored
