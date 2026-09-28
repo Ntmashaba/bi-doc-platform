@@ -3,3 +3,4 @@
 -e packages/contracts[dev]
 -e packages/engines
 -e apps/generator
+-e apps/library

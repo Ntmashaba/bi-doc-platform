@@ -22,7 +22,7 @@ jobs:
       - name: Unit and end-to-end tests (no skips allowed)
         shell: bash  # implies -o pipefail, so a failing suite fails the step
         run: |
-          for suite in packages/contracts packages/engines apps/generator; do
+          for suite in packages/contracts packages/engines apps/generator apps/library; do
             (cd "$suite" && python -m unittest discover -s tests -v) 2>&1 | tee -a test.log
           done
           if grep -q "skipped" test.log; then echo "::error::tests were skipped"; exit 1; fi
