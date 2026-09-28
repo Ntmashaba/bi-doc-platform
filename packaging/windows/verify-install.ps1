@@ -50,8 +50,11 @@ Write-Host "Working in $Work"
 # ---- a shell without Python ----------------------------------------------------------
 $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
 foreach ($v in "PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "BIDOC_HOME", "BIDOC_PBI_TOOLS") { Remove-Item "env:$v" -ErrorAction SilentlyContinue }
-$pythonOnPath = [bool](Get-Command python, python3, py -ErrorAction SilentlyContinue)
-Check "no Python on PATH" (-not $pythonOnPath)
+$pythonOnPath = [bool](Get-Command python, python3 -ErrorAction SilentlyContinue)
+# The py.exe launcher lives in the Windows folder, which PATH must keep; it only finds
+# installed Pythons, so it is reported rather than failed.
+$pyLauncher = [bool](Get-Command py -ErrorAction SilentlyContinue)
+Check "no Python on PATH" (-not $pythonOnPath) $(if ($pyLauncher) { "py.exe launcher present in the Windows folder" } else { "" })
 $pythonOnDisk = (Test-Path "C:\hostedtoolcache\windows\Python") -or (Test-Path "$env:LOCALAPPDATA\Programs\Python")
 $os = (Get-CimInstance Win32_OperatingSystem)
 
@@ -149,7 +152,7 @@ Check "uninstall keeps generated documentation" ((@(Get-ChildItem $out -Filter *
 $failed = @($checks | Where-Object { -not $_.ok })
 [ordered]@{
   machine = [ordered]@{ os = $os.Caption; version = $os.Version; build = $os.BuildNumber
-                        python_on_path = $pythonOnPath; python_on_disk = $pythonOnDisk
+                        python_on_path = $pythonOnPath; py_launcher = $pyLauncher; python_on_disk = $pythonOnDisk
                         clean_machine = (-not $pythonOnDisk) }
   installer = Split-Path $Installer -Leaf; upgrade_installer = $(if ($UpgradeInstaller) { Split-Path $UpgradeInstaller -Leaf } else { $null })
   passed = ($failed.Count -eq 0); checks = $checks
