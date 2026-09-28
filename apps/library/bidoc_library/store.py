@@ -157,11 +157,12 @@ class LocalStore(LocalRepository):
                 raise conflict("REVISION_BYTES_CONFLICT", "a different artifact is already stored for this revision")
         finally:
             tmp.unlink(missing_ok=True)
-        dir_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        if os.name != "nt":                        # make the new directory entry durable (POSIX);
+            dir_fd = os.open(path.parent, os.O_RDONLY)   # Windows cannot open a directory this way,
+            try:                                   # and NTFS journals the link itself
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
 
     # ---- publication ------------------------------------------------------------
 
