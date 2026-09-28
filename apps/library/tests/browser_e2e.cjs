@@ -90,17 +90,32 @@ const step = (name) => console.log("  ok " + name);
   // Import with preview (publisher), then open the result
   await page.goto(URL + "/#/import");
   await page.getByLabel("Generated document (HTML)").setInputFiles(process.env.IMPORT_FILE);
-  await page.getByText("New document").waitFor();
+  await page.getByText("New document", { exact: true }).waitFor();
   assert.strictEqual(await page.getByLabel("Include query code (M and SQL) in the shared library").isChecked(), false);
   await page.getByRole("button", { name: "Publish" }).click();
   await page.getByRole("link", { name: "Open it" }).click();
   await page.getByRole("complementary", { name: "Related documentation" }).waitFor();
   step("import with preview and open");
 
+  // A legacy document (no manifest) is converted; its published viewer is read-only (A37).
+  await page.goto(URL + "/#/import");
+  await page.getByLabel("Generated document (HTML)").setInputFiles(process.env.LEGACY_FILE);
+  await page.getByText("Older document (adf-doc-gen/2), converted").waitFor();
+  await page.getByLabel("Title").fill("Legacy factory");
+  await page.getByLabel("Title").dispatchEvent("change");
+  await page.locator("#import-preview dd", { hasText: "Legacy factory" }).waitFor();
+  await page.getByRole("button", { name: "Publish" }).click();
+  await page.getByRole("link", { name: "Open it" }).click();
+  const legacyFrame = page.frameLocator("iframe");
+  await legacyFrame.getByText("Factory details", { exact: true }).first().click();
+  await legacyFrame.getByText("This is a published, read-only copy.", { exact: false }).waitFor({ timeout: 10000 });
+  assert.strictEqual(await legacyFrame.getByRole("button", { name: "Download updated HTML" }).count(), 0);
+  assert.strictEqual(await legacyFrame.locator("#det-owner").count(), 0);
+  step("legacy import converts; published viewer is read-only (A37)");
+
   const shellCsp = (await page.request.get(URL + "/")).headers()["content-security-policy"];
   assert.match(shellCsp, /script-src 'self'/);
-  // The only failing request is the import preview asking whether the new document exists.
-  assert.deepStrictEqual(failed.filter((f) => !/^404 \/api\/v1\/documents\/[0-9a-f-]{36}$/.test(f)), []);
+  assert.deepStrictEqual(failed, []);
   // Only the isolation probe's own blocked attempts may appear.
   assert.deepStrictEqual(errors.filter((e) => !/Content Security Policy|Unsafe attempt to initiate navigation/.test(e)), []);
   step("no unexpected console errors");

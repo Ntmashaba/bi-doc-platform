@@ -5,9 +5,22 @@
     "properties": {
      "file": {
       "contentMediaType": "application/octet-stream",
-      "description": "Envelope-v1 HTML artifact",
+      "description": "Envelope-v1 HTML artifact, or known legacy engine HTML to convert",
       "title": "File",
       "type": "string"
+     },
+     "legacy_metadata": {
+      "anyOf": [
+       {
+        "maxLength": 10000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "JSON object with any of title, description, tags, business_area, environment, owner; used only when the file is legacy engine HTML without a manifest",
+      "title": "Legacy Metadata"
      },
      "query_code": {
       "default": "withheld",
@@ -35,6 +48,42 @@
      "file"
     ],
     "title": "Body_create_import_api_v1_imports_post",
+    "type": "object"
+   },
+   "Body_preview_import_api_v1_imports_preview_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "legacy_metadata": {
+      "anyOf": [
+       {
+        "maxLength": 10000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "JSON object with any of title, description, tags, business_area, environment, owner; used only when the file is legacy engine HTML without a manifest",
+      "title": "Legacy Metadata"
+     },
+     "query_code": {
+      "default": "withheld",
+      "enum": [
+       "withheld",
+       "included"
+      ],
+      "title": "Query Code",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_preview_import_api_v1_imports_preview_post",
     "type": "object"
    },
    "Capabilities": {
@@ -473,6 +522,151 @@
      "indexing_state"
     ],
     "title": "ImportOutcome",
+    "type": "object"
+   },
+   "ImportPreview": {
+    "properties": {
+     "classification": {
+      "$ref": "#/components/schemas/Classification"
+     },
+     "coverage_warnings": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Coverage Warnings",
+      "type": "array"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "document_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "null for legacy input: a new stream identity is assigned",
+      "title": "Document Id"
+     },
+     "document_type": {
+      "enum": [
+       "power_bi",
+       "adf"
+      ],
+      "title": "Document Type",
+      "type": "string"
+     },
+     "duplicate_of": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Duplicate Of"
+     },
+     "generator": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "title": "Generator",
+      "type": "object"
+     },
+     "input": {
+      "enum": [
+       "envelope",
+       "legacy"
+      ],
+      "title": "Input",
+      "type": "string"
+     },
+     "native_schema": {
+      "title": "Native Schema",
+      "type": "string"
+     },
+     "object_count": {
+      "title": "Object Count",
+      "type": "integer"
+     },
+     "omissions": {
+      "items": {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "title": "Omissions",
+      "type": "array"
+     },
+     "outcome": {
+      "enum": [
+       "new_document",
+       "new_version",
+       "duplicate"
+      ],
+      "title": "Outcome",
+      "type": "string"
+     },
+     "query_code": {
+      "enum": [
+       "withheld",
+       "included"
+      ],
+      "title": "Query Code",
+      "type": "string"
+     },
+     "section_count": {
+      "title": "Section Count",
+      "type": "integer"
+     },
+     "source": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "title": "Source",
+      "type": "object"
+     },
+     "tags": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "input",
+     "document_type",
+     "document_id",
+     "outcome",
+     "duplicate_of",
+     "title",
+     "description",
+     "tags",
+     "classification",
+     "generator",
+     "source",
+     "native_schema",
+     "query_code",
+     "omissions",
+     "coverage_warnings",
+     "object_count",
+     "section_count"
+    ],
+    "title": "ImportPreview",
     "type": "object"
    },
    "ImportStatus": {
@@ -3432,6 +3626,128 @@
      }
     },
     "summary": "Create Import",
+    "tags": [
+     "imports"
+    ]
+   }
+  },
+  "/api/v1/imports/preview": {
+   "post": {
+    "description": "Detected identity, title, outcome and projection omissions; nothing is stored.",
+    "operationId": "preview_import_api_v1_imports_preview_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_preview_import_api_v1_imports_preview_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportPreview"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unauthorized"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Forbidden"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "411": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Length Required"
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Request Entity Too Large"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Unprocessable Entity"
+     },
+     "428": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorResponse"
+        }
+       }
+      },
+      "description": "Precondition Required"
+     }
+    },
+    "summary": "Preview Import",
     "tags": [
      "imports"
     ]

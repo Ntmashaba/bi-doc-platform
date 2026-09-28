@@ -49,6 +49,9 @@ def main():
         pbi = store.publish(build("power_bi", pbi_model(tmp / "pbi"), "bim", "Sales report").read_bytes(),
                             subject="setup", idempotency_key="pbi")
         extra = build("adf", adf_factory(tmp / "other"), "adf_git", "Another factory")
+        from bidoc_engines import adf as adf_engine        # an older document: engine HTML, no manifest
+        old = tmp / "old-factory.html"
+        old.write_text(adf_engine.render(adf_engine.load(adf_factory(tmp / "old"), "adf_git")), encoding="utf-8")
         server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
@@ -59,7 +62,7 @@ def main():
             except OSError:
                 time.sleep(0.1)
         env = dict(os.environ, LIB_URL=f"http://127.0.0.1:{port}", PBI_DOC=pbi["document_id"],
-                   ADF_DOC=adf["document_id"], IMPORT_FILE=str(extra),
+                   ADF_DOC=adf["document_id"], IMPORT_FILE=str(extra), LEGACY_FILE=str(old),
                    NODE_PATH=str(ROOT / "apps" / "library" / "frontend" / "node_modules"))
         if Path("/opt/pw-browsers/chromium").exists() and "CHROMIUM_PATH" not in env:
             env["CHROMIUM_PATH"] = "/opt/pw-browsers/chromium"

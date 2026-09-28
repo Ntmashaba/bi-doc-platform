@@ -261,14 +261,12 @@ async function generatorInfo(container: HTMLElement): Promise<void> {
 
 // ---- import -------------------------------------------------------------------------
 
-interface Manifest { document_id: string; revision_id: string; document_type: string; title: string;
-  generated_at: string; projection: { profile: string; options: { query_code: string } }; }
+interface ImportPreview { input: "envelope" | "legacy"; document_type: string; document_id: string | null;
+  outcome: "new_document" | "new_version" | "duplicate"; title: string; native_schema: string; query_code: string;
+  omissions: { path: string; reason: string }[]; coverage_warnings: string[]; object_count: number; section_count: number; }
 
-function readManifest(text: string): Manifest | null {
-  const m = /<script\b[^>]*\bid=["']?pbidoc-manifest["']?[^>]*>([\s\S]*?)<\/script\s*>/i.exec(text);
-  if (!m) return null;
-  try { return JSON.parse(m[1]) as Manifest; } catch { return null; }
-}
+const LEGACY_FIELDS: [string, string][] = [["title", "Title"], ["environment", "Environment (e.g. Production)"],
+  ["business_area", "Business area"], ["owner", "Owner"]];
 
 async function importView(): Promise<void> {
   if (!caps?.can_publish) { mount(h("h1", {}, "Import documentation"), notice("error", "Publisher role required.")); return; }
@@ -276,39 +274,72 @@ async function importView(): Promise<void> {
   const outcome = h("div", { id: "import-outcome", "aria-live": "polite" });
   const includeCode = h("input", { type: "checkbox", id: "include-code" });
   const submit = h("button", { type: "submit", disabled: true }, "Publish");
-  let file: File | null = null, etag: string | null = null, key = "";
-  const input = h("input", { type: "file", id: "file", accept: ".html,text/html", required: true, onchange: async () => {
-    file = input.files?.[0] || null;
-    key = crypto.randomUUID();                            // reused if the same file is retried
-    etag = null;
-    outcome.replaceChildren();
-    preview.replaceChildren();
-    submit.disabled = !file;
+  const legacyInputs = Object.fromEntries(LEGACY_FIELDS.map(([k]) => [k, h("input", { id: `legacy-${k}`, maxlength: "200" })]));
+  const legacyBox = h("fieldset", { id: "legacy-fields", hidden: true },
+    h("legend", {}, "Catalogue details for this older document"),
+    h("p", { class: "muted small" }, "This file has no publication manifest. It was made by a known generator, so the library " +
+      "converts it: query code is withheld, the document is regenerated, and it becomes a new document."),
+    ...LEGACY_FIELDS.map(([k, label]) => h("p", {}, h("label", { for: `legacy-${k}` }, label), legacyInputs[k])));
+  let file: File | null = null, etag: string | null = null, key = "", legacy = false;
+
+  const legacyMetadata = (): string => JSON.stringify(Object.fromEntries(
+    LEGACY_FIELDS.map(([k]) => [k, legacyInputs[k].value.trim()]).filter(([, v]) => v)));
+
+  async function showPreview(): Promise<void> {
     if (!file) return;
-    if (file.size > (caps?.limits.html_bytes || Infinity)) {
-      preview.append(notice("error", "This file is larger than the library accepts."));
+    preview.replaceChildren(notice("info", "Checking…"));
+    etag = null;
+    const body = new FormData();
+    body.append("file", file, file.name);
+    body.append("query_code", includeCode.checked ? "included" : "withheld");
+    if (legacy) body.append("legacy_metadata", legacyMetadata());
+    let p: ImportPreview;
+    try {
+      p = (await api<ImportPreview>("/imports/preview", { method: "POST", body })).data;
+    } catch (e) {
+      preview.replaceChildren(notice("error", errorText(e)));
+      legacyBox.hidden = true;
       submit.disabled = true;
       return;
     }
-    const m = readManifest(await file.text());
-    if (!m) {
-      preview.append(notice("warn", "No publication manifest was found. The library will reject this file; generate it with the platform generator."));
+    legacy = p.input === "legacy";
+    legacyBox.hidden = !legacy;
+    if (p.outcome === "new_version" && p.document_id) {
+      etag = (await api<DocumentRow>(`/documents/${encodeURIComponent(p.document_id)}`)).headers.get("ETag");
+    }
+    const result = { new_document: "New document", new_version: "New version of an existing document",
+      duplicate: "Already published (duplicate)" }[p.outcome];
+    const reasons = new Map<string, number>();
+    for (const o of p.omissions) reasons.set(o.reason, (reasons.get(o.reason) || 0) + 1);
+    preview.replaceChildren(h("dl", { class: "kv" },
+      h("dt", {}, "Title"), h("dd", {}, p.title), h("dt", {}, "Type"), h("dd", {}, TYPE_LABEL[p.document_type] || p.document_type),
+      h("dt", {}, "Input"), h("dd", {}, legacy ? `Older document (${p.native_schema}), converted` : "Generated document"),
+      h("dt", {}, "Result"), h("dd", {}, result),
+      h("dt", {}, "Contents"), h("dd", {}, `${p.object_count} objects, ${p.section_count} sections`),
+      h("dt", {}, "Query code"), h("dd", {}, p.query_code === "included" ? "included" : "withheld"),
+      h("dt", {}, "Removed for sharing"), h("dd", {}, reasons.size
+        ? [...reasons].map(([r, n]) => `${n} × ${r.replace(/_/g, " ")}`).join(", ") : "nothing")),
+      ...p.coverage_warnings.map(w => notice("warn", w)));
+    submit.disabled = false;
+  }
+
+  const input = h("input", { type: "file", id: "file", accept: ".html,text/html", required: true, onchange: async () => {
+    file = input.files?.[0] || null;
+    key = crypto.randomUUID();                            // reused if the same file is retried
+    legacy = false;
+    outcome.replaceChildren();
+    preview.replaceChildren();
+    submit.disabled = true;
+    if (!file) return;
+    if (file.size > (caps?.limits.html_bytes || Infinity)) {
+      preview.append(notice("error", "This file is larger than the library accepts."));
       return;
     }
-    let status = "New document";
-    try {
-      const doc = await api<DocumentRow>(`/documents/${encodeURIComponent(m.document_id)}`);
-      etag = doc.headers.get("ETag");
-      status = doc.data.current_revision_id === m.revision_id ? "Already published (duplicate)" : `New version of “${doc.data.title}”`;
-    } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404)) throw e;
-    }
-    preview.append(h("dl", { class: "kv" },
-      h("dt", {}, "Title"), h("dd", {}, m.title), h("dt", {}, "Type"), h("dd", {}, TYPE_LABEL[m.document_type] || m.document_type),
-      h("dt", {}, "Generated"), h("dd", {}, date(m.generated_at)), h("dt", {}, "Result"), h("dd", {}, status),
-      h("dt", {}, "Query code in file"), h("dd", {}, m.projection.options.query_code === "included"
-        ? "included" : "withheld (cannot be added back here)")));
+    await showPreview();
   } });
+  for (const el of [...Object.values(legacyInputs), includeCode]) {
+    el.addEventListener("change", () => { key = crypto.randomUUID(); void showPreview(); });
+  }
   const form = h("form", { onsubmit: async (e: Event) => {
     e.preventDefault();
     if (!file) return;
@@ -317,6 +348,7 @@ async function importView(): Promise<void> {
     const body = new FormData();
     body.append("file", file, file.name);
     body.append("query_code", includeCode.checked ? "included" : "withheld");
+    if (legacy) body.append("legacy_metadata", legacyMetadata());
     try {
       const r = await api<{ document_id: string; revision_id: string; duplicate: boolean; indexing_state: string }>(
         "/imports", { method: "POST", body, headers: { "Idempotency-Key": key, ...(etag ? { "If-Match": etag } : {}) } });
@@ -330,10 +362,11 @@ async function importView(): Promise<void> {
     }
   } },
     h("p", {}, h("label", { for: "file" }, "Generated document (HTML)"), input),
-    preview,
+    preview, legacyBox,
     h("p", { class: "check" }, includeCode, h("label", { for: "include-code" }, "Include query code (M and SQL) in the shared library")),
     h("p", { class: "muted small" }, "Off by default. When off, query code is removed from the published document and the search index. " +
-      "When on, the code is shared as written: obvious credentials are cleaned, but that cleaning is not a guarantee."),
+      "When on, the code is shared as written: obvious credentials are cleaned, but that cleaning is not a guarantee. " +
+      "Older documents without a manifest always have query code withheld."),
     submit, outcome);
   mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Import documentation"), form);
 }

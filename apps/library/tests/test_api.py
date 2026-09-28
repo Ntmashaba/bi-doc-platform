@@ -131,7 +131,7 @@ class Documents(ApiTest):
     def test_malformed_and_invalid_uploads(self):
         r = self.client.post("/api/v1/imports", files={"file": ("d.html", b"x", "text/html")}, headers=MUTATE)
         self.assertApiError(r, 400, "INVALID_REQUEST")                        # no Idempotency-Key
-        self.assertApiError(self.upload(b"<html>not an artifact</html>"), 422, "CONTRACT_INVALID")
+        self.assertApiError(self.upload(b"<html>not an artifact</html>"), 422, "UNSUPPORTED_SAFE_PROJECTION")
         self.assertApiError(self.upload(self.artifact(), target_document_id="not-a-uuid"), 400, "INVALID_REQUEST")
         self.assertApiError(self.client.get("/api/v1/documents/not-a-uuid"), 400, "INVALID_REQUEST")
         self.assertApiError(self.client.get("/api/v1/documents/00000000-0000-4000-8000-000000000000"), 404,
