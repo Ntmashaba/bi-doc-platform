@@ -39,7 +39,8 @@ class Settings:
 
     def validate(self) -> "Settings":
         if self.data_backend != "local":
-            raise ConfigError("DATA_BACKEND must be 'local' (the Azure backend arrives in B10)")
+            raise ConfigError("DATA_BACKEND must be 'local': the Azure storage adapter exists (B10) but the "
+                              "library serves from it only after B10b")
         if self.auth_mode == "entra":
             raise ConfigError("AUTH_MODE=entra is not available until B13; use local or gateway")
         if self.auth_mode not in ("local", "gateway"):

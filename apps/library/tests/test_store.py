@@ -1,5 +1,6 @@
 """Local catalogue and crash-safe publication (handoff B04; A02, A04, A05, A06, A10, A14, A34)."""
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -34,12 +35,36 @@ def rewrite(artifact: bytes, **changes) -> bytes:
 
 
 class StoreTest(unittest.TestCase):
+    """The store contract. Backend-specific steps are hooks, so the same tests run against
+    LocalStore and AzureStore (in-memory Azure semantics, and Azurite when configured)."""
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.factory = adf_factory(self.tmp / "factory")
-        self.store = LocalStore(self.tmp / "data")
+        self.setup_backend()
+        self.store = self.open_store()
         self.keys = iter(range(10_000))
+
+    # ---- backend hooks (local) --------------------------------------------------
+
+    def setup_backend(self):
+        pass
+
+    def open_store(self, **kw):
+        """Another store instance over the same storage (a restart or a second process)."""
+        return LocalStore(self.tmp / "data", **kw)
+
+    def other_store(self, **kw):
+        """A store over separate, empty storage."""
+        return LocalStore(self.tmp / "other-data", **kw)
+
+    def artifact_count(self) -> int:
+        return len(list((self.tmp / "data" / "artifacts").rglob("*.html")))
+
+    def corrupt(self, out):
+        path = next((self.tmp / "data" / "artifacts").rglob("document.html"))
+        path.write_bytes(path.read_bytes() + b" ")
 
     def generate(self, source=None, **kw) -> bytes:
         r = generate(GenerateRequest(engine="adf", source_path=str(source or self.factory), source_kind="adf_git",
@@ -170,33 +195,33 @@ class Identity(StoreTest):
         self.assertError("CONTRACT_INVALID", self.publish, data.replace(b"Loads daily sales.", b"Loads daily sales!"))
         self.assertError("UNSUPPORTED_SAFE_PROJECTION", self.publish,
                          rewrite(data, projection__native_schema="adf-doc-gen/9"))
-        small = LocalStore(self.tmp / "small", limits=Limits(html_bytes=1000))
+        small = self.other_store(limits=Limits(html_bytes=1000))
         self.assertEqual(self.assertError("PAYLOAD_TOO_LARGE", self.publish, data, store=small).status, 413)
         self.assertEqual(self.store.list_documents()["items"], [])
-        self.assertFalse(any((self.tmp / "data" / "artifacts").rglob("*.html")))
+        self.assertEqual(self.artifact_count(), 0)
 
 
 class CrashRecovery(StoreTest):                                          # A06, A34
     def crash(self, point, data, key="k-crash", **kw):
-        store = LocalStore(self.tmp / "data", faults={point})
+        store = self.open_store(faults={point})
         with self.assertRaises(SimulatedCrash):
             store.publish(data, subject="alice", idempotency_key=key, **kw)
-        return LocalStore(self.tmp / "data", cleanup_grace_seconds=0)   # restart after the grace period
+        return self.open_store(cleanup_grace_seconds=0)                # restart after the grace period
 
     def test_recent_interrupted_work_is_left_alone(self):
         data = self.generate()
-        store = LocalStore(self.tmp / "data", faults={"after_artifact_write"})
+        store = self.open_store(faults={"after_artifact_write"})
         with self.assertRaises(SimulatedCrash):
             store.publish(data, subject="alice", idempotency_key="young")
-        LocalStore(self.tmp / "data")                                    # second process, default grace
-        self.assertTrue(any((self.tmp / "data" / "artifacts").rglob("document.html")))
+        self.open_store()                                                # second process, default grace
+        self.assertEqual(self.artifact_count(), 1)
         self.assertEqual(self.assertError("IMPORT_INCOMPLETE", self.publish, data, key="young").status, 409)
 
     def test_crash_after_artifact_write(self):
         data = self.generate()
         store = self.crash("after_artifact_write", data)
         self.assertEqual(store.list_documents()["items"], [])
-        self.assertFalse(any((self.tmp / "data" / "artifacts").rglob("*.html")))   # orphan removed
+        self.assertEqual(self.artifact_count(), 0)                                 # orphan removed
         self.assertError("IMPORT_INTERRUPTED", self.publish, data, store=store, key="k-crash")
         self.assertEqual(self.publish(data, store=store)["state"], "committed")
 
@@ -221,11 +246,11 @@ class CrashRecovery(StoreTest):                                          # A06, 
         first = self.publish(self.generate())
         etag = self.store.get_document(first["document_id"])["etag"]
         late, winner = self.generate(), self.generate()
-        crashing = LocalStore(self.tmp / "data", faults={"after_prepare"})
+        crashing = self.open_store(faults={"after_prepare"})
         with self.assertRaises(SimulatedCrash):
             crashing.publish(late, subject="alice", idempotency_key="late", expected_etag=etag)
         won = self.publish(winner, expected_etag=etag)                    # same store object: no reconcile
-        store = LocalStore(self.tmp / "data")                             # restart reconciles "late"
+        store = self.open_store()                                         # restart reconciles "late"
         self.assertEqual(store.get_document(first["document_id"])["current_revision_id"], won["revision_id"])
         self.assertError("REVISION_CONFLICT", self.publish, late, store=store, key="late", expected_etag=etag)
         history = [h["revision_id"] for h in store.list_revisions(first["document_id"])["items"]]
@@ -264,6 +289,16 @@ class CatalogueOperations(StoreTest):
         self.assertEqual(seen, [f"Factory {i}" for i in range(5)])
         self.assertError("INVALID_REQUEST", self.store.list_documents, cursor="%%%")
 
+    def test_corrupted_artifact_is_detected(self):
+        out = self.publish(self.generate())
+        self.corrupt(out)
+        self.assertEqual(self.assertError("ARTIFACT_CORRUPT", self.store.read_artifact, out["document_id"],
+                                          out["revision_id"]).status, 500)
+
+
+class LocalOnly(StoreTest):
+    """SQLite schema, migrations and file backup (the Azure backend has its own operations)."""
+
     def test_backup_and_restore(self):                                   # A14
         out = self.publish(self.generate())
         report = self.store.backup(self.tmp / "backup")
@@ -272,13 +307,6 @@ class CatalogueOperations(StoreTest):
         self.assertEqual(restored.get_document(out["document_id"]), self.store.get_document(out["document_id"]))
         self.assertEqual(restored.read_artifact(out["document_id"], out["revision_id"]),
                          self.store.read_artifact(out["document_id"], out["revision_id"]))
-
-    def test_corrupted_artifact_is_detected(self):
-        out = self.publish(self.generate())
-        path = next((self.tmp / "data" / "artifacts").rglob("document.html"))
-        path.write_bytes(path.read_bytes() + b" ")
-        self.assertEqual(self.assertError("ARTIFACT_CORRUPT", self.store.read_artifact, out["document_id"],
-                                          out["revision_id"]).status, 500)
 
     def test_upgrade_from_first_schema(self):
         """A catalogue created by the B04 schema (migration 1) upgrades on open."""
@@ -302,6 +330,66 @@ class CatalogueOperations(StoreTest):
         conn.close()
         with self.assertRaises(RuntimeError):
             LocalStore(self.tmp / "data")
+
+
+
+# ---- the same contract against the Azure backend ---------------------------------------
+
+from bidoc_library.azure import AzureBlobs, AzureStore, AzureTables, MemoryBlobs, MemoryTables  # noqa: E402
+
+CONTRACT = (Publication, Identity, CrashRecovery, CatalogueOperations)
+
+
+class AzureMemoryBackend:
+    """Azure Table/Blob semantics in memory: ETags, create-if-absent, single-partition batches."""
+
+    def setup_backend(self):
+        self.tables, self.blobs = MemoryTables(), MemoryBlobs()
+
+    def open_store(self, **kw):
+        return AzureStore(self.tables, self.blobs, **kw)
+
+    def other_store(self, **kw):
+        return AzureStore(MemoryTables(), MemoryBlobs(), **kw)
+
+    def artifact_count(self):
+        return len(self.blobs.list("artifacts/"))
+
+    def corrupt(self, out):
+        self.blobs.corrupt(AzureStore.artifact_key(out["document_id"], out["revision_id"]))
+
+
+for _case in CONTRACT:
+    globals()["AzureMemory" + _case.__name__] = type("AzureMemory" + _case.__name__, (AzureMemoryBackend, _case), {})
+
+AZURITE = os.environ.get("BIDOC_AZURE_TEST_CONNECTION_STRING")
+if AZURITE:                            # defined only when configured: the tests job forbids skips
+    import uuid  # noqa: E402
+
+    class AzuriteBackend(AzureMemoryBackend):
+        """The real SDKs against Azurite (the storage emulator). Not live Azure (A15)."""
+
+        def setup_backend(self):
+            name = "t" + uuid.uuid4().hex[:20]
+            self.tables = AzureTables.from_connection_string(AZURITE, name)
+            self.blobs = AzureBlobs.from_connection_string(AZURITE, name)
+            self.addCleanup(self._drop, name)
+
+        def other_store(self, **kw):
+            name = "t" + uuid.uuid4().hex[:20]
+            self.addCleanup(self._drop, name)
+            return AzureStore(AzureTables.from_connection_string(AZURITE, name),
+                              AzureBlobs.from_connection_string(AZURITE, name), **kw)
+
+        @staticmethod
+        def _drop(name):
+            from azure.data.tables import TableServiceClient
+            from azure.storage.blob import BlobServiceClient
+            TableServiceClient.from_connection_string(AZURITE).delete_table(name)
+            BlobServiceClient.from_connection_string(AZURITE).delete_container(name)
+
+    for _case in CONTRACT:
+        globals()["Azurite" + _case.__name__] = type("Azurite" + _case.__name__, (AzuriteBackend, _case), {})
 
 
 if __name__ == "__main__":

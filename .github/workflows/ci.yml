@@ -166,3 +166,32 @@ jobs:
             dist/RELEASE-NOTES.md
             dist/verify-report.json
           retention-days: 14
+
+  azurite:
+    # B10: the Azure backend through the real SDKs against Azurite (the storage emulator):
+    # the store contract suite, Table/Blob semantics the design relies on, and the
+    # competing-replicas crash test. Not live Azure; A15 is a separate, authorized run.
+    runs-on: ubuntu-latest
+    env:
+      BIDOC_AZURE_TEST_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite -p 127.0.0.1:10000:10000 -p 127.0.0.1:10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite@sha256:830430c1da1a2d537e08f3e6764dd1f5ae00cf0346bcaf625b968ec3f0971fd5 \
+            azurite --blobHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck --loose
+      - run: python -m pip install -r requirements.txt
+      - name: Store contract, semantics and stress tests against Azurite
+        working-directory: apps/library
+        shell: bash  # implies -o pipefail, so a failing suite fails the step
+        run: |
+          python -m unittest discover -s tests -p test_store.py -v 2>&1 | tee azurite.log
+          python -m unittest discover -s tests -p test_azure_backend.py -v 2>&1 | tee -a azurite.log
+          grep -q "Azurite" azurite.log || { echo "::error::Azurite tests did not run"; exit 1; }
+          if grep -q "skipped" azurite.log; then echo "::error::tests were skipped"; exit 1; fi
+      - name: Storage operations per action
+        run: python apps/library/tests/measure_azure_ops.py

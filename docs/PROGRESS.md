@@ -14,8 +14,9 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B06 | Done | B06a backend (`docs/relationships.md`); B06b shell and viewers (`docs/library-ui.md`) |
 | B07 | Done (R1 gate; A08 → B08, A10 ZIP → B12) | Evidence map: `docs/b07/R1-GATE.md`; Docker: `docs/deployment-docker.md` |
 | B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
-| B09 | Built; CI verification in progress; clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
-| B10–B16 | Not started | |
+| B09 | Done on Windows CI (30/30); clean-machine A13 run waiting on owner | `docs/b09/VERIFICATION.md`; `packaging/windows/` |
+| B10 | B10a done (storage adapter, proofs, ADR 0002); B10b (serve from Azure) next; live Azure A15 needs authorization | `docs/azure-storage.md` |
+| B11–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -220,6 +221,21 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - frozen builds report their bundled Python.
 - **A13 script** `verify-install.ps1`: install → doctor → generate → desktop → upgrade → uninstall, from a shell with no Python on `PATH`; static inputs in `verify-inputs/`. Runs in the new CI job `windows-installer` (0.2.0 → 0.2.1 upgrade).
 
+### 2026-09-28 — B09 merged; B10a (Azure storage adapter) completed
+- **B09 closed:** the first run had 29 of 30 checks pass; the one failure was my script's `py.exe` check, since fixed. The next run passed 30 of 30. Merged bi-doc-platform #9 at the owner's instruction, and recorded the result in `docs/b09/VERIFICATION.md`.
+- **`AzureStore`** (`bidoc_library/azure/`) has the same contract as LocalStore on Table Storage plus Blob:
+  - one commit transaction in the `documents` partition (state and document rows If-Match; stream, event, evrev and docev rows created);
+  - descriptors and blobs are written first; `evrev` is the authoritative commit record used to repair lost import updates;
+  - metadata overrides and archive/restore advance the sequence in the same partition.
+- **Shared admission** (`admission.py`): validation, legacy conversion and re-projection used by both stores.
+- **Evidence:**
+  - the 17-test store contract suite runs against LocalStore, in-memory Azure semantics and Azurite (real SDKs);
+  - semantics tests prove the emulation matches Azurite;
+  - a stress test with 4 racing replicas and random crashes per round (6 rounds in memory, 3 on Azurite) holds every invariant;
+  - all of this runs in the new CI job `azurite`;
+  - the operation counts per action feed the cost worksheet.
+- **ADR 0002:** Table Storage accepted for the pilot (cheapest option that meets the contract; limits recorded).
+- **Not done:** live Azure (A15, needs authorization and a disposable account); serving the library from Azure (B10b).
+
 ### Next
-- Finish B09: first CI run of `windows-installer`, fix anything it finds, record results in `docs/b09/VERIFICATION.md`.
-- Owner: run `verify-install.ps1` on a clean Windows machine (A13) and W2 (real PBIX).
+- B10b: derived snapshots, relationships and manual links on Azure; `DATA_BACKEND=azure` with managed identity; then B11.
