@@ -314,5 +314,31 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - **Found:** a large model is close to the 25 MiB default upload limit; `docs/performance.md` says when to raise it.
 - **Owner steps** (`docs/release-checklist-r2.md`): code signing, W2, clean-machine A13, live Azure A15, deployment and A36 on the client's ingress, first production backup.
 
+### 2026-09-28 — Personal paths in shared output (owner decision)
+- **Owner decision:** keep full paths locally. In shared output, withhold personal
+  locations without merging distinct sources, and keep shared locations and relative
+  repository paths.
+- **Implemented in the shared projection** (`docs/contracts/projection-v1.md`, *Personal
+  paths*):
+  - every string is covered, including code, labels, report location, `pbixSource` and ADF
+    entity keys and endpoints;
+  - each path is replaced with its file name and a stable 12-hex reference;
+  - the endpoint path becomes `withheld:<ref>`, so source IDs are opaque, distinct and
+    stable;
+  - labels read "Budget.xlsx — personal location withheld (ref …)";
+  - relationship rules refuse to match withheld paths.
+- **Tests** (`packages/engines/tests/test_personal_paths.py`):
+  - two `Budget.xlsx` files in different folders stay two sources;
+  - IDs are stable across revisions;
+  - UNC and SharePoint locations are kept;
+  - local output is unchanged;
+  - no relationship comes from a withheld path;
+  - replacements are idempotent.
+- **Real samples:** the 29 Microsoft reports contained personal paths. 112 are now withheld;
+  all real-sample checks still pass.
+- **Effect on existing links:** sources that had a personal path in their ID get a new ID on
+  their next shared publication. Manual links to them show *Needs review*. Nothing has been
+  rolled out to a team yet.
+
 ### Next
 - B14: worker enrollment and protocol, durable job lifecycle (optional R3).
