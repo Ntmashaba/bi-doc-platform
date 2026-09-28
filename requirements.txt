@@ -1,0 +1,5 @@
+# Development install of the platform packages, in dependency order.
+# Engine revisions are pinned in packages/engines/pyproject.toml.
+-e packages/contracts[dev]
+-e packages/engines
+-e apps/generator

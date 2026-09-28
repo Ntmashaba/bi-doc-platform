@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bi-doc-engines"
+dynamic = ["version"]
+description = "Adapters from pbi-doc-gen and adf-doc-gen to BI Documentation Platform envelope-v1 artifacts."
+requires-python = ">=3.11"
+# bi-doc-contracts is a local package: install it from packages/contracts first
+# (requirements.txt does). It is not listed here so pip never looks it up on PyPI.
+dependencies = [
+    # Pinned engine revisions; see docs/PROGRESS.md for the recorded versions.
+    "pbi-doc-gen @ git+https://github.com/Ntmashaba/pbi-doc-gen@b8d1fa1cbad2f32ea0e48ed91203eae404e18468",
+    "adf-doc-gen @ git+https://github.com/Ntmashaba/adf-doc-gen@c5645bfb7dacc6966bae5a88a3544d998a899e76",
+]
+
+[tool.setuptools]
+packages = ["bidoc_engines"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bidoc_engines.__version__" }

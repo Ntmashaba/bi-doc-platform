@@ -149,7 +149,8 @@ class ManifestRuleTests(unittest.TestCase):
 class ScopeTests(unittest.TestCase):
     def test_power_bi_modes(self):
         self.assertEqual(scope_key("power_bi", power_bi_scope("combined")), "model_and_report")
-        self.assertEqual(scope_key("power_bi", power_bi_scope("model")), "model")
+        self.assertEqual(scope_key("power_bi", power_bi_scope("semantic-only")), "model")
+        self.assertEqual(scope_key("power_bi", power_bi_scope("report-only")), "report")
         with self.assertRaises(ScopeError):
             power_bi_scope("partial")
 

@@ -18,8 +18,8 @@ class ScopeError(ValueError):
 
 
 def power_bi_scope(mode: str) -> dict:
-    """pbi-doc-gen payload `mode` (combined/model/report) -> descriptor."""
-    kind = {"combined": "model_and_report", "model": "model", "report": "report"}.get(mode)
+    """pbi-doc-gen payload `mode` (combined / semantic-only / report-only) -> descriptor."""
+    kind = {"combined": "model_and_report", "semantic-only": "model", "report-only": "report"}.get(mode)
     if kind is None:
         raise ScopeError(f"unknown Power BI mode {mode!r}")
     return {"kind": kind}
