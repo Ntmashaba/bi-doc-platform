@@ -1,6 +1,7 @@
 # Development install of the platform packages, in dependency order.
+-c requirements-lock.txt
 # Engine revisions are pinned in packages/engines/pyproject.toml.
 -e packages/contracts[dev]
 -e packages/engines
 -e apps/generator
--e apps/library
+-e apps/library[dev]

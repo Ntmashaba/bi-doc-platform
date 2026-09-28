@@ -10,7 +10,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B02 | Done | Envelope v1, scope keys, projection and identity specs frozen (pre-release): `docs/contracts/` |
 | B03 | Done (PBIX via bidoc deferred to B08) | Engines 0.2.0 fixes; `packages/engines` adapters, projection, identity; `bidoc` CLI; real-input checks in CI |
 | B04 | Done | `apps/library` LocalStore: SQLite catalogue, immutable revisions, crash-safe publication (`docs/library-storage.md`) |
-| B05–B16 | Not started | |
+| B05 | Done | HTTP API v1 (`docs/library-api.md`, `docs/openapi-v1.json`); local and gateway access |
+| B06–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -96,7 +97,23 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - Startup cleanup would have deleted an in-flight publication if a second process opened the same folder. Cleanup now only touches work older than a grace period (1 h default), and a test covers it.
   - A test opening one store per thread exposed that risk. The library runs as one store per process; that rule is documented.
 
+### 2026-09-28 — B04 merged; B05 completed
+- Merged bi-doc-platform #3 at the owner's instruction.
+- **HTTP API v1** (`apps/library/bidoc_library/api.py`, FastAPI):
+  - routes: health, capabilities, documents (list/get/ETag), revisions, download, sandboxed view, imports (multipart, `Idempotency-Key`, `If-Match`, `query_code`), archive/restore, releases (honest 404);
+  - error envelope with request IDs and no leaks; upload limits checked before parsing; committed OpenAPI checked in CI.
+- **Access** (`access.py`), fail-closed:
+  - `local`: loopback only, Host/Origin checks, per-installation session secret and CSRF header for changes;
+  - `gateway`: identity trusted only from configured proxies, roles viewer/publisher/admin, CSRF header for changes;
+  - `entra` and `azure` are refused until B13/B10.
+- **Configuration** (`config.py`) is typed from the environment and refuses unsafe combinations, e.g. local mode on 0.0.0.0.
+- **Locked dependencies:** `requirements-lock.txt` pins every third-party package, and `requirements.txt` uses it as a constraint.
+- **Tests:** library 36 (17 API + 19 store), engines 27, contracts 29, CLI 4, all OK from a clean locked install.
+- **Real server smoke test:** `python -m bidoc_library`, then publish with `curl` (201), read back, foreign Host (403), no secret (401).
+- **Found:** unhandled 500s lacked `X-Request-ID` (answered outside the middleware); fixed and tested.
+- **Deferred with reason:** legacy HTML import (no manifest) → B06/B07; metadata overrides → B06.
+
 ### Next
-- B05: HTTP API v1 over LocalStore (FastAPI): import/read/archive endpoints, OpenAPI, upload limits, idempotency headers, error envelope.
+- B06: mixed-library UI shell, isolated viewers with the navigation protocol, content search (browser index + API), type filters, contextual relationships.
 - Earlier note, now done: engine changes (surface `lineageTag`; keep SQL port/case in ADF `physical_key`; Delete as its own operation; escape `<` in `DATA`);
   shared projection with the *Include query code* option; adapters emitting envelope v1.

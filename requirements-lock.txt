@@ -1,0 +1,27 @@
+# Exact versions of every third-party package (runtime and dev), used as a constraint by
+# requirements.txt. Regenerate from a clean venv: pip install -r requirements.txt && pip freeze
+# (drop the local -e packages and the pinned engines).
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+attrs==26.1.0
+certifi==2026.7.22
+click==8.5.0
+fastapi==0.141.1
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.13.1
+httpx2==2.13.1
+idna==3.20
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+pydantic==2.13.5
+pydantic_core==2.46.5
+python-multipart==0.0.32
+referencing==0.37.0
+rpds-py==2026.6.3
+starlette==1.7.0
+truststore==0.10.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.54.0
