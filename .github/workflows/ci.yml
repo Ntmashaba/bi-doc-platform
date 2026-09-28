@@ -89,6 +89,14 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Browser acceptance
         run: python apps/library/tests/check_browser.py
+      - name: Generator desktop UI compiles to the committed files
+        working-directory: apps/generator/frontend
+        run: |
+          npm ci
+          npx tsc -p tsconfig.json
+          git diff --exit-code -- ../bidoc_generator/desktop/static
+      - name: Generator desktop UI acceptance
+        run: python apps/generator/tests/check_desktop_browser.py
 
   docker:
     # A03: the library image builds from the lock file, runs as non-root, refuses an
@@ -103,3 +111,18 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Container persistence and access checks
         run: python apps/library/tests/check_docker.py bidoc-library
+
+  generator-windows:
+    # B08 on Windows: batch queue, PBIX extraction through a child process, and cancellation
+    # that ends the whole process tree with taskkill /T (a stand-in replaces pbi-tools; real
+    # PBIX extraction with Power BI Desktop is the owner-run W2 check).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements.txt
+      - name: Generator tests
+        working-directory: apps/generator
+        run: python -m unittest discover -s tests -v

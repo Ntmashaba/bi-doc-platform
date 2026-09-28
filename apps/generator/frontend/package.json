@@ -1,0 +1,12 @@
+{
+  "name": "bidoc-generator-desktop",
+  "private": true,
+  "description": "Generator desktop UI (TypeScript). Build output is committed to ../bidoc_generator/desktop/static; the app needs no Node.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

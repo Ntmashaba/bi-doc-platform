@@ -13,7 +13,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 | B05 | Done | HTTP API v1 (`docs/library-api.md`, `docs/openapi-v1.json`); local and gateway access |
 | B06 | Done | B06a backend (`docs/relationships.md`); B06b shell and viewers (`docs/library-ui.md`) |
 | B07 | Done (R1 gate; A08 → B08, A10 ZIP → B12) | Evidence map: `docs/b07/R1-GATE.md`; Docker: `docs/deployment-docker.md` |
-| B08–B16 | Not started | |
+| B08 | Done (real PBIX on Windows is W2, owner-run) | `docs/generator.md`: PBIX extraction, batches, history, desktop app |
+| B09–B16 | Not started | |
 | W1 | Probe passed | Windows CI builds and runs a PyInstaller + pywebview exe. Full packaging of the generator is B09 |
 | W2 | Waiting on owner | Real PBIX extraction on the owner's Windows machine with Power BI Desktop + pbi-tools |
 
@@ -178,7 +179,32 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
   - my first A01 check looked for measure sections in the wrong list.
 - **Gate:** `docs/b07/R1-GATE.md` maps every R1 acceptance ID to its CI evidence.
 
+### 2026-09-28 — B07 merged; B08 completed
+- Merged pbi-doc-gen #5, adf-doc-gen #5 and bi-doc-platform #7 at the owner's instruction. Engines re-pinned to their merge commits before the platform merge; CI green on that head.
+- **PBIX extraction** (`bidoc_generator/extract.py`):
+  - pbi-tools runs as a child process with an argument array, never a shell, in a per-item workspace;
+  - a timeout or a cancellation kills the whole process tree (POSIX process group; `taskkill /T /F` on Windows);
+  - wrappers and pbi-tools.core are refused.
+- **Engine support for PBIX:**
+  - `generate()` takes `source_kind="pbix"` plus the extract; identity, label and hash stay with the PBIX;
+  - the adapter now passes the real PBIX to the engine, so PBIR report definitions and custom visual names are read from it (previously a non-existent path).
+- **Batch runner and history** (`batch.py`, `history.py`):
+  - inputs are recognised by shape, and a lone `.pbip` pointer is refused;
+  - items run one at a time with per-item states, cancel and retry;
+  - SQLite history; items still running at the last exit are marked `interrupted` on the next launch; failed workspaces are kept for 7 days.
+- **CLI:** new `bidoc batch` (exit 5 for a partial failure), `bidoc history`, `bidoc retry`, `bidoc desktop`, and `generate --kind pbix` (exit 3 with a diagnosis when prerequisites are missing).
+- **Desktop app** (`bidoc_generator/desktop`, TypeScript UI):
+  - a loopback FastAPI app with Host/Origin checks, a per-launch session secret and the CSRF header;
+  - screens: start → review → live processing → open/cancel/retry, plus history and prerequisites;
+  - pywebview window with native pickers; previews open in a separate window without the bridge; closing with work running asks first.
+- **Tests:**
+  - a fake pbi-tools (ok, fail, hang, and one that spawns a grandchild process);
+  - A08: three items, one bad, then retry;
+  - A17: cancel kills the grandchild, and the next item runs;
+  - timeout, interrupted items, and A07 (PBIX unavailable while other inputs work);
+  - CLI exit codes; desktop API security; Chromium acceptance of the desktop UI;
+  - new CI job `generator-windows`, which runs the generator suite on Windows, including `taskkill` tree kill.
+- **Not verified here:** real PBIX extraction with Power BI Desktop (W2, owner) and the pywebview window itself (W1 proved pywebview runs; the full installer is B09).
+
 ### Next
-- Engine 0.4.0 PRs merged; engines re-pinned to pbi-doc-gen `aac0a32` and adf-doc-gen `960b4bc`.
-- Then B08 (batch generation, PBIX through pbi-tools; A08).
-- Still open, question to the owner: shared output keeps personal source paths (for example `C:\Users\<name>\...`).
+- B09: Windows installer and clean-machine test.

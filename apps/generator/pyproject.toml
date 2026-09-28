@@ -5,16 +5,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bi-doc-generator"
 dynamic = ["version"]
-description = "BI Documentation Platform generator: command line (desktop shell follows in B08)."
+description = "BI Documentation Platform generator: command line, batch queue, local history and desktop app."
 requires-python = ">=3.11"
 # Local packages bi-doc-contracts and bi-doc-engines are installed first (requirements.txt).
-dependencies = []
+# Exact versions are locked in requirements-lock.txt.
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+# The native window. Without it, `bidoc desktop --no-window` serves the same app on loopback.
+desktop = ["pywebview>=5,<7"]
 
 [project.scripts]
 bidoc = "bidoc_generator.cli:main"
 
 [tool.setuptools]
-packages = ["bidoc_generator"]
+packages = ["bidoc_generator", "bidoc_generator.desktop"]
+
+[tool.setuptools.package-data]
+"bidoc_generator.desktop" = ["static/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "bidoc_generator.__version__" }
