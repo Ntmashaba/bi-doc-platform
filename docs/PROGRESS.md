@@ -436,3 +436,10 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
+
+## Live-connected and DirectQuery reports
+
+- pbi-doc-gen now names the remote model behind a live-connected (thin) report, resolves DirectQuery-to-Analysis-Services tables to their real source, and shows the storage mode per source. The platform pins it at `20dfd59`.
+- The Power BI adapter no longer assumes a PBIX has an embedded model (a thin PBIX used to fail), and a live report's remote model becomes a source object.
+- Tested only on synthetic thin PBIX input here. Still to verify locally with pbi-tools: the DP-500 PBIX samples in pbi-doc-gen `pbix-samples/` (DirectQuery SQL Server, composite, Dual) through the platform.
+- Not found publicly yet: a thin report on Azure/SQL Server Analysis Services; DirectQuery on Snowflake, Databricks, Oracle.
