@@ -4,6 +4,7 @@ import hashlib
 import unittest
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 from starlette.testclient import TestClient
 
@@ -15,6 +16,12 @@ P = "/api/v1/publishing"
 
 
 class Tokens(ApiTest):
+    @staticmethod
+    def secret_of(token):
+        """The random part of `bidocpt_<id>_<secret>`. The secret is URL-safe base64 and can itself contain "_"
+        (even start with it), so split at most twice: `split("_")[2]` is then only its first chunk, or ""."""
+        return token.split("_", 2)[2]
+
     def issue(self, days=7, label="Laptop"):
         r = self.client.post("/api/v1/publish-tokens", json={"label": label, "expires_in_days": days}, headers=MUTATE)
         self.assertEqual(r.status_code, 201, r.text)
@@ -22,6 +29,17 @@ class Tokens(ApiTest):
 
     def bearer(self, token):
         return {"Authorization": f"Bearer {token}"}
+
+    def test_the_check_holds_when_the_secret_starts_with_an_underscore(self):
+        # About 1 token in 64 has a secret that begins with "_". The check above once split on every "_",
+        # got "" for those, and assertNotIn("", ...) always fails: a random ~1.6% failure. Force the case.
+        secret = "_" + "A" * 42
+        with mock.patch("bidoc_library.publishing.secrets.token_urlsafe", return_value=secret):
+            t = self.issue()
+        self.assertEqual(self.secret_of(t["token"]), secret)
+        stored = self.app.state.store.token_get(t["token_id"])
+        self.assertNotIn(secret, repr(stored))
+        self.assertEqual(stored["token_hash"], hashlib.sha256(t["token"].encode()).hexdigest())
 
     def test_token_is_shown_once_and_stored_hashed(self):
         t = self.issue()
@@ -31,7 +49,7 @@ class Tokens(ApiTest):
         self.assertNotIn("token", listed[0])
         stored = self.app.state.store.token_get(t["token_id"])
         self.assertEqual(stored["token_hash"], hashlib.sha256(t["token"].encode()).hexdigest())
-        self.assertNotIn(t["token"].split("_")[2], repr(stored))
+        self.assertNotIn(self.secret_of(t["token"]), repr(stored))
         for days in (0, 31):
             self.assertApiError(self.client.post("/api/v1/publish-tokens", json={"label": "x", "expires_in_days": days},
                                                  headers=MUTATE), 400, "INVALID_REQUEST")
