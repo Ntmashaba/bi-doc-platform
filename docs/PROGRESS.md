@@ -473,6 +473,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Checked on a real 7-table AdventureWorks Tabular backup, and on a thin PBIR report paired with it.
 - Not covered: a matched real thin-report and backup pair (none found publicly), password-protected or multidimensional backups.
 
+### 2026-09-29 — Default PBIX extractor: pbi-tools if it can run, otherwise portable
+
+- `bidoc generate --kind pbix` now has `--backend auto|pbixray|pbi-tools` (default `auto`; `--pbixray` stays as an alias). Auto uses a configured pbi-tools; if none is configured it uses the portable reader; if a pbi-tools is configured but cannot run here (not Windows, no Power BI Desktop) it falls back to the portable reader and prints a note. An explicit `--pbi-tools` path that cannot run, or `--backend pbi-tools` with none available, is an error, never a silent fallback.
+- Batch, the worker, the desktop app and `pbi-doc-gen --pbix` follow the same rule. A machine with pbi-tools configured behaves exactly as before.
+- Behaviour change to be aware of: on a machine with no pbi-tools, PBIX generation now works (approximately) instead of stopping with "PBIX generation is unavailable". Portable output is labelled as such and suppresses deletion recommendations.
+- Checked on the DP-500 composite PBIX on Linux: nothing configured (portable), a configured tool that cannot run (falls back with a note), `--backend pbi-tools` with none (error), an explicit unusable path (error).
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.

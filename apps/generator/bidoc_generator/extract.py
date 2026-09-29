@@ -28,13 +28,16 @@ class ExtractionCancelled(Exception):
 
 
 def check_tool(tool: str | None) -> str:
-    """The configured pbi-tools Desktop executable, "pbixray" for the portable reader, or ExtractionError."""
-    if tool == "pbixray":
+    """The configured pbi-tools Desktop executable, "pbixray" for the portable reader (asked for, or nothing else
+    is configured), or ExtractionError."""
+    if tool in (None, "pbixray"):
+        # No pbi-tools configured (None) or the portable reader asked for by name.
         from pbidocgen.portable import status  # noqa: PLC0415
         state = status()
-        if not state["ok"]:
+        if state["ok"]:
+            return "pbixray"
+        if tool == "pbixray":
             raise ExtractionError("PREREQUISITE_MISSING", state["reason"])
-        return "pbixray"
     if not tool:
         raise ExtractionError("PREREQUISITE_MISSING", "pbi-tools is not configured; run 'bidoc doctor'")
     path = Path(tool)
