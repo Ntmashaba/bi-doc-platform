@@ -473,6 +473,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Checked on a real 7-table AdventureWorks Tabular backup, and on a thin PBIR report paired with it.
 - Not covered: a matched real thin-report and backup pair (none found publicly), password-protected or multidimensional backups.
 
+### 2026-09-29 — Public-sample acceptance
+
+- `python scripts/acceptance.py` fetches a checksum-pinned public corpus (`samples/manifest.json`: three DP-500 PBIX files, AdventureWorks Sales and Internet Sales PBIX, two live-connection PBIX fixtures, Microsoft's AdventureWorks Tabular backup and project, an Azure Data Factory template), generates local and shared documents for 12 cases (24 outputs), and checks each against an explicit question (storage modes, thin-report pages and visuals, the 19-measure backup, partial-coverage warnings, PBIR page order). `scripts/check_sample_html.cjs` opens all 24 in Chromium, switches every available tab and fails on any script error. `python scripts/test.py [--samples]` runs the seven suites, and the acceptance run with `--samples`.
+- New CI job `portable-samples` runs both and uploads the documents as an artifact. Downloads are cached by the manifest's hash.
+- The Tabular backup is genuine; its published model project is used to check measures, columns and roles field by field. The live-connection samples point at a different database than the backup, so the "thin report plus backup" case uses a synthetic report and is labelled as a pairing demonstration, not a discovered pair.
+- Three DP-500 files are fetched from the standalone `pbi-doc-gen` repository at a pinned commit. If that repository is ever deleted or made private the job fails; archiving keeps it readable.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.

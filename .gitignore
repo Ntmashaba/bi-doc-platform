@@ -11,3 +11,7 @@ packaging/windows/version_info.txt
 
 # Written beside a source by "bidoc generate"; machine-local.
 *.bidoc-identity.json
+
+# Public acceptance inputs are checksum-pinned and fetched on demand (scripts/fetch_samples.py).
+samples/downloads/
+samples/output/
