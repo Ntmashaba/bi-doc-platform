@@ -493,6 +493,15 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - `verify-install.ps1` gains checks that the bundled reader is present and in range, that PBIX is ready without pbi-tools, and that a PBIX generates with the installed executable (input: the 54 KB DP-500 composite fixture). They run in the `windows-installer` CI job on a hosted Windows runner.
 - Still open: the same script on a clean Windows machine (the runner has Python on disk), and an ABF generation check on Windows.
 
+### 2026-09-29 — Standalone engine repositories frozen
+
+- `Ntmashaba/pbi-doc-gen` (last commit `0b04cf4`) and `Ntmashaba/adf-doc-gen` (last commit `960b4bc`) carry a README banner pointing here; their code and history are unchanged. Nothing had landed in either after the commits imported into `components/`, and neither had open pull requests.
+- Not archived: `samples/manifest.json` fetches three DP-500 PBIX files from `pbi-doc-gen` at commit `20dfd59`, so it must stay readable. To archive it, first move those three files into this repository (they are 25, 54 and 93 KB) or fetch them from another pinned source, then archive.
+- The `pbi-tools/` binaries and the larger `pbix-samples/` set exist only in `pbi-doc-gen`.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
+- Owner: run `packaging/windows/verify-install.ps1` on a clean Windows machine (the hosted runner has Python on disk); it now also covers the bundled portable reader. Add an ABF generation check there once a small ABF fixture is chosen.
+- Portable extraction still to do: a same-file comparison against a real pbi-tools extract; a matched real thin-report and Tabular-backup pair (none is public); ABF in the hosted upload UI and the worker; dependency parity, so deletion recommendations can be enabled for portable output.
+- Repository: repoint the three DP-500 sample URLs, then archive `pbi-doc-gen` and `adf-doc-gen`.
