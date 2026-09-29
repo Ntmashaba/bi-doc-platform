@@ -99,7 +99,10 @@ class Cli(unittest.TestCase):
         from bidoc_contracts import validate_artifact  # noqa: PLC0415
         os.environ["BIDOC_HOME"] = str(self.tmp / "home")
         self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
-        code, out, err = run(["generate", "--engine", "power_bi", "--source", str(REAL_SAMPLE), "--kind", "pbix",
+        # Generation writes an identity sidecar beside the source, so work on a copy, never the fixture.
+        source = self.tmp / REAL_SAMPLE.name
+        shutil.copy(REAL_SAMPLE, source)
+        code, out, err = run(["generate", "--engine", "power_bi", "--source", str(source), "--kind", "pbix",
                               "--output-dir", str(self.tmp / "out"), "--profile", "shared", "--pbixray", "--json"])
         self.assertEqual(code, 0, err)
         result = json.loads(out)

@@ -1,8 +1,0 @@
-{
- "asset_id": "1e5fabc5-71e6-4cd9-b0aa-15bafca466cd",
- "path": "/home/user/bi-doc-platform/apps/generator/tests/fixtures/dp500-08-composite.pbix",
- "streams": {
-  "power_bi|unknown|model_and_report": "bba8ee3e-7771-4bc5-8a9e-05b993ebe401"
- },
- "version": 1
-}
