@@ -47,8 +47,8 @@ def classify(path) -> dict:
         return {**item, "errors": [{"code": "INVALID_INPUT", "message": "not found"}]}
     if p.is_file():
         suffix = p.suffix.lower()
-        if suffix == ".pbix":
-            return {**item, "engine": "power_bi", "kind": "pbix"}
+        if suffix in (".pbix", ".abf"):
+            return {**item, "engine": "power_bi", "kind": suffix[1:]}
         if suffix == ".bim":
             return {**item, "engine": "power_bi", "kind": "bim"}
         if suffix == ".pbip":
@@ -200,12 +200,13 @@ class Runner:
                 self.history.update(item_id, engine=found["engine"], kind=found["kind"], source=found["source"])
                 item = {**item, **{k: found[k] for k in ("engine", "kind", "source")}}
             extracted = None
-            if item["kind"] == "pbix":
-                if self.pbix_ready is not None:
+            if item["kind"] in ("pbix", "abf"):
+                if item["kind"] == "pbix" and self.pbix_ready is not None:
                     return finish("failed", errors=[{"code": "PREREQUISITE_MISSING", "message": self.pbix_ready}])
                 self.history.update(item_id, state="extracting")
                 workspace = self.history.workspace(item_id)
-                extracted = extract_pbix(item["source"], workspace, None if self.tool_command else check_tool(self.pbi_tools),
+                tool = "pbixray" if item["kind"] == "abf" else (None if self.tool_command else check_tool(self.pbi_tools))
+                extracted = extract_pbix(item["source"], workspace, tool,
                                          timeout=opts.extract_timeout, cancellation=cancel,
                                          command=self.tool_command)
             request = GenerateRequest(

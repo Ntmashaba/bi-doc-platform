@@ -191,6 +191,9 @@ def load_model_document(model_path: str | Path) -> tuple[dict, str, Path]:
         raise FileNotFoundError(f"Semantic model not found: {path}")
 
     if path.is_file():
+        if path.suffix.lower() in (".abf", ".pbix"):
+            from .portable import model_document
+            return model_document(path), "PBIXRay", path
         return load_json_lenient(path), "TMSL", path
 
     # A folder: prefer an explicit model.bim, else look for TMDL.

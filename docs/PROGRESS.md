@@ -466,6 +466,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Partial extractions (unsupported features found) make the document local-only and the shared profile still withholds query code.
 - Not yet: ABF input and model pairing, the default-backend change, the Windows frozen build, and any same-file comparison with a real pbi-tools extract.
 
+### 2026-09-29 — Tabular ABF input and explicit model pairing
+
+- `bidoc generate --kind abf` documents an Analysis Services Tabular backup (`.abf`) with the portable reader (model-only; never needs pbi-tools). `.abf` files are also recognised by `bidoc batch` and the desktop file picker. `abf` is a new envelope input kind (schema and fixtures updated).
+- `--model` pairs a thin report with an ABF, BIM or TMDL model the user names. The document states that server identity and backup freshness are not verified. A report that already has its own model is rejected rather than having it replaced.
+- Checked on a real 7-table AdventureWorks Tabular backup, and on a thin PBIR report paired with it.
+- Not covered: a matched real thin-report and backup pair (none found publicly), password-protected or multidimensional backups.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.

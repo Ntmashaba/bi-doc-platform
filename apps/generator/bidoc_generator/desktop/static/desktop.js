@@ -51,7 +51,7 @@ const host = () => (window.pywebview?.api) || null;
 const STATE_LABEL = { queued: "Queued", validating: "Validating", extracting: "Extracting",
     analysing: "Analysing", rendering: "Rendering", completed: "Completed", local_only: "Completed (local only)",
     failed: "Failed", cancelled: "Cancelled", interrupted: "Interrupted" };
-const KIND_LABEL = { pbix: "Power BI PBIX", pbip: "Power BI project", tmdl: "Power BI model (TMDL)",
+const KIND_LABEL = { abf: "Analysis Services Tabular backup", pbix: "Power BI PBIX", pbip: "Power BI project", tmdl: "Power BI model (TMDL)",
     bim: "Power BI model (.bim)", pbir: "Power BI report (PBIR)", extracted: "pbi-tools extract",
     adf_git: "Data Factory Git folder", adf_arm: "Data Factory ARM export", adf_resources: "Data Factory resource JSON" };
 const ACTIVE = new Set(["queued", "validating", "extracting", "analysing", "rendering"]);

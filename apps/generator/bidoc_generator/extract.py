@@ -75,7 +75,7 @@ def kill_tree(proc: subprocess.Popen) -> None:
 def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=None, command=None) -> Path:
     """Extract `source` into `workspace/<pbix stem>`; returns that folder."""
     source, workspace = Path(source), Path(workspace)
-    if not source.is_file() or source.suffix.lower() != ".pbix":
+    if not source.is_file() or source.suffix.lower() not in (".pbix", ".abf"):
         raise ExtractionError("INVALID_INPUT", f"not a PBIX file: {source.name}")
     workspace.mkdir(parents=True, exist_ok=True)
     target = workspace / source.stem
@@ -83,6 +83,8 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
     if tool == "pbixray" and command is None:
         argv = [sys.executable, "-m", "pbidocgen.portable", str(source), str(target)]
     else:
+        if source.suffix.lower() == ".abf":
+            raise ExtractionError("INVALID_INPUT", "ABF requires the pbixray backend")
         argv = list(command or [tool]) + ["extract", str(source), "-extractFolder", str(target),
                                           "-modelSerialization", "Raw"]
     started = time.monotonic()

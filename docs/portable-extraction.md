@@ -29,7 +29,11 @@ not read marks the document partial, which keeps it local-only and suppresses de
 | `bidoc generate --kind pbix --pbixray` | Portable reader |
 | `pbi-doc-gen --pbix FILE --pbixray` | Portable reader (same flag on the engine's own command line) |
 | `bidoc doctor` | Reports the installed pbixray and the supported range |
-| Batch, desktop, worker | pbi-tools only, as before |
+| `bidoc generate --kind abf` | Offline Analysis Services **Tabular** backup (`.abf`); model-only documentation; always the portable reader |
+| Thin report with `--model model.abf` / `.bim` / TMDL | Explicit pairing; the document says server identity and backup freshness are not verified |
+| Report that already has a local or composite model, plus `--model` | Rejected, so its own model is never silently replaced |
+| Batch and the desktop file picker | `.abf` files are recognised; PBIX still uses pbi-tools |
+| Worker, hosted upload UI | Unchanged (no ABF upload) |
 
 Install with `pip install "pbi-doc-gen[portable]"` (`requirements.txt` already does).
 
