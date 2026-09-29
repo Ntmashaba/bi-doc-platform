@@ -8,3 +8,6 @@ spikes/w1/dist/
 spikes/w1/*.spec
 node_modules/
 packaging/windows/version_info.txt
+
+# Written beside a source by "bidoc generate"; machine-local.
+*.bidoc-identity.json
