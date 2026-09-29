@@ -17,6 +17,8 @@ dependencies = [
 [project.optional-dependencies]
 # The native window. Without it, `bidoc desktop --no-window` serves the same app on loopback.
 desktop = ["pywebview==6.2.1"]
+# `bidoc generate --pbixray`: PBIX extraction without pbi-tools (approximate; any OS).
+pbixray = ["pbixray==0.15.5"]
 
 [project.scripts]
 bidoc = "bidoc_generator.cli:main"

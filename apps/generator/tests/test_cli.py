@@ -1,5 +1,6 @@
 """bidoc command line: exit codes, JSON output and doctor diagnostics."""
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -13,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "engin
 from fixtures import adf_factory  # noqa: E402
 
 from bidoc_generator.cli import main  # noqa: E402
+
+# Public sample from pbi-doc-gen (DP-500 lab 08: DirectQuery + Import, server/database as parameters).
+REAL_SAMPLE = Path(__file__).resolve().parents[3].parent / "pbi-doc-gen" / "pbix-samples" / "DP500 08 Composite model.pbix"
 
 
 def run(argv):
@@ -82,6 +86,33 @@ class Cli(unittest.TestCase):
                             "--output-dir", str(self.tmp / "out"), "--pbi-tools", str(self.tmp / "missing.exe")])
         self.assertEqual(code, 3)
         self.assertIn("PBIP, model and ADF inputs still work", err)
+
+    def test_pbixray_and_pbi_tools_are_alternatives(self):
+        pbix = self.tmp / "r.pbix"
+        pbix.write_bytes(b"PK")
+        code, _, err = run(["generate", "--engine", "power_bi", "--source", str(pbix), "--kind", "pbix",
+                            "--output-dir", str(self.tmp / "out"), "--pbixray", "--pbi-tools", "x.exe"])
+        self.assertEqual(code, 2)
+        self.assertIn("alternatives", err)
+
+    @unittest.skipUnless(REAL_SAMPLE.is_file() and importlib.util.find_spec("pbixray"),
+                         "needs pbixray and the pbi-doc-gen sample PBIX files")
+    def test_real_pbix_with_the_pbixray_extractor(self):
+        # A real DirectQuery/composite PBIX end to end, extracted in a child process without pbi-tools.
+        from bidoc_contracts import validate_artifact  # noqa: PLC0415
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        code, out, err = run(["generate", "--engine", "power_bi", "--source", str(REAL_SAMPLE), "--kind", "pbix",
+                              "--output-dir", str(self.tmp / "out"), "--profile", "shared", "--pbixray", "--json"])
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        manifest = validate_artifact(Path(result["artifact_path"]).read_bytes(),
+                                     view_ids=["pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page"])
+        kinds = [o["kind"] for o in manifest["objects"]]
+        self.assertEqual((kinds.count("table"), kinds.count("measure")), (6, 2))
+        servers = {(o["bindings"][0]["endpoint"]["system"], o["bindings"][0]["endpoint"]["server"])
+                   for o in manifest["objects"] if o["kind"] == "source" and o["bindings"][0]["endpoint"]["server"]}
+        self.assertEqual(servers, {("SQL Server", "localhost")})
 
     def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
         home = self.tmp / "home"

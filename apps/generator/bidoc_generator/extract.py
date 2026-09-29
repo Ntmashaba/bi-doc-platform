@@ -105,6 +105,18 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
     return target
 
 
+def pbixray_command() -> list[str]:
+    """Run the pbixray extractor as the extraction command (same child-process handling as pbi-tools).
+
+    An approximation of a pbi-tools extract that works on any OS; see pbidocgen.pbixray_extract."""
+    import importlib.util  # noqa: PLC0415
+    if importlib.util.find_spec("pbixray") is None:
+        raise ExtractionError("PREREQUISITE_MISSING", "pbixray is not installed; run: pip install pbixray")
+    if importlib.util.find_spec("pbidocgen.pbixray_extract") is None:
+        raise ExtractionError("PREREQUISITE_MISSING", "this pbi-doc-gen does not include the pbixray extractor; upgrade it")
+    return [sys.executable, "-m", "pbidocgen.pbixray_extract"]
+
+
 def python_tool(script: str) -> list[str]:
     """Test helper: run a Python script as the 'tool' (the real tool is an .exe)."""
     return [sys.executable, script]
