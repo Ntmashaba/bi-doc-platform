@@ -440,6 +440,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Tested only on synthetic thin PBIX input here. Still to verify locally with pbi-tools: the DP-500 PBIX samples in pbi-doc-gen `pbix-samples/` (DirectQuery SQL Server, composite, Dual) through the platform.
 - Not found publicly yet: a thin report on Azure/SQL Server Analysis Services; DirectQuery on Snowflake, Databricks, Oracle.
 
+### 2026-09-29 — PBIX without pbi-tools (`bidoc generate --pbixray`)
+
+- `bidoc generate --kind pbix --pbixray` extracts with pbixray (pbi-doc-gen `pbixray_extract`) instead of pbi-tools, in the same child process with the same timeout and cancellation handling. Any OS; install with `pip install "bi-doc-generator[pbixray]"`.
+- It is an approximation of a pbi-tools extract: no shared M queries beyond parameters, no roles or bookmarks, no measure format strings. pbi-tools stays the authoritative route and the default.
+- A real public PBIX (DP-500 lab 08: DirectQuery + Import, parameterised server) now goes end to end here: 6 tables, 2 measures, SQL Server source objects, personal path withheld, envelope validates. Tested in `apps/generator/tests/test_cli.py` (skipped when pbixray or the pbi-doc-gen samples are absent).
+- Not covered: `bidoc batch`, the desktop app and the worker still use pbi-tools only. Not compared with a real pbi-tools extract of the same file.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.

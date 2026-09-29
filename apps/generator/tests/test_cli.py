@@ -14,6 +14,9 @@ from fixtures import adf_factory  # noqa: E402
 
 from bidoc_generator.cli import main  # noqa: E402
 
+# Public Microsoft Learning lab file (DP-500 lab 08: DirectQuery + Import, server/database as parameters).
+REAL_SAMPLE = Path(__file__).resolve().parent / "fixtures" / "dp500-08-composite.pbix"
+
 
 def run(argv):
     out, err = io.StringIO(), io.StringIO()
@@ -82,6 +85,34 @@ class Cli(unittest.TestCase):
                             "--output-dir", str(self.tmp / "out"), "--pbi-tools", str(self.tmp / "missing.exe")])
         self.assertEqual(code, 3)
         self.assertIn("PBIP, model and ADF inputs still work", err)
+
+    def test_pbixray_and_pbi_tools_are_alternatives(self):
+        pbix = self.tmp / "r.pbix"
+        pbix.write_bytes(b"PK")
+        code, _, err = run(["generate", "--engine", "power_bi", "--source", str(pbix), "--kind", "pbix",
+                            "--output-dir", str(self.tmp / "out"), "--pbixray", "--pbi-tools", "x.exe"])
+        self.assertEqual(code, 2)
+        self.assertIn("alternatives", err)
+
+    def test_real_pbix_with_the_pbixray_extractor(self):
+        # A real DirectQuery/composite PBIX end to end, extracted in a child process without pbi-tools.
+        from bidoc_contracts import validate_artifact  # noqa: PLC0415
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        # Generation writes an identity sidecar beside the source, so work on a copy, never the fixture.
+        source = self.tmp / REAL_SAMPLE.name
+        shutil.copy(REAL_SAMPLE, source)
+        code, out, err = run(["generate", "--engine", "power_bi", "--source", str(source), "--kind", "pbix",
+                              "--output-dir", str(self.tmp / "out"), "--profile", "shared", "--pbixray", "--json"])
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        manifest = validate_artifact(Path(result["artifact_path"]).read_bytes(),
+                                     view_ids=["pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page"])
+        kinds = [o["kind"] for o in manifest["objects"]]
+        self.assertEqual((kinds.count("table"), kinds.count("measure")), (6, 2))
+        servers = {(o["bindings"][0]["endpoint"]["system"], o["bindings"][0]["endpoint"]["server"])
+                   for o in manifest["objects"] if o["kind"] == "source" and o["bindings"][0]["endpoint"]["server"]}
+        self.assertEqual(servers, {("SQL Server", "localhost")})
 
     def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
         home = self.tmp / "home"

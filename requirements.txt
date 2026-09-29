@@ -4,5 +4,5 @@
 -e packages/contracts[dev]
 -e packages/engines
 -e packages/relationships
--e apps/generator
+-e apps/generator[pbixray]
 -e apps/library[dev,azure]

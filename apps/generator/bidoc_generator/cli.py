@@ -49,6 +49,9 @@ def _parser():
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
     g.add_argument("--extract-timeout", type=float, default=900, help="PBIX only: seconds before extraction is stopped")
+    g.add_argument("--pbixray", action="store_true",
+                   help="PBIX only: extract with pbixray instead of pbi-tools (any OS; an approximation: no shared M "
+                        "queries beyond parameters, no roles or bookmarks). Needs: pip install pbixray")
 
     b = sub.add_parser("batch", help="document several inputs; each item succeeds or fails on its own",
                        description="Inputs are recognised by their shape: .pbix files, PBIP project folders, "
@@ -158,19 +161,32 @@ def _generate(args) -> int:
         if args.engine != "power_bi":
             print("error: a PBIX input needs --engine power_bi", file=sys.stderr)
             return EXIT_INPUT
-        report = diagnose(args.pbi_tools)
-        if not report["inputs"]["pbix"]["available"]:
-            print(f"error: PBIX generation is unavailable: {report['inputs']['pbix']['reason']}. "
-                  "PBIP, model and ADF inputs still work.", file=sys.stderr)
-            return EXIT_PREREQ
-        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
+        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix, pbixray_command  # noqa: PLC0415
         from .history import History  # noqa: PLC0415
+        if args.pbixray and args.pbi_tools:
+            print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
+            return EXIT_INPUT
+        command = None
+        if args.pbixray:
+            try:
+                command = pbixray_command()
+            except ExtractionError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return EXIT_PREREQ
+            report = None
+        else:
+            report = diagnose(args.pbi_tools)
+            if not report["inputs"]["pbix"]["available"]:
+                print(f"error: PBIX generation is unavailable: {report['inputs']['pbix']['reason']}. "
+                      "PBIP, model and ADF inputs still work (or try --pbixray).", file=sys.stderr)
+                return EXIT_PREREQ
         history = History(home())
         workspace = str(uuid.uuid4())
         try:
             print("  extracting", file=sys.stderr)
-            extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(report["pbi_tools"]),
-                                     timeout=args.extract_timeout)
+            extracted = extract_pbix(args.source, history.workspace(workspace),
+                                     None if command else check_tool(report["pbi_tools"]),
+                                     timeout=args.extract_timeout, command=command)
         except ExtractionCancelled:
             return EXIT_CANCELLED
         except ExtractionError as exc:
