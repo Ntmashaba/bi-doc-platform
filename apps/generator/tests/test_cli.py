@@ -1,6 +1,5 @@
 """bidoc command line: exit codes, JSON output and doctor diagnostics."""
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -15,8 +14,8 @@ from fixtures import adf_factory  # noqa: E402
 
 from bidoc_generator.cli import main  # noqa: E402
 
-# Public sample from pbi-doc-gen (DP-500 lab 08: DirectQuery + Import, server/database as parameters).
-REAL_SAMPLE = Path(__file__).resolve().parents[3].parent / "pbi-doc-gen" / "pbix-samples" / "DP500 08 Composite model.pbix"
+# Public Microsoft Learning lab file (DP-500 lab 08: DirectQuery + Import, server/database as parameters).
+REAL_SAMPLE = Path(__file__).resolve().parent / "fixtures" / "dp500-08-composite.pbix"
 
 
 def run(argv):
@@ -95,8 +94,6 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("alternatives", err)
 
-    @unittest.skipUnless(REAL_SAMPLE.is_file() and importlib.util.find_spec("pbixray"),
-                         "needs pbixray and the pbi-doc-gen sample PBIX files")
     def test_real_pbix_with_the_pbixray_extractor(self):
         # A real DirectQuery/composite PBIX end to end, extracted in a child process without pbi-tools.
         from bidoc_contracts import validate_artifact  # noqa: PLC0415
