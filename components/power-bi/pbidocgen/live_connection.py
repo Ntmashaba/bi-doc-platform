@@ -1,34 +1,23 @@
 """Live-connected reports: where a report with no embedded model gets its data.
 
-A thin report (Analysis Services live connection, a published Power BI semantic
-model, or a DirectQuery-for-datasets composite) carries no model of its own, but
-it does say where the model lives. Static reads only; credentials are dropped.
+A thin report (an Analysis Services live connection, or a published Power BI semantic
+model) carries no model of its own, but it does say where the model lives. A live
+connection is not DirectQuery: the remote model runs the queries and this file holds
+none of its tables. (A composite model with DirectQuery tables has its own model and
+is read through its partitions instead.) Static reads only; credentials are dropped.
 """
 import json
 import re
 import zipfile
 
-_SECRET = re.compile(r'^(password|pwd|user id|uid|access ?token|token|secret|application ?key)$', re.I)
+from . import connection_strings
+
 _ASAZURE = re.compile(r'^asazure://', re.I)
 
 
 def redact(connection_string):
-    """Keep server and catalog identity; remove credential-like key/value pairs."""
-    kept = []
-    for part in str(connection_string or '').split(';'):
-        key, sep, _ = part.partition('=')
-        if part.strip() and sep and not _SECRET.match(key.strip()):
-            kept.append(part.strip())
-    return ';'.join(kept)
-
-
-def _pairs(connection_string):
-    out = {}
-    for part in str(connection_string or '').split(';'):
-        key, sep, value = part.partition('=')
-        if sep:
-            out[key.strip().lower()] = value.strip().strip('"').strip("'")
-    return out
+    """Identity keys only (server, catalog, access mode ...); credentials and unknown keys are dropped."""
+    return connection_strings.redact(connection_string)
 
 
 def analysis_services_kind(server):
@@ -42,8 +31,8 @@ def analysis_services_kind(server):
 
 
 def describe(connection_string='', dataset_id='', report_id='', model_id=''):
-    pairs = _pairs(connection_string)
-    server = pairs.get('data source') or pairs.get('server') or ''
+    pairs = connection_strings.values(connection_string)
+    server = connection_strings.strip_userinfo(pairs.get('data source') or pairs.get('server') or '')
     database = pairs.get('initial catalog') or pairs.get('database') or ''
     if _ASAZURE.match(server):
         kind = 'Azure Analysis Services'
@@ -107,7 +96,7 @@ def summary(live):
 def source_row(live):
     """Inventory row for the remote model a live-connected report reads from."""
     return dict(label=summary(live), sourceType=live['kind'], server=live.get('server') or '',
-                database=live.get('database') or '', location=live.get('datasetId') or live.get('modelId') or '',
+                database=live.get('database') or '', location=str(live.get('datasetId') or live.get('modelId') or ''),
                 tables=[])
 
 

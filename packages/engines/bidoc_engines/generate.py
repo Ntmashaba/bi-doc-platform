@@ -122,7 +122,11 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         if not complete or descriptor is None:
             # Local documentation still works; it just cannot be published.
             stage("rendering")
-            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}.local.html"
+            suffix = ".shared.local.html" if request.profile == "shared" else ".local.html"
+            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}{suffix}"
+            if request.profile == "shared":
+                from .projection import project
+                payload, _ = project(request.engine, payload, query_code=request.query_code)
             _write_atomically(path, adapter.render(payload).encode("utf-8"))
             result.status, result.artifact_path = "local_only", str(path)
             result.warnings.append("The input was not read completely, so the document has no publication "

@@ -2,7 +2,8 @@
 
     python scripts/verify_components.py <pbi-doc-gen checkout> <adf-doc-gen checkout>
 
-Each checkout must be at the commit recorded in components/README.md. Files present in both trees must be
+Each checkout must be at the commit recorded in components/README.md, and this repository at the import commit
+(63d210c): components/ has changed since, on purpose, so it no longer matches the sources. Files present in both trees must be
 identical, apart from the deliberate differences listed below; anything else is reported and fails the run.
 """
 import subprocess

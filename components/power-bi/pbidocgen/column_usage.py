@@ -54,7 +54,7 @@ def build_column_usage(model: dict, report: dict | None) -> dict:
     reasons = defaultdict(set)
     measure_reasons = defaultdict(set)  # non-measure model roots that need a measure
     uncertain = defaultdict(set)
-    issues = set()  # global: blocks every deletion candidate
+    issues = set((model.get("extraction") or {}).get("limitations", []))  # portable parity guards
     table_issues = defaultdict(set)  # scoped: blocks only columns of the named table
     missing_table_issues = set()  # references to tables the model lacks: reported, block nothing
 

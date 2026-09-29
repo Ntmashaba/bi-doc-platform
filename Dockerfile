@@ -19,7 +19,7 @@ COPY packages/relationships packages/relationships
 COPY apps/library apps/library
 # Engines are built from local component packages; third-party versions are locked.
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -c requirements-lock.txt \
-        ./components/power-bi ./components/adf ./packages/contracts ./packages/engines ./packages/relationships "./apps/library[azure]"
+        "./components/power-bi[portable]" ./components/adf ./packages/contracts ./packages/engines ./packages/relationships "./apps/library[azure]"
 
 FROM python:3.11.13-slim-bookworm
 RUN useradd --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin bidoc \

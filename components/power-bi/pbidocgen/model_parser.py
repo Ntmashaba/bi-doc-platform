@@ -573,6 +573,7 @@ def parse_model(model_path: str | Path) -> dict:
 
     result = {
         "name": model.get("name") or bim_path.stem,
+        "extraction": doc.get("_extraction"),
         "dependencyExpressions": _dependency_expressions(model),
         "expressions": [{"name": e.get("name", ""), "kind": e.get("kind", "m"),
                          "expression": expr_text(e.get("expression"))}

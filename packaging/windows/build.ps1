@@ -20,7 +20,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3"
 if (-not $SkipInstall) {
   # Regular (not editable) installs, so PyInstaller sees ordinary package folders.
   python -m pip install --upgrade pip
-  python -m pip install -c requirements-lock.txt ./components/power-bi ./components/adf ./packages/contracts ./packages/engines ./packages/relationships ./apps/generator
+  python -m pip install -c requirements-lock.txt "./components/power-bi[portable]" ./components/adf ./packages/contracts ./packages/engines ./packages/relationships ./apps/generator
   python -m pip install -r requirements-windows-build.txt
   if ($LASTEXITCODE) { throw "dependency install failed" }
 }

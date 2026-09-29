@@ -40,6 +40,7 @@ def build_payload(model: dict | None, report: dict | None,
     if live_pair and live_pair["note"].startswith("Model supplied separately; its name"):
         report["warnings"].append({"severity": "warning", "category": "Model pairing", "message": live_pair["note"]})
     return {
+        "extraction": (model or {}).get("extraction") or (report or {}).get("extraction"),
         "liveSource": live_source_row(live) if live else None,
         "livePairing": live_pair,
         "schemaVersion": 2,

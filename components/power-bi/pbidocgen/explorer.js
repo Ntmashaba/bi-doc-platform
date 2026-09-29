@@ -281,7 +281,7 @@ function rCleanupTables(){
 function rCleanupMeasures(){
   if(!DATA.columns.measures) return '';
   const rows=cleanupMeasureRows();
-  return `<h2>Measures</h2><p>${rows.length} measures · <button class="xl" onclick="exportCsvFile(inventoryCsv(cleanupMeasureRows(),DATA.columns.measureCsvFields),'cleanup-measures.csv')">Export measure assessments</button></p>
+  return `<h2>Measures</h2><p>${plural(rows.length,"measure")} · <button class="xl" onclick="exportCsvFile(inventoryCsv(cleanupMeasureRows(),DATA.columns.measureCsvFields),'cleanup-measures.csv')">Export measure assessments</button></p>
     <table class="t"><thead><tr><th>Measure</th><th>Assessment</th><th>Why / evidence</th><th>Pages</th></tr></thead><tbody>${rows.map(r=>`<tr><th><button class="xl" onclick="${action('inspectNode',nodeId('m',r.table,r.measure),'*')}">${esc(r.table)}[${esc(r.measure)}]</button></th><td>${esc(r.decision)}</td><td>${esc(r.reason)}${r.usedBy.length||r.modelDependencies.length||r.reviewNotes.length?`<details><summary>Dependants and review notes</summary><p>${listText(r.usedBy)}</p><p>${listText(r.modelDependencies)}</p><p>${listText(r.reviewNotes)}</p></details>`:''}</td><td>${r.pages.map(esc).join('<br>')||'No page usage detected'}</td></tr>`).join('')||'<tr><td colspan="4">No measures have this assessment.</td></tr>'}</tbody></table>`;
 }
 function csvFilename(name){
@@ -517,7 +517,7 @@ function filterSourceList(){
   const body=document.getElementById('source-list-rows');if(!body) return;
   const q=(document.getElementById('source-search')?.value||'').trim().toLowerCase();
   visibleSourceGroups=sourceGroups().filter(g=>g.rows.some(inPageScope)).filter(g=>!q||[g.sourceType,g.name,g.server,g.location,...g.tables,...g.primaryQueries,...g.consumingQueries].join(' ').toLowerCase().includes(q));
-  document.getElementById('source-count').textContent=`${visibleSourceGroups.length} sources`;
+  document.getElementById('source-count').textContent=plural(visibleSourceGroups.length,"source");
   body.innerHTML=visibleSourceGroups.map(g=>`<tr><th><button class="xl" onclick="${action('inspectSource',g.key)}">${esc(g.sourceType)} · ${esc(g.name)}</button>
     <div class="mut">${esc(g.server||g.location||'')}</div></th>
     <td>${g.tables.map(tblLink).join(', ')||'<span class="mut">No model consumer</span>'}</td>

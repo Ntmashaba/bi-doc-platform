@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "engines" / "tests"))
 from fixtures import adf_factory  # noqa: E402
@@ -113,6 +114,26 @@ class Cli(unittest.TestCase):
         servers = {(o["bindings"][0]["endpoint"]["system"], o["bindings"][0]["endpoint"]["server"])
                    for o in manifest["objects"] if o["kind"] == "source" and o["bindings"][0]["endpoint"]["server"]}
         self.assertEqual(servers, {("SQL Server", "localhost")})
+
+    def test_a_different_pbixray_version_is_named_by_doctor_and_the_portable_command(self):
+        from unittest import mock  # noqa: PLC0415
+        from bidoc_generator.doctor import diagnose  # noqa: PLC0415
+        from bidoc_generator.extract import ExtractionError, check_tool, pbixray_command  # noqa: PLC0415
+        with mock.patch("importlib.metadata.version", return_value="0.16.0"):
+            report = diagnose("pbixray")
+            check = next(c for c in report["checks"] if c["check"] == "pbixray")
+            self.assertEqual((check["ok"], check["detail"]), (False, "0.16.0"))     # installed, not "not installed"
+            self.assertIn("validated only for", check["fix"])
+            self.assertFalse(report["inputs"]["pbix"]["available"])
+            for call in (pbixray_command, lambda: check_tool("pbixray")):
+                with self.assertRaisesRegex(ExtractionError, "validated only for"):
+                    call()
+
+    def test_the_portable_reader_is_opt_in(self):
+        from bidoc_generator.doctor import diagnose  # noqa: PLC0415
+        with mock.patch("bidoc_generator.doctor._pbi_tools", return_value=None):
+            self.assertNotEqual(diagnose()["pbi_tools"], "pbixray")           # not chosen unless asked for
+            self.assertEqual(diagnose("pbixray")["pbi_tools"], "pbixray")
 
     def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
         home = self.tmp / "home"

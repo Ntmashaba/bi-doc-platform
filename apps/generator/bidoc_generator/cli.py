@@ -161,32 +161,22 @@ def _generate(args) -> int:
         if args.engine != "power_bi":
             print("error: a PBIX input needs --engine power_bi", file=sys.stderr)
             return EXIT_INPUT
-        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix, pbixray_command  # noqa: PLC0415
+        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         from .history import History  # noqa: PLC0415
         if args.pbixray and args.pbi_tools:
             print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
             return EXIT_INPUT
-        command = None
-        if args.pbixray:
-            try:
-                command = pbixray_command()
-            except ExtractionError as exc:
-                print(f"error: {exc}", file=sys.stderr)
-                return EXIT_PREREQ
-            report = None
-        else:
-            report = diagnose(args.pbi_tools)
-            if not report["inputs"]["pbix"]["available"]:
-                print(f"error: PBIX generation is unavailable: {report['inputs']['pbix']['reason']}. "
-                      "PBIP, model and ADF inputs still work (or try --pbixray).", file=sys.stderr)
-                return EXIT_PREREQ
+        report = diagnose("pbixray" if args.pbixray else args.pbi_tools)
+        if not report["inputs"]["pbix"]["available"]:
+            print(f"error: PBIX generation is unavailable: {report['inputs']['pbix']['reason']}. "
+                  "PBIP, model and ADF inputs still work (or try --pbixray).", file=sys.stderr)
+            return EXIT_PREREQ
         history = History(home())
         workspace = str(uuid.uuid4())
         try:
-            print("  extracting", file=sys.stderr)
-            extracted = extract_pbix(args.source, history.workspace(workspace),
-                                     None if command else check_tool(report["pbi_tools"]),
-                                     timeout=args.extract_timeout, command=command)
+            print("  extracting (portable pbixray)" if args.pbixray else "  extracting", file=sys.stderr)
+            extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(report["pbi_tools"]),
+                                     timeout=args.extract_timeout)
         except ExtractionCancelled:
             return EXIT_CANCELLED
         except ExtractionError as exc:

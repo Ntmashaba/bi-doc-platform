@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+portable = ["pbixray>=0.15.0,<0.16"]
+
 [project.scripts]
 pbi-doc-gen = "pbidocgen.cli:cli"
 
