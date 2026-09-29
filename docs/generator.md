@@ -4,7 +4,7 @@ The command line (B03) plus, from B08, PBIX extraction, batches, local history a
 desktop app. Direct publishing (B11) comes later.
 
 ```
-pip install -r requirements.txt          # contracts, engines (pinned), generator
+pip install -r requirements.txt          # contracts, engines (components/), generator
 bidoc doctor                             # what this machine can generate, with fixes
 bidoc generate --engine adf --kind adf_git --source path/to/factory --output-dir docs
 bidoc generate --engine power_bi --kind pbip --source Sales.pbip --output-dir docs --profile shared

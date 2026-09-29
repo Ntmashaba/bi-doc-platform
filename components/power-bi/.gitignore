@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+sample-output/
+# Sample PBIX files are tracked; generated output is not.
+pbix-samples/documentation/
+# Folders pbi-tools writes beside older PBIX files.
+pbix-samples/*/
+# No licence to redistribute; keep locally only.
+pbix-samples/Snowflake_Usage_Sample.pbix
+build/
+*.egg-info/
+dist/

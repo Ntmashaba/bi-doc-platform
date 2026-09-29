@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pbi-doc-gen"
+dynamic = ["version"]
+description = "Self-contained HTML documentation generator for Power BI."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+pbi-doc-gen = "pbidocgen.cli:cli"
+
+[tool.setuptools]
+packages = ["pbidocgen"]
+
+[tool.setuptools.package-data]
+pbidocgen = ["*.html", "*.css", "*.js"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pbidocgen.__version__" }

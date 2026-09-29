@@ -1,6 +1,8 @@
 # Development install of the platform packages, in dependency order.
 -c requirements-lock.txt
-# Engine revisions are pinned in packages/engines/pyproject.toml.
+# Engines live in this repository; provenance is in components/README.md.
+-e components/power-bi
+-e components/adf
 -e packages/contracts[dev]
 -e packages/engines
 -e packages/relationships

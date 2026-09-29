@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="pbi-documentation-hub" content="1"><title>Power BI · Documentation home</title>
+<style>
+/* Same tokens and components as the report pages (template.html). */
+:root{--bg:#F3F5F7;--panel:#FFFFFF;--panel2:#F8FAFB;--ink:#1C2430;--ink2:#4F5B67;--ink3:#5E6B78;--line:#DDE3E9;--line2:#EBEFF3;--amber:#8A5D00;--pbi:#F2C811;
+ --direct:#157A46;--directBg:#E7F5EE;--poss:#A04A07;--possBg:#FBF0E1;--none:#B42318;--noneBg:#FBEAE8;--other:#4F5B67;--otherBg:#EEF1F4;
+ --mono:"Cascadia Code","Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;--sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+header{background:var(--panel);border-bottom:1px solid var(--line);box-shadow:inset 0 3px 0 var(--pbi);padding:18px max(5vw,20px) 16px}
+header small{color:var(--ink3);font-size:.8rem}h1{font-size:clamp(24px,3vw,32px);margin:4px 0 6px;letter-spacing:-.01em}header p{color:var(--ink2);max-width:720px;margin:0}
+main{max-width:1200px;margin:auto;padding:24px 20px}h2{font-size:1.05rem;margin:1.6rem 0 .6rem}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type=search]{flex:1;min-width:210px;padding:.55rem .7rem;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--panel)}
+input[type=search]:focus{outline:2px solid var(--amber);outline-offset:-1px}
+button,.picker{display:inline-flex;align-items:center;background:var(--panel);color:var(--ink);padding:.5rem .9rem;border:1px solid var(--line);border-radius:6px;font:inherit;cursor:pointer}
+button:hover,.picker:hover{background:var(--panel2)}.primary{background:var(--ink);border-color:var(--ink);color:#fff}.primary:hover{background:#2d3a4a}
+.picker input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}.picker:focus-within{outline:2px solid var(--amber);outline-offset:2px}
+#status{color:var(--ink2);margin:14px 0}
+.tree details{border-left:2px solid var(--line);margin:14px 0;padding-left:16px}summary{font-weight:600;cursor:pointer;padding:6px 4px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 18px;overflow-wrap:anywhere}
+a{color:var(--amber)}.card h3{margin:0 0 4px;font-size:1rem}.card small,.muted{color:var(--ink2)}.card p{margin:.5rem 0}
+.location{font-size:.82rem;line-height:1.5}
+.badge{display:inline-block;font-size:.75rem;font-weight:600;padding:.08rem .45rem;border-radius:4px;white-space:nowrap}
+.b-ok{background:var(--directBg);color:var(--direct)}.b-warn{background:var(--possBg);color:var(--poss)}.b-bad{background:var(--noneBg);color:var(--none)}.b-other{background:var(--otherBg);color:var(--other)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin:.5rem 0}
+.tag{font-size:.75rem;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;padding:.05rem .4rem;color:var(--ink);cursor:pointer;font-family:inherit;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag:hover{border-color:var(--ink3)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:14px 0}.panel>summary{padding:.7rem 1rem}.panel .body{padding:0 1rem 1rem;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--line2);vertical-align:top;overflow-wrap:anywhere}
+thead th{font-size:.75rem;color:var(--ink2);background:var(--panel2);border-bottom:1px solid var(--line)}
+footer{padding:20px 0;color:var(--ink2);font-size:.82rem}
+a:focus-visible,summary:focus-visible,button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+@media(max-width:600px){.tools>*{flex:1 1 100%}th:nth-child(2),td:nth-child(2){display:none}}
+
+/* Application shell: navigation stays distinct from report content. */
+[hidden]{display:none!important}
+body{background:#f4f6fa}
+.library-shell{display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh}
+.library-nav{background:#172434;color:#fff;padding:30px 18px;position:sticky;top:0;height:100vh}
+.library-brand{display:flex;align-items:center;gap:12px;font-size:17px;font-weight:650;margin:0 12px 36px}
+.brand-mark{display:grid;place-items:center;width:34px;height:34px;background:var(--pbi);border-radius:10px;color:#172434}
+.library-nav a{display:block;text-decoration:none;color:#c6d1df;padding:12px 14px;border-radius:8px;margin:5px 0;font-weight:500}
+.library-nav a[aria-current=page]{background:#2b3e53;color:white;box-shadow:inset 3px 0 var(--pbi)}
+.library-nav a:hover{background:#24364a;color:white}
+.library-content{min-width:0}header{padding:32px 36px 18px;background:transparent;border:0;box-shadow:none}
+header small{font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:11px}
+h1{font-size:30px;letter-spacing:-.035em}main{padding:12px 36px 40px;max-width:1440px}
+.tools input[type=search]{padding:13px 16px;border-radius:10px;box-shadow:0 2px 5px #17243405}
+.cards{gap:18px}.card{padding:22px;border-radius:14px;box-shadow:0 3px 12px #17243405;transition:border-color .15s,box-shadow .15s}
+.card:hover{border-color:#9daec1;box-shadow:0 8px 24px #1724340c}
+.card h3{font-size:18px;line-height:1.35;margin-bottom:10px}.card h3 a{text-decoration:none;color:#203b5a}.card h3 a:hover{text-decoration:underline}
+.report-icon{display:inline-flex;padding:8px 11px;border-radius:9px;background:#eef3fa;color:#355679;font-size:12px;font-weight:650;margin-bottom:14px}
+.card .muted{font-size:13px}.card .tags{margin:14px 0}.card .tag{padding:4px 7px}
+.card-details{border-top:1px solid var(--line2);margin-top:16px;padding-top:8px;font-size:12px}.card-details summary{color:var(--ink2);font-size:12px;font-weight:500}
+.tree details{border:0;padding-left:0;margin:12px 0 22px}.tree>details>summary{padding:0 0 14px;color:var(--ink2);font-size:13px}
+.card .card-details{border-top:1px solid var(--line2);margin:16px 0 0;padding-top:8px}
+.panel{border-radius:12px}.badge{border-radius:5px;padding:3px 7px;font-size:11px}
+@media(max-width:860px){.library-shell{grid-template-columns:1fr}.library-nav{position:static;height:auto;padding:14px 18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.library-brand{margin:0 auto 0 0;font-size:14px}.library-nav a{padding:8px 10px;margin:0}header{padding:24px 20px 12px}main{padding:12px 20px 30px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Contrast pass (matches report pages). */
+:root{--bg:#E8ECF1;--ink:#111A24;--ink2:#34404D;--ink3:#46525F;--line:#B9C4D0;--line2:#D3DBE3;--panel2:#F1F4F7;
+  --directBg:#D3EEDF;--possBg:#F8E3C6;--noneBg:#F8D9D5;--otherBg:#E1E6EC}
+body{font-size:15px}
+/* Modern palette (matches report pages). */
+:root{--bg:#F5F7FB;--panel:#FFFFFF;--panel2:#F1F4F9;--ink:#0F172A;--ink2:#334155;--ink3:#475569;--line:#CBD5E1;--line2:#E2E8F0;
+  --amber:#4F46E5;--pbi:#6366F1;--direct:#047857;--directBg:#D1FAE5;--poss:#B45309;--possBg:#FEF3C7;--none:#BE123C;--noneBg:#FFE4E6;--other:#475569;--otherBg:#E2E8F0}
+a{color:#4F46E5}.primary{background:#4F46E5;border-color:#4F46E5}.primary:hover{background:#4338CA}
+.library-nav{background:#0F172A}.library-nav a{color:#CBD5E1}.library-nav a:hover{background:#1E293B;color:#fff}.library-nav a[aria-current=page]{background:#1E293B;box-shadow:inset 3px 0 #818CF8}.brand-mark{background:#6366F1;color:#fff}
+</style></head><body><div class="library-shell"><nav class="library-nav" aria-label="Library"><div class="library-brand"><span class="brand-mark" aria-hidden="true">BI</span>Report library</div><a href="#reports" data-view="reports" aria-current="page">Reports</a><a href="#sources" data-view="sources">Sources</a><a href="#manage" data-view="manage">Manage library</a></nav><div class="library-content">
+<header><small>Power BI documentation</small><h1 id="view-title">Your reports</h1><p id="view-description">Explore your models, trace dependencies and review what needs attention.</p></header>
+<main>
+<section id="reports-view" aria-label="Reports">
+<div class="tools"><input id="search" type="search" placeholder="Search reports, sources, servers, files or usernames" aria-label="Search reports" oninput="renderCatalog()"></div>
+<p id="status" role="status"></p><div id="tree" class="tree"></div></section>
+<section id="sources-view" hidden aria-label="Sources"><div id="source-index"></div></section><section id="manage-view" hidden aria-label="Manage library"><div id="batch-status"></div>
+<details class="panel" open><summary>Manage this library</summary><div class="body"><div class="tools"><label class="picker">Refresh from folder<input id="folder-picker" type="file" webkitdirectory multiple onchange="scanFiles(this.files)"></label><button onclick="downloadCatalog()">Download refreshed home</button></div>
+<p class="muted">To see added files or changed details, select your documentation folder. Only HTML files directly inside it are listed. Download the refreshed home and save it beside those files to keep the library up to date.</p></div></details>
+<footer>Stored entirely in local files. The list reflects the folder at generation time.</footer></section></main></div></div>
+<script>
+let entries=/*__CATALOG__*/[];
+let batchReport=/*__BATCH__*/null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function groupParts(metadata){
+ if(metadata.folder) return metadata.folder.split(/[\\/]/).map(s=>s.trim()).filter(Boolean);
+ let loc=(metadata.reportLocation||'').trim();
+ if(!loc) return ['Ungrouped'];
+ if(/^https?:\/\//i.test(loc)){
+  // Group by the folder the report is in, not its full path; an explicit
+  // catalogue folder (above) is the way to build deeper groups.
+  try{const url=new URL(loc);const path=url.pathname.split('/').filter(Boolean).map(p=>{try{return decodeURIComponent(p)}catch{return p}});if(!url.pathname.endsWith('/'))path.pop();return [path.pop()||url.hostname];}catch{return ['Ungrouped'];}
+ }
+ loc=loc.replace(/\\/g,'/');const parts=loc.split('/').filter(Boolean);if(!loc.endsWith('/'))parts.pop();return parts.length?[parts.pop()]:['Ungrouped'];
+}
+function locationLink(location){
+ const value=(location||'').trim();
+ if(/^https?:\/\//i.test(value)){try{const url=new URL(value);return url.username||url.password?'':url.href;}catch{return '';}}
+ if(/^file:\/\//i.test(value))return value;
+ if(/^[A-Za-z]:[\\/]/.test(value)) return 'file:///'+value.replace(/\\/g,'/').split('/').map((v,i)=>i===0?v:encodeURIComponent(v)).join('/');
+ if(value.startsWith('\\\\'))return 'file://'+value.slice(2).split('\\').map(encodeURIComponent).join('/');
+ if(value.startsWith('/'))return 'file://'+value.split('/').map(encodeURIComponent).join('/');
+ return '';
+}
+const MODE_LABEL={combined:'Model + report','semantic-only':'Model only','report-only':'Report only'};
+function card(entry){
+ const m=entry.metadata||{},loc=m.reportLocation||'',link=locationLink(loc),sum=entry.summary||{},c=sum.counts;
+ const failed=batchReport?.files?.find(r=>r.filename===entry.filename&&r.status==='failed');
+ const counts=c?[[c.tables,'table'],[c.measures,'measure'],[c.pages,'page']].filter(([n])=>n).map(([n,l])=>`${n} ${l}${n===1?'':'s'}`).join(' · ')+(c.measures?` · ${sum.measuresDescribed} of ${c.measures} measures described`:''):'';
+ const badges=[entry.mode?`<span class="badge b-other">${esc(MODE_LABEL[entry.mode]||entry.mode)}</span>`:'',
+  sum.counts?(sum.coverageIssues?`<span class="badge b-warn">${sum.coverageIssues} analysis ${sum.coverageIssues===1?'issue':'issues'}</span>`:'<span class="badge b-ok">Full analysis coverage</span>'):'',
+  sum.deletionCandidates?`<span class="badge b-bad">${sum.deletionCandidates} cleanup ${sum.deletionCandidates===1?'candidate':'candidates'}</span>`:'',
+  sum.duplicateMeasureSets?`<span class="badge b-warn">${sum.duplicateMeasureSets} duplicate measure ${sum.duplicateMeasureSets===1?'set':'sets'}</span>`:''].join(' ');
+ return `<article class="card"><span class="report-icon">REPORT</span><h3><a href="${esc(entry.blobUrl||entry.href)}">${esc(entry.title)}</a></h3>${failed?'<p><span class="badge b-bad">Latest batch failed</span> showing previous HTML</p>':''}
+  ${badges.trim()?`<p>${badges}</p>`:''}${counts?`<p class="muted">${esc(counts)}</p>`:''}
+  ${(sum.sources||[]).length?`<div class="tags">${sum.sources.map(s=>`<button class="tag" title="${esc(s.label)}: show every report that uses this source" onclick="${esc('searchFor('+JSON.stringify(s.label)+')')}">${esc(s.label)}</button>`).join('')}</div>`:''}
+  <details class="card-details"><summary>File &amp; connection details</summary><small>${esc(entry.filename)}${entry.generated?' · '+esc(entry.generated):''}</small>${loc?`<p class="location">Original location<br>${link?`<a href="${esc(link)}" target="_blank" rel="noopener">${esc(loc)}</a>`:esc(loc)}</p>`:'<p class="muted location">No report location recorded</p>'}${(m.connections||[]).filter(c=>c.username).map(c=>`<p class="location">${esc(c.connectionName||c.server||c.sourceType)}<br>Account: <strong>${esc(c.username)}</strong></p>`).join('')}${entry.warning?`<p>${esc(entry.warning)}</p>`:''}</details></article>`;
+}
+function searchFor(text){if(typeof window!=="undefined")window.location.hash="reports";const box=document.getElementById('search');box.value=text;renderCatalog();box.focus();}
+const haystack=e=>JSON.stringify([e.title,e.filename,e.metadata,(e.summary?.sources||[]).map(s=>[s.label,s.server,s.database,s.location,s.tables])]).toLowerCase();
+/* Cross-report index: which reports use each server, database or file. */
+function renderSourceIndex(filtered){
+ const panel=document.getElementById('source-index'),index=new Map();
+ for(const e of filtered) for(const s of e.summary?.sources||[]){
+  // Data typed into Power Query or generated there is not a shared source.
+  if(['Entered data','Generated in Power Query','Calculated (DAX)'].includes(s.type||s.sourceType||s.label)) continue;
+  if(!index.has(s.label)) index.set(s.label,{source:s,reports:[]});
+  index.get(s.label).reports.push(e);
+ }
+ const withSummary=entries.filter(e=>e.summary?.counts).length;
+ if(!index.size){panel.innerHTML=withSummary<entries.length&&entries.length?`<p class="muted">${entries.length-withSummary} document(s) were generated before the source index existed; regenerate them to include their sources.</p>`:'<p class="muted">No sources match the current report search.</p>';return;}
+ const rows=[...index.values()].sort((a,b)=>b.reports.length-a.reports.length||a.source.label.localeCompare(b.source.label));
+ panel.innerHTML=`<details class="panel" open><summary>Sources across reports (${rows.length})</summary><div class="body"><table><thead><tr><th>Source</th><th>Server / location</th><th>Used by</th></tr></thead><tbody>${rows.map(({source:s,reports})=>`<tr><td><button class="tag" onclick="${esc('searchFor('+JSON.stringify(s.label)+')')}">${esc(s.label)}</button></td><td class="muted">${esc([s.server,s.database].filter(Boolean).join(' / ')||s.location)}</td><td>${reports.map(e=>`<a href="${esc(e.blobUrl||e.href)}">${esc(e.title)}</a>`).join(', ')}</td></tr>`).join('')}</tbody></table>
+ ${withSummary<entries.length?`<p class="muted">${entries.length-withSummary} document(s) predate the source index and are not listed here; regenerate them to include their sources.</p>`:''}</div></details>`;
+}
+function renderBranch(branch){return `${branch.rows.length?'<div class="cards">'+branch.rows.map(card).join('')+'</div>':''}${[...branch.children].sort(([a],[b])=>a.localeCompare(b)).map(([name,child])=>`<details open><summary>${esc(name)}</summary>${renderBranch(child)}</details>`).join('')}`;}
+function renderBatchStatus(){
+ const panel=document.getElementById('batch-status');
+ if(!batchReport||!Array.isArray(batchReport.files)){panel.innerHTML='';return;}
+ panel.innerHTML=`<details class="panel" style="padding:0 1rem" ${batchReport.failed?'open':''}><summary>Last PBIX batch: ${esc(batchReport.generated)} generated · ${esc(batchReport.failed)} failed</summary><p>${esc(batchReport.generatedAt)} · Folder refresh does not rerun extraction.</p>${batchReport.files.map(r=>`<p><strong>${esc(r.title)} — ${esc(r.status)}</strong>${r.mode?' · '+esc(r.mode):''}<br>${esc(r.error||(r.warnings||[]).join(' '))}${r.previousHtmlRetained?'<br><strong>Previous HTML retained — it was not updated in this run.</strong>':''}</p>`).join('')}</details>`;
+}
+function renderCatalog(){
+ renderBatchStatus();
+ const q=document.getElementById('search').value.toLowerCase(),filtered=entries.filter(e=>haystack(e).includes(q));
+ renderSourceIndex(entries);
+ const root={children:new Map(),rows:[]};
+ for(const entry of filtered){let branch=root;for(const part of groupParts(entry.metadata||{})){if(!branch.children.has(part))branch.children.set(part,{children:new Map(),rows:[]});branch=branch.children.get(part);}branch.rows.push(entry);}
+ document.getElementById('tree').innerHTML=filtered.length?renderBranch(root):(entries.length?'<p>No reports match your search. Try a report name, source or server.</p>':'<p>No reports yet. Open Manage library and choose your documentation folder.</p>');
+ document.getElementById('status').textContent=`${filtered.length} of ${entries.length} reports`;
+}
+function readEntry(text,filename){
+ const doc=new DOMParser().parseFromString(text,'text/html');
+ if(doc.querySelector('meta[name="pbi-documentation-hub"]'))return null;
+ let metadata={},warning='',title=filename.replace(/\.html?$/i,''),generated='',mode='',summary={};
+ const node=doc.getElementById('pbi-documentation-metadata');
+ if(node){try{
+  const value=JSON.parse(node.textContent);
+  if(!value||typeof value!=='object'||Array.isArray(value)||typeof(value.reportLocation||'')!=='string'||typeof(value.folder||'')!=='string'||!Array.isArray(value.connections||[])||(value.connections||[]).some(c=>!c||typeof c!=='object'||Object.values(c).some(v=>typeof v!=='string')))throw Error('Invalid metadata');
+  metadata={reportLocation:value.reportLocation||'',folder:value.folder||'',connections:(value.connections||[]).map(c=>Object.fromEntries(['sourceType','server','database','username','authentication','connectionName'].map(k=>[k,c[k]||''])))};
+ }catch{warning='Metadata could not be read; document remains available.';}}
+ // Read JSON only. Never evaluate scripts from scanned documents.
+ const script=[...doc.scripts].find(s=>/const DATA\s*=/.test(s.textContent));
+ if(script){try{const raw=script.textContent.split(/const DATA\s*=\s*/)[1];let depth=0,inString=false,escaped=false,end=0;
+  for(let i=0;i<raw.length;i++){const c=raw[i];if(inString){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')inString=false;}else if(c==='"')inString=true;else if(c==='{')depth++;else if(c==='}'&&--depth===0){end=i+1;break;}}
+  const payload=JSON.parse(raw.slice(0,end));title=String(payload.title||title);generated=String(payload.generated||'');mode=String(payload.mode||'');summary=cleanSummary(payload.summary);
+ }catch{}}
+ return {title,filename,generated,metadata,warning,mode,summary,href:encodeURIComponent(filename)};
+}
+// Mirrors catalog.clean_summary: plain text and non-negative counts only.
+function cleanSummary(v){
+ if(!v||typeof v!=='object'||Array.isArray(v)) return {};
+ const text=x=>typeof x==='string'?x:'',num=x=>Number.isInteger(x)&&x>=0?x:0,c=v.counts&&typeof v.counts==='object'?v.counts:{};
+ return {counts:Object.fromEntries(['tables','columns','measures','pages','visuals'].map(k=>[k,num(c[k])])),
+  sources:(Array.isArray(v.sources)?v.sources:[]).filter(s=>s&&typeof s==='object').map(s=>({...Object.fromEntries(['label','sourceType','server','database','location'].map(k=>[k,text(s[k])])),tables:(Array.isArray(s.tables)?s.tables:[]).filter(t=>typeof t==='string')})),
+  coverageIssues:num(v.coverageIssues),deletionCandidates:num(v.deletionCandidates),needsReview:num(v.needsReview),measuresDescribed:num(v.measuresDescribed),duplicateMeasureSets:num(v.duplicateMeasureSets)};
+}
+let scanVersion=0;
+async function scanFiles(files){
+ if(!files.length)return;
+ const version=++scanVersion,newEntries=[];
+ for(const file of files){if(!/\.html?$/i.test(file.name)||file.webkitRelativePath.split('/').length>2)continue;
+  try{const text=await file.text(),entry=readEntry(text,file.name);if(entry){entry.blobUrl=URL.createObjectURL(new Blob([text],{type:'text/html'}));newEntries.push(entry);}}
+  catch{newEntries.push({title:file.name,filename:file.name,href:encodeURIComponent(file.name),metadata:{},warning:'File could not be read'});}
+ }
+ if(version!==scanVersion){newEntries.forEach(e=>e.blobUrl&&URL.revokeObjectURL(e.blobUrl));return;}
+ entries.forEach(e=>e.blobUrl&&URL.revokeObjectURL(e.blobUrl));entries=newEntries.sort((a,b)=>a.filename.localeCompare(b.filename));renderCatalog();
+}
+function downloadCatalog(){
+ const clone=document.documentElement.cloneNode(true),script=clone.querySelector('script');
+ const rows=entries.map(({blobUrl,...e})=>e);
+ const start=script.textContent.indexOf('let entries='),end=script.textContent.indexOf(';\nlet batchReport=',start);
+ script.textContent=script.textContent.slice(0,start)+'let entries='+JSON.stringify(rows).replace(/</g,'\\u003c')+script.textContent.slice(end);
+ clone.querySelector('#tree').innerHTML='';clone.querySelector('#sources-view').hidden=true;clone.querySelector('#manage-view').hidden=true;clone.querySelector('#reports-view').hidden=false;clone.querySelector('#search').value='';
+ const url=URL.createObjectURL(new Blob(['<!DOCTYPE html>\n'+clone.outerHTML],{type:'text/html;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='pbi-home.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+renderCatalog();
+function libraryRoute(){
+ const view=['reports','sources','manage'].includes(window.location.hash.slice(1))?window.location.hash.slice(1):'reports';
+ const labels={reports:['Your reports','Explore your models, trace dependencies and review what needs attention.'],sources:['Sources across reports','Find the reports connected to a server, database or file.'],manage:['Manage library','Refresh your local collection and review the latest generation results.']};
+ for(const id of ['reports','sources','manage'])document.getElementById(id+'-view').hidden=id!==view;
+ document.querySelectorAll('[data-view]').forEach(a=>{if(a.dataset.view===view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+ document.getElementById('view-title').textContent=labels[view][0];
+ document.getElementById('view-description').textContent=labels[view][1];
+ document.title=labels[view][0]+' · Power BI documentation';
+}
+if(typeof window!=='undefined'&&window.addEventListener){window.addEventListener('hashchange',libraryRoute);libraryRoute();}
+</script></body></html>

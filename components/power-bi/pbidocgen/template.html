@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__ — Power BI Documentation</title>
+<style>
+:root{
+  --bg:#F3F5F7; --panel:#FFFFFF; --panel2:#F8FAFB;
+  /* Text tokens meet WCAG AA (4.5:1) on every panel and badge background. */
+  --ink:#1C2430; --ink2:#4F5B67; --ink3:#5E6B78;
+  --line:#DDE3E9; --line2:#EBEFF3;
+  --amber:#8A5D00; --pbi:#F2C811;
+  --direct:#157A46; --directBg:#E7F5EE;
+  --viam:#0E7490; --viamBg:#E6F4F7;
+  --poss:#A04A07; --possBg:#FBF0E1;
+  --none:#B42318; --noneBg:#FBEAE8;
+  --fact:#3B4A9F; --factBg:#EAECF8;
+  --dim:#0F766E; --dimBg:#E4F3F1;
+  --date:#7C3AED; --dateBg:#F1EAFC;
+  --other:#61707F; --otherBg:#EEF1F4;
+  --warn:#A04A07; --info:#4F5B67;
+  --mono:"Cascadia Code","Cascadia Mono",Consolas,"SFMono-Regular",Menlo,monospace;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5}
+a{color:var(--amber)}
+.layout{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+/* ---------------- nav rail ---------------- */
+nav{background:var(--panel);border-right:1px solid var(--line);padding:1.1rem .8rem;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{font-size:.78rem;color:var(--ink3);margin-bottom:.2rem}
+.doc-title{font-weight:600;font-size:1.02rem;line-height:1.25;margin-bottom:1.1rem;word-break:break-word}
+.nav-btn{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;border:0;background:none;font:inherit;color:var(--ink2);padding:.42rem .55rem;border-radius:6px;cursor:pointer}
+.nav-btn:hover{background:var(--panel2);color:var(--ink)}
+.nav-btn.active{background:var(--ink);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 var(--pbi)}
+.nav-btn:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.nav-btn .n{font-size:.75rem;color:inherit;font-variant-numeric:tabular-nums}
+.nav-btn.disabled{opacity:.5;cursor:not-allowed}
+.nav-toggle{display:none}
+/* ---------------- content ---------------- */
+main{padding:1.4rem 2rem 4rem;max-width:1240px}
+main{min-width:0}
+.column-scroll{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+.column-scroll table.t{border:0;overflow:visible}
+.column-scroll th{position:sticky;top:0;z-index:1}
+.column-scroll td{max-width:360px;overflow-wrap:anywhere}
+.column-scroll details{min-width:200px;font-size:.8rem}
+.column-scroll summary{padding:.25rem .4rem;font-weight:400}
+/* mode coupler (signature) */
+.coupler{display:flex;align-items:stretch;gap:0;margin-bottom:1.5rem}
+.coupler .half{flex:1;border:1.5px solid var(--ink);padding:.6rem .9rem;background:var(--panel)}
+.coupler .half:first-child{border-radius:8px 0 0 8px;border-right-width:0}
+.coupler .half:last-child{border-radius:0 8px 8px 0}
+.coupler .joint{width:26px;display:flex;align-items:center;justify-content:center;border-top:1.5px solid var(--ink);border-bottom:1.5px solid var(--ink);background:var(--pbi);font-weight:700;color:var(--ink)}
+.coupler .half.off{background:repeating-linear-gradient(-45deg,var(--panel2),var(--panel2) 6px,var(--line2) 6px,var(--line2) 12px);color:var(--ink3);border-color:var(--line)}
+.coupler .joint.off{background:var(--line2);border-color:var(--line);color:var(--ink3)}
+.coupler .tag{font-size:.75rem;color:var(--ink3)}
+.coupler .val{font-size:.86rem;font-weight:600;font-family:var(--sans)}
+.coupler .sub{font-size:.78rem;color:var(--ink2)}
+/* generic */
+h1{font-size:1.45rem;font-weight:650;letter-spacing:-.01em;margin-bottom:.2rem}
+h2{font-size:1.05rem;font-weight:650;margin:1.6rem 0 .6rem}
+.sub{color:var(--ink2)}
+.eyebrow{font-size:.78rem;color:var(--ink3)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1rem 1.1rem;margin-bottom:.8rem}
+.grid{display:grid;gap:.8rem}
+.grid.c4{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+.grid.c3{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.stat .big{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}
+.stat .lbl{font-size:.74rem;color:var(--ink2)}
+table.t{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:.82rem}
+table.t th{text-align:left;padding:.5rem .7rem;vertical-align:top}
+table.t thead th{font-size:.75rem;font-weight:600;color:var(--ink2);border-bottom:1px solid var(--line);background:var(--panel2)}
+table.t tbody th{font-weight:600;border-bottom:1px solid var(--line2)}
+table.t td{padding:.44rem .7rem;border-bottom:1px solid var(--line2);vertical-align:top}
+table.t tr:last-child td{border-bottom:0}
+.badge{display:inline-block;font-size:.75rem;font-weight:600;padding:.08rem .45rem;border-radius:4px;white-space:nowrap}
+.b-fact{background:var(--factBg);color:var(--fact)} .b-dimension{background:var(--dimBg);color:var(--dim)}
+.b-date{background:var(--dateBg);color:var(--date)} .b-other{background:var(--otherBg);color:var(--other)}
+.b-direct{background:var(--directBg);color:var(--direct)} .b-viam{background:var(--viamBg);color:var(--viam)}
+.b-poss{background:var(--possBg);color:var(--poss)} .b-none{background:var(--noneBg);color:var(--none)}
+.b-hidden{background:var(--otherBg);color:var(--ink3)}
+.b-warn{background:var(--possBg);color:var(--warn)} .b-info{background:var(--otherBg);color:var(--info)}
+.ref{font-family:var(--mono);font-size:.78rem;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;padding:.05rem .3rem}
+.xl{background:none;border:0;padding:0;font:inherit;color:var(--amber);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.xl:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.search{width:260px;max-width:100%;padding:.42rem .6rem;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--panel);margin:0 0 .7rem}
+.search:focus{outline:2px solid var(--amber);outline-offset:-1px}
+.filter-row{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:.22rem .7rem;font-size:.76rem;cursor:pointer;color:var(--ink2)}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.empty{border:1.5px dashed var(--line);border-radius:8px;padding:2rem;text-align:center;color:var(--ink2);background:var(--panel2)}
+.empty b{color:var(--ink)}
+pre.code{font-family:var(--mono);font-size:.76rem;line-height:1.55;background:#1E242C;color:#D8DEE6;border-radius:6px;padding:.7rem .85rem;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+pre.code .k{color:#7FD1B9}pre.code .s{color:#E5C07B}pre.code .r{color:#8AB8E8}
+details{border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:.55rem}
+details>summary{cursor:pointer;padding:.6rem .9rem;font-weight:600;list-style:none;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+details>summary::before{content:"▸";color:var(--ink3);font-size:.8rem;transition:transform .12s}
+details[open]>summary::before{transform:rotate(90deg)}
+details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
+.mut{color:var(--ink2);font-size:.8rem}
+.pill-list{display:flex;flex-wrap:wrap;gap:.3rem}
+.hl{background:var(--pbi)!important;color:var(--ink)!important}
+svg text{font-family:var(--sans)}
+.lin-node{cursor:pointer}
+.legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.76rem;color:var(--ink2);margin:.4rem 0 .8rem}
+.legend span{display:flex;align-items:center;gap:.35rem}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:sticky;top:0;z-index:40;height:auto;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.6rem;border-right:0;border-bottom:1px solid var(--line);padding:.6rem 1rem}.brand{grid-column:1}.doc-title{grid-column:1;margin:0}.nav-toggle{display:inline-flex;align-items:center;gap:.35rem;grid-column:2;grid-row:1/span 2;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:.4rem .7rem;font:inherit;color:var(--ink);cursor:pointer}#nav-sections{display:none;grid-column:1/-1;padding-top:.5rem}nav.open #nav-sections{display:block}main{padding:1rem}}
+@media print{nav{display:none}.layout{grid-template-columns:1fr}}
+/*__EXPLORER_CSS__*/
+/* Relationship canvas keeps text at readable size instead of shrinking to fit. */
+.erd-card{padding:0!important;overflow:hidden;margin-top:16px}
+.erd-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--line)}
+.erd-toolbar label{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.erd-toolbar select,.erd-toolbar button{font:inherit;background:white;color:var(--ink);border:1px solid #c5ceda;border-radius:7px;padding:8px 12px;cursor:pointer}
+.erd-toolbar select{max-width:260px}.erd-toolbar button:hover{background:var(--panel2)}
+.erd-zoom{display:flex;align-items:center;gap:8px}.erd-zoom output{min-width:48px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums}
+.erd-viewport{overflow:auto;max-height:70vh;min-height:240px;background-color:#fafcfe;background-image:radial-gradient(#d5dfeb .8px,transparent .8px);background-size:20px 20px}
+#erd,#lineage-board{width:max-content;min-width:100%;text-align:center}#erd svg,#lineage-board svg{display:block;margin:auto}
+.erd-node{cursor:pointer}.erd-node:hover rect,.erd-node:focus rect{stroke:#172434;stroke-width:3}.erd-node:focus{outline:none}
+.erd-selection{padding:14px 20px;border-top:1px solid var(--line);font-size:13px}.erd-selection p{margin-top:8px}
+.erd-legend{padding:0 20px 16px;margin:0}.erd-line{display:inline-block;width:26px;border-top:2px solid #526b87}.erd-line.inactive{border-top-style:dashed}.erd-line.both{border-color:var(--warn)}
+.erd-toolbar button:focus-visible,.erd-toolbar select:focus-visible,.erd-viewport:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+/* Shared workspace treatment with the library. */
+.layout{grid-template-columns:224px minmax(0,1fr)}
+nav{background:#172434;color:#fff;border:0;padding:24px 16px}
+nav .brand{color:#b8c7d9;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:26px}
+nav .doc-title{color:#fff;font-size:18px;margin:8px 8px 26px 0;line-height:1.4}
+.nav-btn{color:#c6d1df;padding:12px;margin:4px 0;border-radius:8px}
+.nav-btn:hover{background:#24364a;color:white}.nav-btn.active{background:#2b3e53}
+.library-back{display:block;color:#e1e9f2;text-decoration:none;font-size:13px;padding:8px 0}.library-back:hover{color:white;text-decoration:underline}
+.breadcrumb{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:24px}
+.breadcrumb a{color:#355679;text-decoration:none}.breadcrumb strong{font-weight:500}
+main{padding:28px 36px 48px;max-width:1480px}h1{font-size:28px;letter-spacing:-.025em}
+.card{border-radius:12px;padding:20px;box-shadow:0 3px 12px #17243405}.stat .big{font-size:30px}
+.coupler{margin-bottom:22px}.coupler .half{border-color:var(--line)}.coupler .joint{border-color:var(--line)}
+@media(max-width:860px){.layout{grid-template-columns:1fr}nav{padding:12px 18px}.library-back{grid-column:1/-1;padding:0 0 6px}nav .brand{display:none}nav .doc-title{font-size:15px;margin:0}.nav-toggle{grid-row:2}main{padding:20px}.breadcrumb{margin-bottom:16px}}
+@media print{.breadcrumb{display:none}.layout{grid-template-columns:1fr}}
+
+/* Contrast pass: the earlier palette read as washed out (hairline borders, grey-on-grey
+   text, invisible shadows, 11-12px labels). Stronger lines, darker secondary text, larger labels. */
+:root{--bg:#E8ECF1;--ink:#111A24;--ink2:#34404D;--ink3:#46525F;--line:#B9C4D0;--line2:#D3DBE3;--panel2:#F1F4F7;
+  --directBg:#D3EEDF;--viamBg:#D2ECF2;--possBg:#F8E3C6;--noneBg:#F8D9D5;--factBg:#DADFF5;--dimBg:#D2ECE8;--dateBg:#E6DAFA;--otherBg:#E1E6EC}
+body{font-size:15px}
+.card,table.t,details,.column-scroll{border-color:var(--line)}
+.card{box-shadow:0 1px 3px #1724341f}
+table.t{font-size:.875rem}
+table.t thead th{font-size:.8rem;color:var(--ink);background:#E3E8EE;border-bottom:1px solid var(--line)}
+table.t td,table.t tbody th{border-bottom-color:var(--line2)}
+.badge{font-size:.78rem}
+.mut,.eyebrow,.stat .lbl,.coupler .tag,.legend,.breadcrumb{color:var(--ink2)}
+.mut{font-size:.84rem}
+.chip{color:var(--ink);border-color:var(--line)}
+.ref{border-color:var(--line);color:var(--ink)}
+.coupler .half,.coupler .joint{border-color:var(--line)}
+.coupler .half.off{color:var(--ink2)}
+.nav-btn{color:#DCE4EE}nav .brand{color:#C9D5E3}
+.column-scroll td,table.t td{overflow-wrap:break-word;word-break:normal}
+.erd-viewport{background-color:#F4F7FA;background-image:radial-gradient(#B9C6D4 .9px,transparent .9px)}
+/* Modern palette: slate neutrals, indigo accent, soft tinted badges.
+   Overrides the earlier tokens; every text/background pair keeps WCAG AA. */
+:root{
+  --bg:#F5F7FB; --panel:#FFFFFF; --panel2:#F1F4F9;
+  --ink:#0F172A; --ink2:#334155; --ink3:#475569;
+  --line:#CBD5E1; --line2:#E2E8F0;
+  --amber:#4F46E5; --pbi:#6366F1; --accent:#4F46E5; --accentSoft:#EEF2FF;
+  --direct:#047857; --directBg:#D1FAE5;
+  --viam:#0E7490; --viamBg:#CFFAFE;
+  --poss:#B45309; --possBg:#FEF3C7;
+  --none:#BE123C; --noneBg:#FFE4E6;
+  --fact:#4338CA; --factBg:#E0E7FF;
+  --dim:#0F766E; --dimBg:#CCFBF1;
+  --date:#6D28D9; --dateBg:#EDE9FE;
+  --other:#475569; --otherBg:#E2E8F0;
+  --warn:#B45309; --info:#334155;
+}
+a,.xl{color:var(--accent)}
+.card,table.t,details,.column-scroll{border-radius:12px}
+.card{box-shadow:0 1px 2px #0f172a0d,0 4px 12px #0f172a0a}
+table.t thead th{background:#F1F4F9;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em;font-size:.72rem}
+.badge{border-radius:999px;padding:.12rem .55rem}
+.chip{border-radius:999px}
+.chip.on{background:var(--accent);border-color:var(--accent)}
+.hl{background:#E0E7FF!important;color:var(--ink)!important}
+nav{background:#0F172A}
+.nav-btn{color:#CBD5E1}.nav-btn:hover{background:#1E293B;color:#fff}
+.nav-btn.active{background:#1E293B;color:#fff;box-shadow:inset 3px 0 0 #818CF8}
+nav .brand{color:#94A3B8}
+.library-back{color:#C7D2FE}
+.breadcrumb a{color:var(--accent)}
+.coupler .joint{background:var(--accentSoft);color:var(--accent)}
+.subtab.active{color:var(--ink);border-bottom-color:var(--accent)!important}
+.search:focus,.nav-btn:focus-visible,.xl:focus-visible{outline-color:var(--accent)}
+.erd-viewport{background-color:#F8FAFC;background-image:radial-gradient(#CBD5E1 .9px,transparent .9px)}
+/* Long identifiers (VW_REP_SNOWFLAKE_WAREHOUSE_METERING_HISTORY) have no spaces;
+   let them wrap so tables stay within the page. */
+table.t td a,table.t td .xl,table.t td b,table.t td .ref{overflow-wrap:anywhere}
+table.source-list{table-layout:fixed}table.source-list th:nth-child(1){width:34%}
+table.t td button.xl,table.t tbody th button.xl,table.t tbody th a,table.t tbody th b{white-space:normal;text-align:left;overflow-wrap:anywhere}
+table.source-list .badge{white-space:normal}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav id="nav" aria-label="Sections"></nav>
+  <main id="main"></main>
+</div>
+<!--__DOCUMENTATION_METADATA__-->
+<script>
+const DATA = /*__DATA__*/null;
+/* ============================================================ helpers */
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const M = DATA.model, R = DATA.report, L = DATA.linked, MODE = DATA.mode;
+const has = { model: !!M, report: !!R, linked: !!L };
+// "\\$#,0;(\\$#,0);\\$#,0" -> "$#,0": positive section, escapes and quotes removed.
+const fmtShort = f => String(f).split(";")[0].replace(/\\(.)/g,"$1").replace(/"([^"]*)"/g,"$1");
+const num = n => (n ?? 0).toLocaleString();
+const typeBadge = t => {
+  const map = {fact:"b-fact", dimension:"b-dimension", "date dimension":"b-date"};
+  return `<span class="badge ${map[t]||"b-other"}">${esc(t)}</span>`;
+};
+const usageBadge = u => {
+  const map = {direct:["b-direct","direct"], "via measures":["b-viam","via measures"],
+               possible:["b-poss","possible"], none:["b-none","no references"]};
+  const [cls,lbl] = map[u] || ["b-other",u];
+  return `<span class="badge ${cls}">${esc(lbl)}</span>`;
+};
+const hlDAX = s => esc(s)
+  .replace(/\b(CALCULATE|SUMX?|AVERAGEX?|COUNTROWS|DISTINCTCOUNT|FILTER|ALL|ALLEXCEPT|VALUES|RELATED|RELATEDTABLE|DIVIDE|IF|SWITCH|VAR|RETURN|USERELATIONSHIP|DATEADD|DATESYTD|TOTALYTD|SAMEPERIODLASTYEAR|MAXX?|MINX?|SELECTEDVALUE|TREATAS|CALENDARAUTO|CALENDAR|USERPRINCIPALNAME)\b/g,'<span class="k">$1</span>')
+  .replace(/(&#39;[^&]*?&#39;\[[^\]]+\]|\b[\w ]+\[[^\]]+\]|\[[^\]]+\])/g,'<span class="r">$1</span>')
+  .replace(/(&quot;.*?&quot;)/g,'<span class="s">$1</span>');
+const goTable = n => { switchTab("tables"); requestAnimationFrame(()=>flash("tbl-"+slug(n))); };
+const goMeasure = n => { switchTab("measures"); requestAnimationFrame(()=>flash("mea-"+slug(n))); };
+const slug = s => "u"+Array.from(String(s)).map(c=>c.codePointAt(0).toString(16)).join("_");
+const pageKey = id => Array.from(String(id)).map(c=>c.codePointAt(0).toString(16)).join('_');
+const pageLabel = r => r.pageId ? `${r.report} / ${r.page} [${r.pageId}]` : `${r.report} / No specific page`;
+function flash(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.scrollIntoView({block:"center"});
+  if(el.tagName==="DETAILS") el.open = true;
+  el.style.boxShadow = "0 0 0 3px var(--pbi)";
+  setTimeout(()=>{ el.style.boxShadow=""; }, 1600);
+}
+const tblLink = n => `<button class="xl" onclick="${esc('goTable('+JSON.stringify(n)+')')}">${esc(n)}</button>`;
+const meaLink = n => `<button class="xl" onclick="${esc('goMeasure('+JSON.stringify(n)+')')}">${esc(n)}</button>`;
+const usageOf = t => {
+  if(!has.linked) return null;
+  if(pageScope==='*') return (L.tableUsage.find(u=>u.table===t)||{}).usage;
+  const kinds=(DATA.columns.tablePages||[]).filter(r=>r.table===t&&inPageScope(r)).flatMap(r=>r.kinds);
+  return kinds.includes('Direct')?'direct':kinds.some(k=>/Via measures|Via calculations|Table expression/.test(k))?'via measures':kinds.length?'possible':'none';
+};
+
+/* ============================================================ tabs */
+const TABS = [
+  {id:"overview", label:"Overview", group:"Start", avail:true},
+  {id:"columns", label:"Columns", group:"Start", avail:has.model, count:()=>DATA.columns?.columnCount},
+  {id:"lineage",  label:"Lineage",  group:"Start", avail:has.linked},
+  {id:"usage",    label:"Usage",    group:"Start", avail:has.linked, count:()=>L.tableUsage.filter(u=>u.usage==="none").length ? L.tableUsage.filter(u=>u.usage==="none").length+" no references" : null},
+  {id:"pages",    label:"Pages",    group:"Report", avail:has.report, count:()=>R?.pages.length},
+  {id:"filters",  label:"Filters",  group:"Report", avail:has.report, count:()=>allFilters().length},
+  {id:"manifest", label:"Field manifest", group:"Report", avail:has.report, count:()=>reportManifest().length},
+  {id:"tables",   label:"Tables",   group:"Model", avail:has.model, count:()=>M?.tables.length},
+  {id:"measures", label:"Measures", group:"Model", avail:has.model, count:()=>M?.measures.length},
+  {id:"rels",     label:"Relationships", group:"Model", avail:has.model, count:()=>M?.relationships.length},
+  {id:"sources",  label:"Sources",  group:"Model", avail:has.model||!!DATA.liveSource},
+  {id:"primary-sources", label:"Primary sources", group:"Model", avail:has.model, count:()=>(DATA.primarySources?.rows||[]).length||null},
+  {id:"security", label:"Security", group:"Model", avail:has.model, count:()=>M?.roles.length||null},
+  {id:"warnings", label:"Warnings", group:"Quality", avail:true, count:()=>allWarnings().length||null},
+];
+const allWarnings = () => [...(M?.warnings||[]), ...(R?.warnings||[]), ...(L?.warnings||[])];
+const allFilters = () => (R?.filterRows || []).filter(inPageScope);
+const reportManifest = () => (has.linked ? L.manifest : (R?.manifest||[])).map(e=>{
+  const locations=(e.locations||[]).filter(inPageScope);
+  return {...e,locations,usedIn:locations.map(l=>pageLabel(l)+": "+l.description)};
+}).filter(e=>pageScope==='*'||e.locations.length);
+
+/* Six top-level sections; every existing view is a sub-tab of one of them. */
+const SECTIONS = [
+  {id:"overview", label:"Overview",         tabs:["overview"]},
+  {id:"data",     label:"Data & sources",   tabs:["tables","columns","measures","rels","lineage","sources","primary-sources","security"]},
+  {id:"visuals",  label:"Pages & visuals",  tabs:["layout","pages","filters","manifest"]},
+  {id:"changes",  label:"Impact & usage", tabs:["impact","matrix","usage","compare"]},
+  {id:"review",   label:"Review issues",    tabs:["cleanup","warnings"]},
+  {id:"details",  label:"Report details",   tabs:["report-details"]},
+];
+const lastTabInSection = {};
+const sectionOf = id => SECTIONS.find(s=>s.tabs.includes(id)) || SECTIONS[1];
+const sectionTabs = s => TABS.filter(t=>!t.hidden && sectionOf(t.id)===s)
+  .sort((a,b)=>s.tabs.indexOf(a.id)-s.tabs.indexOf(b.id));
+function openSection(sid){
+  const s = SECTIONS.find(x=>x.id===sid);
+  const tabs = sectionTabs(s).filter(t=>t.avail);
+  const last = tabs.find(t=>t.id===lastTabInSection[sid]);
+  if(tabs.length) switchTab((last||tabs[0]).id);
+}
+function buildNav(){
+  const nav = document.getElementById("nav");
+  // On narrow screens the sections collapse behind a menu button (B8).
+  let html = `<a class="library-back" href="pbi-home.html#reports">← Report library</a><div class="brand">Power BI documentation</div><div class="doc-title">${esc(DATA.title)}</div>
+    <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-sections" onclick="toggleNav()"><span aria-hidden="true">☰</span> <span id="nav-current">Menu</span></button><div id="nav-sections">`;
+  for(const s of SECTIONS){
+    const avail = sectionTabs(s).some(t=>t.avail);
+    html += avail
+      ? `<button class="nav-btn" id="sec-${s.id}" onclick="openSection('${s.id}')">${esc(s.label)}</button>`
+      : `<button class="nav-btn disabled" id="sec-${s.id}" title="Not available in ${MODE} mode" tabindex="-1">${esc(s.label)}</button>`;
+  }
+  nav.innerHTML = html + "</div>";
+}
+function toggleNav(open){
+  const nav = document.getElementById("nav"), btn = document.getElementById("nav-toggle");
+  const next = open ?? !nav.classList.contains("open");
+  nav.classList[next?"add":"remove"]("open");
+  if(btn) btn.setAttribute("aria-expanded", String(next));
+}
+function subTabs(id){
+  const tabs = sectionTabs(sectionOf(id));
+  if(tabs.length<2) return "";
+  return `<div class="subtabs" aria-label="${esc(sectionOf(id).label)} views">${tabs.map(t=>{
+    const c = t.avail && t.count ? t.count() : null;
+    return t.avail
+      ? `<button class="subtab${t.id===id?" active":""}" id="nav-${t.id}"${t.id===id?' aria-current="page"':""} onclick="switchTab('${t.id}')">${esc(t.label)}${c?` <span class="n">${esc(c)}</span>`:""}</button>`
+      : `<button class="subtab disabled" title="Not available in ${MODE} mode" tabindex="-1">${esc(t.label)}</button>`;
+  }).join("")}</div>`;
+}
+function switchTab(id, recordHistory=true){
+  const tab = TABS.find(t=>t.id===id);
+  if(!tab || !tab.avail) return;
+  rememberView();
+  closeInspector();
+  activeTab = id;
+  if(window.location && window.history && recordHistory && window.location.hash!=="#"+id){
+    // Framed (library viewer, portable export): never add entries to the host page's history,
+    // or its Back button would step through tabs instead of leaving the document.
+    if(window.location.hash && window.parent===window)window.history.pushState(null,"","#"+id);
+    else window.history.replaceState(null,"","#"+id);
+  }
+  document.title=tab.label+" · "+DATA.title;
+
+  const section = sectionOf(id);
+  lastTabInSection[section.id] = id;
+  document.querySelectorAll(".nav-btn").forEach(b=>{b.classList.remove("active");b.removeAttribute("aria-current");});
+  const btn = document.getElementById("sec-"+section.id);
+  if(btn){ btn.classList.add("active"); btn.setAttribute("aria-current","true"); }
+  const current = document.getElementById("nav-current");
+  if(current) current.textContent = section.label;
+  toggleNav(false);
+  document.getElementById("main").innerHTML = `<div class="breadcrumb"><a href="pbi-home.html#reports">Reports</a><span aria-hidden="true">/</span><span>${esc(DATA.title)}</span><span aria-hidden="true">/</span><strong>${esc(tab.label)}</strong></div>` + subTabs(id) + scopeBar(id) + RENDER[id]();
+  restoreView(id);
+  window.scrollTo(0,0);
+  if(id==="rels") drawERD();
+  if(id==="lineage") drawLineage();
+  if(id==="columns") filterColumns();
+  if(id==="tables") fTbl(document.getElementById("table-search").value);
+  if(id==="manifest") fMan(document.getElementById("manifest-search").value);
+  if(id==="sources"&&M){ filterSourceList(); filterSourceObjects(); }
+  if(id==="primary-sources") filterPrimarySources();
+  if(id==="report-details") updateSaveBar();
+  if(id==="measures") fMea(document.getElementById("measure-search").value);
+}
+
+/* ============================================================ column/page inventory */
+let columnSort = {key:"column", direction:1};
+let visibleColumns = [];
+function rColumns(){
+  const a = DATA.columns;
+  // Five columns so the table fits a laptop; report name is in the scope bar and
+  // usage/measure detail sits in the assessment and evidence cells.
+  const headings = [["decision","Assessment"],["column","Table / column"],["page","Report page"],
+    ["pageUsage","Page usage"],["reason","Evidence & source"]];
+  return `<h1>Which columns are used?</h1>
+    <p class="sub">One row per report, page and column. Usage is specific to that page; deletion assessment covers all detected dependencies.</p>
+    <div class="grid c4" style="margin-top:1rem">${[["Columns",a.columnCount],["Used in report",a.counts["Used in report"]||0],
+      ["Deletion candidates",a.counts["Deletion candidate"]||0],["Need review",a.counts.Review||0]].map(([label,n])=>
+      `<div class="card stat"><div class="big">${num(n)}</div><div class="lbl">${label}</div></div>`).join("")}</div>
+    <div class="card"><b>Keep</b> means a report or model dependency was found.
+      <b>Deletion candidate</b> means no references were detected. <b>Review</b> means the analysis is incomplete or a dependency is uncertain.
+      <p class="mut" style="margin-top:.4rem">${esc(a.scope)}</p></div>
+    <div class="filter-row">
+      <input id="column-search" class="search" style="margin:0" aria-label="Search columns, measures or sources" placeholder="Search columns, measures, sources…" oninput="filterColumns()">
+      <select id="column-assessment" class="search" style="width:auto;margin:0" aria-label="Filter deletion assessment" onchange="filterColumns()">
+        <option value="">All assessments</option><option>Keep</option><option>Deletion candidate</option><option>Review</option></select>
+      <select id="column-used" class="search" style="width:auto;margin:0" aria-label="Filter report usage" onchange="filterColumns()">
+        <option value="">All report usage</option><option value="Yes">Used in report</option><option value="Possible">Possible usage</option><option value="Not detected">No report usage detected</option><option value="Unknown">Usage unknown</option></select>
+      <button class="chip" onclick="downloadColumnCsv()">Export filtered CSV</button>
+    </div>
+    <p id="column-count" class="mut" aria-live="polite" style="margin-bottom:.5rem"></p>
+    <div class="column-scroll"><table class="t column-inventory"><thead><tr>${headings.map(([key,title])=>
+      `<th data-column-sort="${key}"><button class="xl" onclick="sortColumns('${key}')">${title}</button></th>`).join("")}</tr></thead>
+      <tbody id="column-rows"></tbody></table></div>`;
+}
+function filterColumns(){
+  const q = document.getElementById("column-search").value.toLowerCase().trim();
+  const assessment = document.getElementById("column-assessment").value;
+  const used = document.getElementById("column-used").value;
+  visibleColumns = DATA.columns.rows.filter(inPageScope).filter(r=>(!q||Object.values(r).join(" ").toLowerCase().includes(q)) &&
+    (!assessment||r.decision===assessment) && (!used||r.usedInReport===used));
+  const value = r=>String(r[columnSort.key]??"");
+  visibleColumns.sort((a,b)=>columnSort.direction*value(a).localeCompare(value(b),undefined,{numeric:true}) ||
+    a.table.localeCompare(b.table) || a.column.localeCompare(b.column) || a.pageId.localeCompare(b.pageId));
+  document.getElementById("column-count").textContent = `${visibleColumns.length} rows · ${new Set(visibleColumns.map(r=>JSON.stringify([r.table,r.column]))).size} distinct columns`;
+  document.querySelectorAll("[data-column-sort]").forEach(th=>th.setAttribute("aria-sort",
+    th.dataset.columnSort===columnSort.key?(columnSort.direction===1?"ascending":"descending"):"none"));
+  const list = values=>values.length?values.map(esc).join("<br>"):"—";
+  document.getElementById("column-rows").innerHTML = visibleColumns.map(r=>`<tr>
+    <td><span class="badge ${r.decision==='Keep'?'b-direct':r.decision==='Review'?'b-warn':'b-info'}">${esc(r.decision)}</span><div class="mut">Used in report: ${esc(r.usedInReport)}</div></td>
+    <td><div class="mut">${esc(r.table)}</div><b>${esc(r.column)}</b></td>
+    <td title="${esc(r.pageId)}">${esc(r.page)||esc(r.pageScope)}</td>
+    <td>${esc(r.pageUsage)}${r.pageMeasures.length?`<div class="mut">${list(r.pageMeasures)}</div>`:''}</td><td><details><summary>${esc(r.reason)}</summary><div class="body">
+    <b>Page evidence</b><p>${list(r.evidence)}</p><b>All dependent measures</b><p>${list(r.usedByMeasures)}</p>
+    <b>Dependent calculations</b><p>${list(r.usedByCalculations)}</p><b>Model dependencies</b><p>${list(r.modelDependencies)}</p>
+    <b>Bookmarks</b><p>${list(r.bookmarkUsage)}</p><b>Partition sources</b><p>${list(r.source)}</p>
+    <b>Source column (model input)</b><p>${esc(r.sourceColumn)||'Unknown'}</p>
+    ${r.expression?`<b>Column expression</b><pre class="code">${esc(r.expression)}</pre>`:''}
+    <p class="mut">${esc(r.sourceNote)}</p>${r.reviewNotes.length?`<b>Review notes</b><p>${list(r.reviewNotes)}</p>`:''}
+    </div></details></td></tr>`).join("") || '<tr><td colspan="5">No columns match these filters.</td></tr>';
+}
+function sortColumns(key){
+  columnSort = {key,direction:columnSort.key===key?-columnSort.direction:1};
+  filterColumns();
+}
+function columnCsv(rows){
+  return inventoryCsv(rows, DATA.columns.csvFields);
+}
+function inventoryCsv(rows, fields){
+  const cell = value=>{
+    let s = Array.isArray(value)?value.join("; "):String(value??"");
+    if(/^[=+@-]/.test(s.trimStart())||/^[\t\r\n]/.test(s)) s="'"+s;
+    return '"'+s.replace(/"/g,'""')+'"';
+  };
+  return '\uFEFF'+[fields.map(([,title])=>cell(title)).join(','),
+    ...rows.map(row=>fields.map(([key])=>cell(row[key])).join(','))].join('\r\n')+'\r\n';
+}
+function downloadColumnCsv(){
+  exportCsvFile(columnCsv(visibleColumns),'column-page-usage.csv');
+}
+
+/* ============================================================ coupler */
+function coupler(){
+  // Shown once, on Overview; repeating it on every view pushed content down.
+  if(activeTab!=="overview") return "";
+  const mHalf = has.model
+    ? `<div class="half"><div class="tag">Semantic model</div><div class="val">${esc(M.name)}</div><div class="sub">${num(M.tables.length)} tables · ${num(M.measures.length)} measures</div></div>`
+    : `<div class="half off"><div class="tag">Semantic model</div><div class="val">Not supplied</div><div class="sub">model-side analysis unavailable</div></div>`;
+  const rHalf = has.report
+    ? `<div class="half"><div class="tag">Report</div><div class="val">${esc(R.name)}</div><div class="sub">${num(R.pages.length)} pages · ${num(R.pages.reduce((a,p)=>a+p.visuals.length,0))} visuals</div></div>`
+    : `<div class="half off"><div class="tag">Report</div><div class="val">Not supplied</div><div class="sub">report-side analysis unavailable</div></div>`;
+  return `<div class="coupler" role="img" aria-label="Inputs supplied: ${MODE} mode">${mHalf}<div class="joint ${has.linked?'':'off'}">${has.linked?'⟷':'·'}</div>${rHalf}</div>`;
+}
+
+/* ============================================================ overview */
+function rOverview(){
+  const stats = [];
+  if(has.model){
+    stats.push(["Tables", M.tables.length], ["Columns", M.tables.reduce((a,t)=>a+t.columns.length,0)],
+      ["Measures", M.measures.length], ["Relationships", M.relationships.length]);
+  }
+  if(has.report){
+    stats.push(["Pages", R.pages.length], ["Visuals", R.pages.reduce((a,p)=>a+p.visuals.length,0)],
+      ["Filters", allFilters().length], ["Bookmarks", R.bookmarks.length]);
+  }
+  const srcTypes = has.model ? [...new Set(M.tables.flatMap(t=>t.partitions.map(p=>(p.source.label||p.source.sourceType))))] : [];
+  const unused = has.linked ? L.tableUsage.filter(u=>u.usage==="none") : [];
+  const warnCount = allWarnings().filter(w=>w.severity==="warning").length;
+
+  let modeNote = "";
+  if(MODE==="semantic-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Semantic-only mode.</b> No report was supplied, so nothing here can be called "unused" — the most this document can say is that a column or table has <i>no internal references</i> within the model itself. External reports, Excel connections, or composite models may still depend on it.</div>`;
+  if(MODE==="report-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Report-only mode.</b> ${(R&&R.liveConnection)?`This report is live-connected (DirectQuery) to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there, not in this file. `:""}No semantic model was supplied, so field references below are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, distinguish measures from columns, or trace them to a data source.</div>`;
+
+  return `${coupler()}
+  <h1>${esc(DATA.title)}</h1>
+  <p class="sub">Generated ${esc(DATA.generated)} · mode: <b>${MODE}</b></p>
+  ${modeNote}
+  <div class="grid c4" style="margin-top:1rem">
+    ${stats.map(([l,v])=>`<div class="card stat"><div class="big">${num(v)}</div><div class="lbl">${l}</div></div>`).join("")}
+  </div>
+  ${has.model?`<h2>Data sources at a glance</h2>
+  <div class="card">
+    ${srcTypes.length?`<div class="pill-list">${srcTypes.map(s=>`<span class="ref">${esc(s)}</span>`).join("")}</div>`:`<div class="mut">No sources detected</div>`}
+    <div class="mut" style="margin-top:.5rem">Full breakdown in <button class="xl" onclick="switchTab('sources')">Sources</button>.</div>
+  </div>`:""}
+  ${has.linked?`<h2>Usage verdict</h2>
+  <div class="card">
+    ${["direct","via measures","possible","none"].map(u=>{
+      const n = L.tableUsage.filter(x=>x.usage===u).length;
+      return `${usageBadge(u)} <b style="margin-right:1.1rem">${n}</b>`;
+    }).join("")}
+    ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Usage</button>.</div>`:""}
+  </div>`:""}
+  ${rQualityOverview(warnCount)}`;
+}
+/* Documentation coverage and duplicates (review item D). Static facts only. */
+function rQualityOverview(warnCount){
+  const q = DATA.quality, d = q?.documentation, dup = q?.duplicateMeasures||[];
+  const part = (n,total,label) => `<div class="card stat"><div class="big">${num(n)}<span class="of"> of ${num(total)}</span></div><div class="lbl">${label}</div></div>`;
+  const noFormat = d?.measuresWithoutFormat||[];
+  return `<h2>Documentation and quality</h2>
+  ${d?`<div class="grid c4">${part(d.measuresDescribed,d.measures,"measures described")}${part(d.measures-noFormat.length,d.measures,"measures with a format string")}${part(d.measuresInFolders,d.measures,"measures in display folders")}${part(d.columnsDescribed,d.columns,"columns described")}${part(d.tablesDescribed,d.tables,"tables described")}</div>
+  ${noFormat.length?`<details><summary>${noFormat.length} ${noFormat.length===1?"measure has":"measures have"} no format string</summary><div class="body"><div class="pill-list">${noFormat.map(l=>`<span class="ref">${esc(l)}</span>`).join("")}</div></div></details>`:""}
+  <p class="mut">${esc(d.scope)} Refresh health, performance and real usage are not available from a static extract.</p>`:""}
+  <div class="card">${dup.length?`<b>${dup.length} ${dup.length===1?"set":"sets"} of duplicate measures</b> (the same DAX saved under different names): ${dup.map(g=>g.measures.map(esc).join(" = ")).join("; ")}. See <button class="xl" onclick="switchTab('cleanup')">Cleanup review</button>.<br>`:has.model?"No duplicate measures detected.<br>":""}
+  ${warnCount?`${warnCount} warning${warnCount>1?"s":""} flagged — see <button class="xl" onclick="switchTab('warnings')">Warnings</button>.`:"No warnings flagged."}</div>`;
+}
+
+/* ============================================================ lineage */
+let lineageZoom=1, lineageFocus=null;
+function lineageGraph(){
+ const srcKey=r=>r.sourceLabel||[r.sourceType,r.server,r.database].filter(Boolean).join(' · ')||'Unknown source';
+ const tables=scopedTables().map(t=>({name:t.name,usage:usageOf(t.name),type:t.tableType}));
+ const pages=scopedPages(),names=new Set(tables.map(t=>t.name)),pageIds=new Set(pages.map(p=>p.id));
+ const rows=L.lineage.filter(r=>names.has(r.table));
+ const sources=[...new Map(rows.map(r=>[srcKey(r),{key:srcKey(r)}])).values()];
+ const unique=rows=>[...new Map(rows.map(r=>[JSON.stringify(r),r])).values()];
+ const edgesST=unique(rows.map(r=>({s:srcKey(r),t:r.table})));
+ const edgesTP=unique((L.tablePages||[]).filter(r=>r.pageId&&names.has(r.table)&&pageIds.has(r.pageId)).map(r=>({t:r.table,p:r.pageId})));
+ return {sources,tables,pages,edgesST,edgesTP};
+}
+function rLineage(){
+ lineageFocus=null;
+ return `${coupler()}<h1>Lineage</h1><p class="sub" style="margin-bottom:16px">Follow the detected paths from sources to tables and report pages. Select a node to highlight its paths.</p>
+ <div id="lineage-note" class="card"></div>
+ <div class="card erd-card"><div class="erd-toolbar"><span class="mut">Sources → model tables → report pages</span><div class="erd-zoom" role="group" aria-label="Lineage zoom"><button aria-label="Zoom lineage out" onclick="zoomLineage(-.25)">−</button><output id="lineage-zoom-label" aria-live="polite">${Math.round(lineageZoom*100)}%</output><button aria-label="Zoom lineage in" onclick="zoomLineage(.25)">+</button><button onclick="resetLineage()">Reset view</button></div></div>
+ <div id="lineage-viewport" class="erd-viewport" tabindex="0" role="region" aria-label="Lineage diagram; scroll to explore"><div id="lineage-board"></div></div>
+ <div id="lineage-selection" class="erd-selection" role="status"></div>
+ <div class="legend erd-legend"><span><span class="dot" style="background:var(--direct)"></span>Direct</span><span><span class="dot" style="background:var(--viam)"></span>Via measures</span><span><span class="dot" style="background:var(--poss)"></span>Possible</span><span><span class="dot" style="background:#8391a3"></span>No references detected</span></div></div>`;
+}
+function zoomLineage(delta){lineageZoom=Math.max(.5,Math.min(2.5,lineageZoom+delta));drawLineage();}
+function resetLineage(){lineageZoom=1;lineageFocus=null;drawLineage();const v=document.getElementById('lineage-viewport');v.scrollTop=0;v.scrollLeft=0;}
+function selectLineage(col,key){lineageFocus=lineageFocus?.col===col&&lineageFocus.key===key?null:{col,key};drawLineage();}
+function lineageSelection(g){
+ const f=lineageFocus;
+ const tables=new Set(!f?g.tables.map(t=>t.name):f.col==='t'?[f.key]:f.col==='s'?g.edgesST.filter(e=>e.s===f.key).map(e=>e.t):g.edgesTP.filter(e=>e.p===f.key).map(e=>e.t));
+ const st=g.edgesST.filter(e=>tables.has(e.t)&&(!f||f.col!=='s'||e.s===f.key));
+ const tp=g.edgesTP.filter(e=>tables.has(e.t)&&(!f||f.col!=='p'||e.p===f.key));
+ return {tables,st,tp,sources:new Set(st.map(e=>e.s)),pages:new Set(tp.map(e=>e.p))};
+}
+function drawLineage(){
+ const board=document.getElementById('lineage-board');if(!board)return;
+ const g=lineageGraph(),selected=lineageSelection(g),{sources,tables,pages,edgesST,edgesTP}=g;
+ const disconnected=pages.filter(p=>!edgesTP.some(e=>e.p===p.id));
+ const note=document.getElementById('lineage-note');
+ note.innerHTML=disconnected.length?`<strong>${edgesTP.length?'Some pages have no detected table connections.':'No table-to-page connections detected.'}</strong><p class="mut" style="margin-top:6px">${disconnected.map(p=>{const types=[...new Set((p.visuals||[]).map(v=>v.type))];return `${esc(p.name)}: ${types.length?'contains '+types.map(esc).join(' and '):'no visuals found'}; no table usage was detected on this page.`;}).join('<br>')}</p><p class="mut" style="margin-top:6px">Source-to-table lines describe model inputs. No references detected does not mean a table is safe to delete.${(DATA.columns?.issues||[]).length?' Analysis coverage is limited; review the analysis issues for details.':''}</p>`:'<span class="mut">Connections show detected usage for the selected report scope. Possible usage is not proof of runtime use.</span>';
+ const boxW=280,boxH=68,rowH=94,pad=28;
+ const W=Math.max(1140,document.getElementById('lineage-viewport').clientWidth||0),colW=(W-pad*2-boxW)/2;
+ const H=Math.max(1,sources.length,tables.length,pages.length)*rowH+100;
+ const yOf=(i,n)=>70+i*rowH+(H-100-n*rowH)/2;
+ const color=u=>({direct:'var(--direct)','via measures':'var(--viam)',possible:'var(--poss)',none:'#8391a3'}[u]||'#8391a3');
+ let svg=`<svg width="${W*lineageZoom}" height="${H*lineageZoom}" viewBox="0 0 ${W} ${H}" role="group" aria-label="Source to table to page lineage" font-size="15">`;
+ const edge=(col,y1,y2,on)=>{const x1=pad+col*colW+boxW,x2=pad+(col+1)*colW;return `<path d="M${x1},${y1+boxH/2} C${(x1+x2)/2},${y1+boxH/2} ${(x1+x2)/2},${y2+boxH/2} ${x2},${y2+boxH/2}" fill="none" stroke="${lineageFocus&&on?'#246a85':'#8397af'}" stroke-width="${lineageFocus&&on?3:2}" opacity="${!lineageFocus||on?1:.35}"/>`;};
+ edgesST.forEach(e=>{svg+=edge(0,yOf(sources.findIndex(s=>s.key===e.s),sources.length),yOf(tables.findIndex(t=>t.name===e.t),tables.length),selected.st.includes(e));});
+ edgesTP.forEach(e=>{svg+=edge(1,yOf(tables.findIndex(t=>t.name===e.t),tables.length),yOf(pages.findIndex(p=>p.id===e.p),pages.length),selected.tp.includes(e));});
+ const shorten=(t,n)=>t.length>n?t.slice(0,n-1)+'…':t;
+ const node=(col,index,total,label,subtitle,key,stroke,on)=>{
+  const x=pad+col*colW,y=yOf(index,total),kind=['s','t','p'][col];
+  const focused=lineageFocus?.col===kind&&lineageFocus.key===key,click=action('selectLineage',kind,key);
+  return `<g class="erd-node" id="ln-${kind}-${kind==='p'?pageKey(key):slug(key)}" role="button" tabindex="0" aria-label="${esc(label)}" aria-pressed="${focused}" onclick="${click}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${click}}" opacity="1"><title>${esc(label)} · ${esc(subtitle)}</title><rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="10" fill="${focused?'#dcecf8':col===0?'#edf4fc':col===2?'#eaf5f2':'#fff'}" stroke="${stroke}" stroke-width="${focused?3:2}"/><text x="${x+14}" y="${y+27}" fill="var(--ink)" font-weight="600">${esc(shorten(label,31))}</text><text x="${x+14}" y="${y+49}" fill="var(--ink2)" font-size="12">${esc(shorten(subtitle,39))}</text></g>`;
+ };
+ sources.forEach((s,i)=>{const split=s.key.indexOf(' · ');svg+=node(0,i,sources.length,split<0?s.key:s.key.slice(0,split),split<0?'Source':s.key.slice(split+3),s.key,'#526b87',selected.sources.has(s.key));});
+ tables.forEach((t,i)=>svg+=node(1,i,tables.length,t.name,t.usage==='none'?'No references detected':t.usage||'Usage unknown',t.name,color(t.usage),selected.tables.has(t.name)));
+ pages.forEach((p,i)=>svg+=node(2,i,pages.length,pages.filter(other=>other.name===p.name).length>1?`${p.name} [${p.id}]`:p.name,edgesTP.some(e=>e.p===p.id)?'Detected table usage':'No table usage detected',p.id,'#417766',selected.pages.has(p.id)));
+ ['Sources','Model tables','Report pages'].forEach((h,i)=>svg+=`<text x="${pad+i*colW}" y="32" fill="var(--ink2)" font-weight="600">${h}</text>`);
+ board.innerHTML=svg+'</svg>';
+ const f=lineageFocus;
+ const label=!f?'':f.col==='p'?pages.find(p=>p.id===f.key)?.name||f.key:f.key;
+ document.getElementById('lineage-selection').innerHTML=f?`<strong>${esc(label)}</strong>${f.col==='t'?' · '+tblLink(f.key)+' <span class="mut">(table details)</span>':''}<p class="mut">${selected.st.length} source-to-table connections · ${selected.tp.length} table-to-page connections</p>`:'Select a source, table or page to highlight its paths. Full names appear here when selected.';
+ document.getElementById('lineage-zoom-label').textContent=Math.round(lineageZoom*100)+'%';
+}
+
+/* ============================================================ usage */
+function rUsage(){
+  const rows = DATA.columns.tablePages.filter(inPageScope).map(r=>{
+    const category = r.kinds.includes('Direct')?'direct':r.kinds.some(k=>['Via measures','Via calculations','Table expression'].includes(k))?'via measures':r.kinds.length?'possible':'none';
+    return `<tr data-u="${category}"><td>${esc(r.report)}</td><td title="${esc(r.pageId)}">${esc(r.page)||esc(r.scope)}</td>
+      <td>${tblLink(r.table)}</td><td>${esc(r.usage)}</td><td>${r.fields.map(esc).join(', ')||'—'}
+      ${r.measures.length?`<div class="mut">Measures: ${r.measures.map(esc).join(', ')}</div>`:''}</td>
+      <td class="mut">${r.evidence.map(esc).join('<br>')||'No page reference detected'}</td></tr>`;
+  }).join('');
+  return `${coupler()}<h1>Table usage by report page</h1>
+    <p class="sub">Each verdict applies to the named page. A missing page reference does not establish that a table can be deleted.</p>
+    <div class="filter-row">${['all','direct','via measures','possible','none'].map(u=>`<button class="chip ${u==='all'?'on':''}" onclick="fUsage('${u}',this)">${u==='none'?'no page references':u}</button>`).join('')}</div>
+    <table class="t"><thead><tr><th>Report</th><th>Report page</th><th>Table</th><th>Page usage</th><th>Fields / measures</th><th>Evidence</th></tr></thead>
+    <tbody id="usage-body">${rows}</tbody></table>`;
+}
+
+function fUsage(u, chip){
+  document.querySelectorAll(".filter-row .chip").forEach(c=>c.classList.remove("on"));
+  chip.classList.add("on");
+  document.querySelectorAll("#usage-body tr").forEach(tr=>{ tr.style.display = (u==="all"||tr.dataset.u===u)?"":"none"; });
+}
+
+/* ============================================================ pages */
+// Buttons, shapes, images and navigators with no data: listed as a count, not rows.
+const DECORATIVE_TYPES=new Set(['actionButton','shape','basicShape','image','group','pageNavigator','bookmarkNavigator','textbox']);
+const isDecorative=v=>DECORATIVE_TYPES.has(v.type)&&!(v.fields||[]).length&&!(v.filters||[]).length;
+// Page name alone, unless another page shares it (then the full label with its id).
+const pageTitle=p=>p.name&&(R?.pages||[]).filter(q=>q.name===p.name).length===1?p.name:(p.label||p.name);
+function rPages(){
+  if(!R.pages.length) return `${coupler()}<div class="empty"><b>No pages found.</b><br>Check that the .Report folder contains definition/pages/.</div>`;
+  const cards = scopedPages().map(p=>{
+    const feedRows = (p.feeds||[]).map(({table:t,fields,usage})=>{
+      return `<tr><td>${has.model?tblLink(t):`<span class="ref">${esc(t)}</span>`}<div class="mut">${esc(usage)}</div></td><td class="mut">${fields.map(f=>`<span class="ref">${esc(f)}</span>`).join(" ")}</td></tr>`;
+    }).join("");
+    const deco = p.visuals.filter(isDecorative);
+    const visRows = p.visuals.filter(v=>!isDecorative(v)).map(v=>`
+      <tr><td title="${esc(v.type)}"><b>${esc(visualName(p.id,v))}</b><div class="mut">${esc(visualTypeName(v.type))}</div></td>
+      <td class="mut">${v.fields.filter((f,i,a)=>a.findIndex(g=>g.table===f.table&&g.field===f.field&&g.kind===f.kind)===i).map(f=>{
+        const label = f.table?`${f.table}[${f.field}]`:`[${f.field}]`;
+        const kind = f.kind==="measure"?" (m)":"";
+        return `<span class="ref" title="${esc(f.context)}">${esc(label)}${kind}</span>`;
+      }).join(" ")||"—"}</td>
+      <td class="mut">${v.filters.length? v.filters.map(f=>esc(f.field||"?")).join(", "):"—"}</td></tr>`).join("");
+    return `<details id="pg-${pageKey(p.id)}">
+      <summary title="${esc(p.id)}">${esc(pageTitle(p))} ${p.hidden?'<span class="badge b-hidden">hidden</span>':""} ${p.isActive?'<span class="badge b-other">landing page</span>':""}
+        <span class="mut" style="font-weight:400;margin-left:auto">${p.visuals.length-p.visuals.filter(isDecorative).length} data visuals${p.visuals.some(isDecorative)?` · ${p.visuals.filter(isDecorative).length} decorative`:''}</span></summary>
+      <div class="body">
+        <h2 style="margin-top: .6rem">What feeds this page</h2>
+        ${feedRows?`<table class="t"><thead><tr><th>Table</th><th>Fields used</th></tr></thead><tbody>${feedRows}</tbody></table>`:`<p class="mut">No field bindings detected on this page.</p>`}
+        <h2>Visuals</h2>
+        <table class="t"><thead><tr><th>Visual</th><th>Field bindings</th><th>Visual filters</th></tr></thead><tbody>${visRows||'<tr><td colspan="3" class="mut">No data visuals on this page.</td></tr>'}</tbody></table>
+        ${deco.length?`<details><summary>${deco.length} decorative visual${deco.length===1?'':'s'} without data <span class="mut" style="font-weight:400">${esc(Object.entries(deco.reduce((a,v)=>(a[visualTypeName(v.type)]=(a[visualTypeName(v.type)]||0)+1,a),{})).map(([k,n])=>n>1?k+' ×'+n:k).join(', '))}</span></summary><div class="body"><p class="mut">${deco.map(v=>esc(visualName(p.id,v))).join(' · ')}</p></div></details>`:''}
+        ${p.filters.filter(f=>f.level==="page").length?`<h2>Page-level filters</h2><div class="pill-list">${p.filters.filter(f=>f.level==="page").map(f=>`<span class="ref">${esc(f.table||"?")}[${esc(f.field||"?")}] — ${esc(f.filterType)}${f.raw?`: ${esc(f.raw)}`:""}</span>`).join("")}</div>`:""}
+      </div>
+    </details>`;
+  }).join("");
+  return `${coupler()}<h1>Report pages</h1>
+  <p class="sub">Every page with its visuals, their field bindings, and a rolled-up "what feeds this page" table.${has.model?"":" Field references are unresolved (report-only mode): they name what the report expects, not what a model confirms."}</p>${cards}`;
+}
+
+/* ============================================================ filters */
+function rFilters(){
+  const fs = allFilters();
+  if(!fs.length) return `${coupler()}<h1>Filters</h1><div class="empty"><b>No filters found</b> at report, page, or visual level.</div>`;
+  const row = f=>`<tr>
+    <td><span class="badge b-other">${esc(f.level)}</span></td>
+    <td class="mut">${esc(f.pageLabel)}<div>${esc(f.target)}</div></td>
+    <td>${f.table&&has.model?tblLink(f.table):`<span class="ref">${esc(f.table||"?")}</span>`}<span class="ref">[${esc(f.field||"?")}]</span></td>
+    <td class="mut">${esc(f.filterType)}</td>
+    <td class="mut">${f.raw?esc(f.raw):"—"}</td></tr>`;
+  return `${coupler()}<h1>Filters</h1>
+  <p class="sub">Every filter the report declares, at all three scopes. Report-level filters apply everywhere; page filters apply to one page; visual filters to a single visual.</p>
+  <table class="t"><thead><tr><th>Scope</th><th>Applies to</th><th>Field</th><th>Type</th><th>Condition hint</th></tr></thead>
+  <tbody>${fs.map(row).join("")}</tbody></table>`;
+}
+
+/* ============================================================ manifest */
+function rManifest(){
+  const man = reportManifest();
+  const res = e => !has.linked ? "" :
+    e.resolution==="measure" ? '<span class="badge b-viam">measure</span>' :
+    e.resolution==="column" ? '<span class="badge b-direct">column</span>' :
+    `<span class="badge b-none">${esc(e.resolution)}</span>`;
+  return `${coupler()}<h1>Field manifest</h1>
+  <p class="sub">${has.linked
+    ? "Every field the report binds, resolved against the model. Broken bindings are flagged in red and also listed under Warnings."
+    : "Every field the report demands. Without a model these are <b>unresolved requirements</b> — a rebuild against a new model must provide each one. \u201Cmeasure\u201D / \u201Ccolumn\u201D below reflects only how the report referenced the field, not model-confirmed truth."}</p>
+  <input id="manifest-search" class="search" placeholder="Search fields…" oninput="fMan(this.value)">
+  <table class="t"><thead><tr><th>Field</th><th>Referenced as</th>${has.linked?"<th>Resolved</th>":""}<th>Used in</th></tr></thead>
+  <tbody>${man.map(e=>`<tr data-s="${esc((e.table||"")+" "+e.field).toLowerCase()}">
+    <td><span class="ref">${esc(e.table||"?")}[${esc(e.field)}]</span></td>
+    <td class="mut">${esc(e.kind)}</td>
+    ${has.linked?`<td>${res(e)}</td>`:""}
+    <td class="mut">${e.usedIn.slice(0,4).map(esc).join("<br>")}${e.usedIn.length>4?`<br>+${e.usedIn.length-4} more`:""}</td>
+  </tr>`).join("")}</tbody></table>`;
+}
+function fMan(q){
+  q=q.toLowerCase();
+  document.querySelectorAll("[data-s]").forEach(tr=>{ tr.style.display = tr.dataset.s.includes(q)?"":"none"; });
+}
+
+/* ============================================================ tables */
+const sourceCsvFields = [["report","Report"],["page","Report page"],["pageId","Page ID"],["pageScope","Page scope"],["table","Model table"],["usage","Page usage"],
+  ["pageFields","Fields on this page"],["pageMeasures","Measures on this page"],["pageEvidence","Page evidence"],
+  ["partition","Partition"],["server","Server"],["database","Database"],
+  ["sourceType","Source type"],["objectType","Object type"],["object","Source object"],
+  ["queryKind","Query language"],["query","Query"],["notes","Notes"],["expression","Partition expression"]];
+function sourceRows(q='', page='*'){
+  q=q.trim().toLowerCase();
+  return DATA.tableSources.filter(inPageScope).filter(r=>(!q||Object.values(r).join(' ').toLowerCase().includes(q))&&(page==='*'||r.pageId===page));
+}
+function rTableSources(){
+  return `<h2>Report → page → table → source</h2>
+    <p class="sub">Each row identifies usage on one report page, for one table partition. Blank pages mean no resolved page usage, not usage on every page.</p>
+    <button class="chip" style="margin:.7rem 0" onclick="downloadSourceCsv()">Export source summary CSV</button>
+    <div class="column-scroll" style="margin-bottom:1.2rem"><table class="t" id="table-source-summary">
+    <thead><tr><th>Report</th><th>Report page</th><th>Model table / partition</th><th>Page usage</th><th>Server</th><th>Database</th><th>Source type</th><th>Source object / query</th></tr></thead>
+    <tbody>${DATA.tableSources.map((r,i)=>inPageScope(r)?`<tr data-source-index="${i}">
+      <td>${esc(r.report)}</td><td title="${esc(r.pageId)}">${esc(r.page)||esc(r.pageScope)}</td><td><b>${esc(r.table)}</b><div class="mut">${esc(r.partition)||'No partition'}</div></td>
+      <td>${esc(r.usage)}${r.pageMeasures.length?`<div class="mut">${r.pageMeasures.map(esc).join(', ')}</div>`:''}</td><td>${esc(r.server)||'Unknown / not applicable'}</td><td>${esc(r.database)||'Unknown / not applicable'}</td>
+      <td>${esc(r.objectType)}<div class="mut">${esc(r.sourceType)}</div></td>
+      <td>${r.object?`<span class="ref">${esc(r.object)}</span>`:''}
+      ${r.query?`<details><summary>Show ${esc(r.queryKind)} query</summary><div class="body"><pre class="code">${esc(r.query)}</pre></div></details>`:''}
+      ${!r.object&&!r.query?'No source object or expression found':''}
+      ${r.notes.length?`<p class="mut">${r.notes.map(esc).join('<br>')}</p>`:''}</td>
+    </tr>`:'').join('')}</tbody></table></div>`;
+}
+function downloadSourceCsv(){
+  const rows=sourceRows(document.getElementById('table-search').value);
+  exportCsvFile(inventoryCsv(rows,sourceCsvFields),'report-table-sources.csv');
+}
+function rTables(){
+  const cards = scopedTables().map(t=>{
+    const u = usageOf(t.name);
+    const srcs = [...new Set(t.partitions.map(p=>{
+      const s=p.source; return [s.sourceType,s.server,s.database,s.schema&&s.object?`${s.schema}.${s.object}`:s.object].filter(Boolean).join(" · ");
+    }))];
+    const colRow = c=>`<tr>
+      <td><span class="ref">${esc(c.name)}</span>${c.isCalculated?' <span class="badge b-other">calc</span>':""}${c.isHidden?' <span class="badge b-hidden">hidden</span>':""}</td>
+      <td class="mut">${esc(c.dataType)}</td>
+      <td class="mut">${has.linked ? esc(c.reportUsage) : (c.internallyReferenced ? "internally referenced" : "no internal references")}</td>
+      <td class="mut">${c.dependsOn.length?c.dependsOn.map(d=>`<span class="ref">${esc(d)}</span>`).join(" "):"—"}</td>
+      <td class="mut">${(DATA.columns?.rows||[]).filter(inPageScope).filter(r=>r.table===t.name&&r.column===c.name).map(r=>`${esc(pageLabel(r))}: ${esc(r.pageUsage)}`).join('<br>')||'No page reference'}</td></tr>`;
+    return `<details id="tbl-${slug(t.name)}">
+      <summary>${esc(t.name)} ${typeBadge(t.tableType)} ${t.isHidden?'<span class="badge b-hidden">hidden</span>':""} ${u?usageBadge(u):""}
+        <span class="mut" style="font-weight:400;margin-left:auto">${t.columns.length} cols · ${t.measures.length} measures</span></summary>
+      <div class="body">
+        ${t.description?`<p class="mut" style="margin:.5rem 0">${esc(t.description)}</p>`:""}
+        <h2 style="margin-top:.6rem">Source</h2>
+        <div class="pill-list">${srcs.map(s=>`<span class="ref">${esc(s)}</span>`).join("")||'<span class="mut">—</span>'}</div>
+        ${t.partitions.some(p=>p.source.nativeQuery)?`<p class="mut" style="margin-top:.3rem">⚠ contains a native SQL query — transformations happen upstream of Power Query.</p>`:""}
+        <h2>Columns</h2>
+        <table class="t"><thead><tr><th>Column</th><th>Type</th><th>Usage (all pages)</th><th>Depends on</th><th>Usage by report page</th></tr></thead><tbody>${t.columns.map(colRow).join("")}</tbody></table>
+        ${t.measures.length?`<h2>Measures on this table</h2><div class="pill-list">${t.measures.map(m=>`<span class="ref">${meaLink(m.name)}</span>`).join("")}</div>`:""}
+        ${t.hierarchies.length?`<h2>Hierarchies</h2><div class="mut">${t.hierarchies.map(h=>`<b>${esc(h.name)}</b>: ${h.levels.map(esc).join(" → ")}`).join("<br>")}</div>`:""}
+        <h2>Partition M / expression</h2>
+        ${t.partitions.map(p=>`<div class="mut" style="margin:.2rem 0"><b>${esc(p.name)}</b> · ${esc(p.mode)} · ${esc(p.type)}</div><pre class="code">${hlDAX(p.expression)}</pre>`).join("")}
+      </div>
+    </details>`;
+  }).join("");
+  return `${coupler()}<h1>Tables</h1>
+  <input id="table-search" class="search" placeholder="Search tables, reports or sources…" aria-label="Search tables, reports or sources" oninput="fTbl(this.value)">
+  ${rTableSources()}
+  <h2>Table details</h2>
+  <div id="tbl-list">${cards}</div>`;
+}
+function fTbl(q){
+  q=q.toLowerCase();
+  const visibleRows = new Set(sourceRows(q));
+  const matches = new Set([...visibleRows].map(r=>r.table));
+  document.querySelectorAll('[data-source-index]').forEach(tr=>{
+    const row=DATA.tableSources[Number(tr.dataset.sourceIndex)];
+    tr.style.display=visibleRows.has(row)?'':'none';
+  });
+  document.querySelectorAll("#tbl-list > details").forEach(d=>{
+    d.style.display = [...matches].some(name=>d.id==='tbl-'+slug(name))?'':'none';
+  });
+}
+
+/* ============================================================ measures */
+function rMeasures(){
+  const pagesOf = m => new Set((m.pageUsage||[]).filter(r=>r.pageId).map(r=>r.pageId)).size;
+  const preview = e => { const one=String(e||"").replace(/\s+/g," ").trim(); return one.length>90?one.slice(0,89)+"…":one; };
+  const card = m=>`
+    <details class="measure" id="mea-${slug(m.name)}" data-search="${esc([m.name,m.table,m.displayFolder,m.expression,m.description].join(" ").toLowerCase())}">
+      <summary><span class="mea-name">${esc(m.name)}</span>
+        ${has.linked ? (m.usedInReport?`<span class="badge b-direct">used on ${pagesOf(m)} ${pagesOf(m)===1?"page":"pages"}</span>`:'<span class="badge b-none">not used in report</span>') : ""}
+        ${m.formatString?`<span class="ref" title="Format string: ${esc(m.formatString)}">${esc(fmtShort(m.formatString))}</span>`:""}
+        <span class="mut" style="font-weight:400;margin-left:auto">${esc(m.table)}</span>
+        <span class="mea-preview">${esc(preview(m.expression))}</span></summary>
+      <div class="body">
+        ${m.description?`<p class="mut" style="margin:.5rem 0">${esc(m.description)}</p>`:""}
+        <pre class="code" style="margin-top:.6rem">${hlDAX(m.expression)}</pre>
+        <table class="t" style="margin-top:.6rem"><tbody>
+          <tr><td class="mut" style="width:170px">Home table</td><td>${tblLink(m.table)}</td></tr>
+          <tr><td class="mut">Depends on measures</td><td>${m.dependsOnMeasures.map(meaLink).join(", ")||"—"}</td></tr>
+          <tr><td class="mut">Depends on columns</td><td>${m.dependsOnColumns.map(c=>`<span class="ref">${esc(c)}</span>`).join(" ")||"—"}</td></tr>
+          <tr><td class="mut">All tables touched</td><td>${m.allTables.map(tblLink).join(", ")||"—"}</td></tr>
+          ${has.report?`<tr><td class="mut">Shown in visuals</td><td>${measureVisuals(m)}</td></tr>`:""}
+          ${m.formatString?`<tr><td class="mut">Format</td><td><span class="ref">${esc(m.formatString)}</span></td></tr>`:""}
+        </tbody></table>
+      </div>
+    </details>`;
+  const measures = M.measures.filter(m=>pageScope==='*'||(m.pageUsage||[]).some(inPageScope));
+  // Group by display folder when the model uses folders; unfiled measures last.
+  const folders = [...new Set(measures.map(m=>m.displayFolder||""))].sort((a,b)=>(!a)-(!b)||a.localeCompare(b));
+  const grouped = folders.length>1||folders[0]
+    ? folders.map(f=>`<section class="mea-group"><h2>${esc(f||"No display folder")} <span class="mut">${measures.filter(m=>(m.displayFolder||"")===f).length}</span></h2>${measures.filter(m=>(m.displayFolder||"")===f).map(card).join("")}</section>`).join("")
+    : measures.map(card).join("");
+  return `${coupler()}<h1>Measures</h1>
+  <input id="measure-search" class="search" placeholder="Search names, folders or DAX…" aria-label="Search measures" oninput="fMea(this.value)">
+  <div id="mea-list">${grouped}</div>`;
+}
+// Visuals that show a measure directly or through measures built on it (D).
+function measureVisuals(m){
+  const id = nodeId('m', m.table, m.name);
+  const seen = new Map();
+  for(const c of impactConsumers(id).filter(c=>c.visualId)){
+    const page = R.pages.find(p=>p.id===c.pageId), v = page?.visuals.find(v=>v.id===c.visualId);
+    const key = c.pageId+'|'+c.visualId, via = c.path.length>1 ? graphNodes.get(c.path[c.path.length-1])?.name : '';
+    if(!seen.has(key)) seen.set(key,{page,v,c,via:new Set()});
+    if(via) seen.get(key).via.add(via); else seen.get(key).direct = true;
+  }
+  const items = [...seen.values()].map(({page,v,c,via,direct})=>`<button class="xl" onclick="${action('inspectVisual',c.pageId,c.visualId)}">${esc(page?.name||c.pageId)} · ${esc(v?visualName(c.pageId,v):c.visualId)}</button>${direct?'':` <span class="mut">via ${[...via].map(esc).join(', ')}</span>`}`);
+  return items.join('<br>') || '<span class="mut">Not shown in any visual on the selected pages</span>';
+}
+function fMea(q){
+  q=q.toLowerCase();
+  document.querySelectorAll("#mea-list details.measure").forEach(d=>{
+    d.style.display = (d.dataset.search||"").includes(q)?"":"none";
+  });
+  document.querySelectorAll("#mea-list .mea-group").forEach(g=>{
+    g.style.display = [...g.querySelectorAll("details.measure")].some(d=>d.style.display!=="none")?"":"none";
+  });
+}
+
+/* ============================================================ relationships / ERD */
+let erdZoom=1, erdFocus='';
+function relationshipRows(){
+ const relationships=M.relationships.filter(r=>!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus);
+ return relationships.map(r=>`<tr>
+    <td>${tblLink(r.fromTable)} <span class="ref">[${esc(r.fromColumn)}]</span></td>
+    <td class="mut">${esc(r.fromCardinality)} → ${esc(r.toCardinality)}</td>
+    <td>${tblLink(r.toTable)} <span class="ref">[${esc(r.toColumn)}]</span></td>
+    <td>${r.isActive?'<span class="badge b-direct">active</span>':'<span class="badge b-hidden">inactive</span>'}</td>
+    <td>${r.crossFilteringBehavior==="bothDirections"?'<span class="badge b-warn">both</span>':"single"}</td></tr>`).join("")||'<tr><td colspan="5">No relationships for this selection.</td></tr>';
+}
+function rRels(){
+ return `${coupler()}<h1>Relationships</h1>
+ <p class="sub" style="margin-bottom:16px">Select a table to follow its connections. Zoom in for detail; scroll the canvas to explore.</p>
+ <div class="card erd-card">
+ <div class="erd-toolbar"><label>Focus table <select id="erd-focus" onchange="focusERD(this.value)"><option value="">All tables</option>${M.tables.map(t=>`<option value="${esc(t.name)}"${erdFocus===t.name?' selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
+ <div class="erd-zoom" role="group" aria-label="Diagram zoom"><button type="button" aria-label="Zoom out" onclick="zoomERD(-0.25)">−</button><output id="erd-zoom-label" aria-live="polite">${Math.round(erdZoom*100)}%</output><button type="button" aria-label="Zoom in" onclick="zoomERD(0.25)">+</button><button type="button" onclick="resetERD()">Reset view</button></div></div>
+ <div id="erd-viewport" class="erd-viewport" tabindex="0" role="region" aria-label="Relationship diagram; scroll to explore"><div id="erd"></div></div>
+ <div id="erd-selection" class="erd-selection" role="status"></div>
+ <div class="legend erd-legend"><span><i class="erd-line"></i>Active</span><span><i class="erd-line inactive"></i>Inactive</span><span><i class="erd-line both"></i>Filters both ways</span><span>1 = one · * = many</span></div></div>
+ <div class="column-scroll"><table class="t"><thead><tr><th>From table / column</th><th>Cardinality</th><th>To table / column</th><th>Status</th><th>Cross-filter</th></tr></thead><tbody id="erd-rows">${relationshipRows()}</tbody></table></div>`;
+}
+function focusERD(name){erdFocus=name===erdFocus?'':name;drawERD();}
+function zoomERD(delta){erdZoom=Math.max(.5,Math.min(2.5,erdZoom+delta));drawERD();}
+function resetERD(){erdZoom=1;erdFocus='';drawERD();const viewport=document.getElementById('erd-viewport');viewport.scrollLeft=0;viewport.scrollTop=0;}
+function drawERD(){
+ const host=document.getElementById('erd');if(!host)return;
+ const inRel=new Set(M.relationships.flatMap(r=>[r.fromTable,r.toTable]));
+ const facts=M.tables.filter(t=>t.tableType==='fact'&&inRel.has(t.name)).map(t=>t.name);
+ const dims=M.tables.filter(t=>['dimension','date dimension'].includes(t.tableType)&&inRel.has(t.name)).map(t=>t.name);
+ const other=M.tables.filter(t=>inRel.has(t.name)&&!facts.includes(t.name)&&!dims.includes(t.name)).map(t=>t.name);
+ const cols=[dims,facts,other].filter(c=>c.length);
+ const rowH=100,boxW=260,boxH=64,pad=56;
+ const viewport=document.getElementById('erd-viewport');
+ const baseW=Math.max(cols.length*boxW+Math.max(0,cols.length-1)*180+pad*2,(viewport.clientWidth||0)-2);
+ const H=Math.max(1,...cols.map(c=>c.length))*rowH+pad*2;
+ const colW=cols.length>1?(baseW-pad*2-boxW)/(cols.length-1):0;
+ const pos=new Map();cols.forEach((col,ci)=>col.forEach((name,i)=>pos.set(name,{x:pad+ci*colW,y:pad+i*rowH+(H-pad*2-col.length*rowH)/2})));
+ const related=new Set([erdFocus]);for(const r of M.relationships)if(r.fromTable===erdFocus||r.toTable===erdFocus){related.add(r.fromTable);related.add(r.toTable);}
+ let svg=`<svg width="${baseW*erdZoom}" height="${H*erdZoom}" viewBox="0 0 ${baseW} ${H}" role="group" aria-label="Model table relationships" font-size="16">`;
+ const cardinality=value=>String(value).toLowerCase()==='many'?'*':String(value).toLowerCase()==='one'?'1':'?';
+ for(const [i,r] of M.relationships.entries()){
+  const a=pos.get(r.fromTable),b=pos.get(r.toTable);if(!a||!b)continue;
+  const same=a.x===b.x,right=a.x<b.x;
+  const x1=same?a.x+boxW:a.x+(right?boxW:0),x2=same?b.x+boxW:b.x+(right?0:boxW);
+  const siblings=M.relationships.filter(e=>e.fromTable===r.fromTable&&e.toTable===r.toTable);
+  const offset=(siblings.indexOf(r)-(siblings.length-1)/2)*12;
+  const y1=a.y+boxH/2+offset,y2=b.y+boxH/2+offset;
+  const selected=!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus;
+  const bend=same?Math.min(baseW-8,x1+30+(i%3)*8):(x1+x2)/2;
+  const path=r.fromTable===r.toTable?`M${x1},${y1-14} C${bend},${y1-40} ${bend},${y1+40} ${x2},${y2+14}`:`M${x1},${y1} C${bend},${y1} ${bend},${y2} ${x2},${y2}`;
+  const stroke=r.crossFilteringBehavior==='bothDirections'?'var(--warn)':'#526b87';
+  svg+=`<g opacity="${selected?1:.35}"><title>${esc(r.fromTable)}[${esc(r.fromColumn)}] → ${esc(r.toTable)}[${esc(r.toColumn)}] · ${r.isActive?'active':'inactive'}</title><path d="${path}" fill="none" stroke="${stroke}" stroke-width="${erdFocus&&selected?3:2}" ${r.isActive?'':'stroke-dasharray="8 6"'}/>`;
+  if(!same)svg+=`<text x="${x1+(right?12:-12)}" y="${y1-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.fromCardinality)}</text><text x="${x2+(right?-12:12)}" y="${y2-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.toCardinality)}</text>`;
+  svg+='</g>';
+ }
+ const colors={fact:['#eef0ff','#5261a1'],dimension:['#e8f5f1','#277965'],'date dimension':['#f2ebfc','#8054ae']};
+ for(const [name,p] of pos){
+  const t=M.tables.find(t=>t.name===name),[fill,stroke]=colors[t.tableType]||['#edf2f7','#61748a'];
+  const selected=name===erdFocus,label=name.length>27?name.slice(0,26)+'…':name;
+  const activate=action('focusERD',name);
+  svg+=`<g class="erd-node" tabindex="0" role="button" aria-label="Focus ${esc(name)}" aria-pressed="${selected}" onclick="${activate}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${activate}}" opacity="1"><title>${esc(name)} · ${esc(t.tableType)}</title><rect x="${p.x}" y="${p.y}" width="${boxW}" height="${boxH}" rx="10" fill="${fill}" stroke="${selected?'#172434':stroke}" stroke-width="${selected?3:2}"/><text x="${p.x+16}" y="${p.y+27}" fill="#1c2430" font-weight="650">${esc(label)}</text><text x="${p.x+16}" y="${p.y+48}" fill="#4f5b67" font-size="12">${esc(t.tableType||'Table')}</text></g>`;
+ }
+ svg+='</svg>';
+ host.innerHTML=cols.length?svg:'<div class="empty">No relationships in this model.</div>';
+ const orphans=M.tables.filter(t=>!inRel.has(t.name));
+ document.getElementById('erd-selection').innerHTML=(erdFocus?`Showing connections for <strong>${esc(erdFocus)}</strong> · ${tblLink(erdFocus)} <span class="mut">(table details)</span>`:'All connections shown. Select a table to highlight its relationships.')+(orphans.length?`<p class="mut">No relationships: ${orphans.map(t=>tblLink(t.name)).join(', ')}</p>`:'');
+ document.getElementById('erd-focus').value=erdFocus;
+ document.getElementById('erd-zoom-label').textContent=Math.round(erdZoom*100)+'%';
+ document.getElementById('erd-rows').innerHTML=relationshipRows();
+}
+
+/* ============================================================ sources */
+function rLiveSource(){
+  const S=DATA.liveSource; if(!S) return "";
+  const P=DATA.livePairing;
+  return `<h2>Live connection</h2><div class="card" style="border-left:3px solid var(--poss)">
+    <b>${esc(S.sourceType)}</b>${S.server?` · ${esc(S.server)}`:""}${S.database?` · ${esc(S.database)}`:""}
+    <div class="mut" style="margin-top:.4rem">This report reads its data from a remote model (DirectQuery / live connection) rather than embedding one. ${P?esc(P.note):"No model was supplied, so tables, measures and upstream sources are not documented."}</div>
+    ${S.location?`<div class="mut">Dataset/model id: ${esc(S.location)}</div>`:""}</div>`;
+}
+function rSources(){
+  if(!M) return `${coupler()}<h1>Data sources</h1>${rLiveSource()}`;
+  // Source list first, then the page-level inventories. Primary sources has its own tab.
+  return `${coupler()}<h1>Data sources</h1>${rLiveSource()}
+    <p class="sub">One row per external source, traced through supported M and embedded SQL. Select a source for its connection, queries, model tables, pages and code. No database connection is made.</p>
+    ${rSourceList()}
+    <h2>Detailed inventories</h2>
+    <p class="mut">External inputs per report page, with CSV export: <button class="xl" onclick="switchTab('primary-sources')">Primary sources</button>.</p>
+    <details id="src-objects"><summary>Source objects by report page, with code</summary><div class="body">${rSourceObjects()}</div></details>
+    <details id="src-queries"><summary>All M queries</summary><div class="body"><button class="chip" onclick="downloadQueryCsv()">Export all M queries CSV</button>
+    <p class="mut">${(DATA.sourceQueries||[]).length} M queries and shared expressions across the complete model. This three-column export is independent of page selection.</p></div></details>`;
+}
+
+/* ============================================================ security */
+function rSecurity(){
+  if(!M.roles.length) return `${coupler()}<h1>Security</h1><div class="empty"><b>No RLS roles found in this extract.</b><br>Service permissions and other access controls are outside this analysis.</div>`;
+  return `${coupler()}<h1>Security (RLS)</h1>
+  ${M.roles.map(r=>`<div class="card">
+    <div style="font-weight:650">${esc(r.name)} <span class="badge b-other">${esc(r.modelPermission)}</span></div>
+    ${r.tablePermissions.length ? r.tablePermissions.map(tp=>`
+      <div class="mut" style="margin-top:.5rem">Filter on ${tblLink(tp.table)}:</div>
+      <pre class="code">${hlDAX(tp.filterExpression)}</pre>`).join("")
+      : '<p class="mut" style="margin-top:.4rem">No table filters — role restricts nothing by itself.</p>'}
+  </div>`).join("")}`;
+}
+
+/* ============================================================ warnings */
+function rWarnings(){
+  const ws = allWarnings();
+  if(!ws.length) return `${coupler()}<h1>Warnings</h1><div class="empty"><b>Nothing flagged.</b></div>`;
+  return `${coupler()}<h1>Warnings</h1>
+  <p class="sub">Static-analysis findings a new developer should know before changing anything.</p>
+  <table class="t"><thead><tr><th>Severity</th><th>Category</th><th>Detail</th></tr></thead><tbody>
+  ${ws.map(w=>`<tr><td><span class="badge ${w.severity==="warning"?"b-warn":"b-info"}">${esc(w.severity)}</span></td><td>${esc(w.category)}</td><td>${esc(w.message)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+/* ============================================================ boot */
+const RENDER = {columns:rColumns, overview:rOverview, lineage:rLineage, usage:rUsage, pages:rPages,
+  filters:rFilters, manifest:rManifest, tables:rTables, measures:rMeasures,
+  rels:rRels, sources:rSources, "primary-sources":()=>coupler()+rPrimarySources(), security:rSecurity, warnings:rWarnings};
+/*__EXPLORER_JS__*/
+/*__DOCUMENTATION_JS__*/
+buildNav();
+function routeReport(){
+ const requested=window.location?.hash.slice(1);
+ const tab=TABS.find(t=>t.id===requested&&t.avail);
+ switchTab(tab?tab.id:"overview",false);
+}
+if(window.addEventListener)window.addEventListener('popstate',routeReport);
+routeReport();
+const viewerReveal = id => { if(!document.getElementById(id)) return false; requestAnimationFrame(()=>flash(id)); return true; };
+const VIEWER_VIEWS = {
+  "pbi.overview": () => { switchTab("overview"); return true; },
+  "pbi.table": a => { switchTab("tables"); return viewerReveal("tbl-"+slug(a.table)); },
+  "pbi.measure": a => { switchTab("measures"); return viewerReveal("mea-"+slug(a.measure)); },
+  "pbi.page": a => { switchTab("pages"); return viewerReveal("pg-"+pageKey(a.page)); },
+  "pbi.source": a => {
+    switchTab("sources");
+    const same = (x, y) => !y || String(x||"") === y;
+    const g = sourceGroups().find(g => same(g.server, a.server) && same(g.database, a.database) &&
+      (!a.object || a.object === g.object || a.object === (g.schema ? g.schema+"."+g.object : g.object)));
+    if(!g) return false;
+    inspectSource(g.key); return true;
+  },
+};
+/* ============================================================ library viewer bridge
+   bi-doc-viewer protocol v1. Active only when this page is framed (by the library shell).
+   Messages are accepted only from the parent window, with an exact shape; they carry a
+   per-load channel, the revision ID and a registered view ID with string arguments,
+   never HTML, scripts or URLs. */
+(function(){
+  if(window.parent===window || !window.addEventListener) return;
+  let channel = null, revision = null;
+  const str = v => typeof v==="string" && v.length>0 && v.length<=512;
+  const reply = msg => window.parent.postMessage(Object.assign({protocol:"bi-doc-viewer", version:1, channel, revision_id:revision}, msg), "*");
+  window.addEventListener("message", ev => {
+    if(ev.source!==window.parent) return;
+    const m = ev.data;
+    if(!m || typeof m!=="object" || m.protocol!=="bi-doc-viewer" || m.version!==1) return;
+    if(m.type==="hello"){
+      if(channel!==null || !str(m.channel) || !str(m.revision_id)) return;
+      channel = m.channel; revision = m.revision_id;
+      reply({type:"viewer-ready", views:Object.keys(VIEWER_VIEWS)});
+      return;
+    }
+    if(m.type!=="navigate-object" || m.channel!==channel || m.revision_id!==revision) return;
+    if(!str(m.view_id) || !Object.prototype.hasOwnProperty.call(VIEWER_VIEWS, m.view_id)) return;
+    const args = {};
+    if(m.args && typeof m.args==="object") for(const [k,v] of Object.entries(m.args)){
+      if(typeof v==="string"||typeof v==="number"||typeof v==="boolean"){ const s=String(v); if(s.length<=512) args[k]=s; }
+    }
+    let exact = false;
+    try { exact = !!VIEWER_VIEWS[m.view_id](args); } catch(e) { exact = false; }
+    reply({type:"navigated", object_id: str(m.object_id) ? m.object_id : null, exact});
+  });
+})();
+if(window.history && window.location && !window.location.hash)window.history.replaceState(null,"","#"+activeTab);
+</script>
+</body>
+</html>

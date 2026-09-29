@@ -12,20 +12,20 @@ FROM python:3.11.13-slim-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY requirements-lock.txt ./
+COPY components components
 COPY packages/contracts packages/contracts
 COPY packages/engines packages/engines
 COPY packages/relationships packages/relationships
 COPY apps/library apps/library
-# Engines are fetched at the commits pinned in packages/engines/pyproject.toml; every
-# third-party version comes from the lock file.
+# Engines are built from local component packages; third-party versions are locked.
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -c requirements-lock.txt \
-        ./packages/contracts ./packages/engines ./packages/relationships "./apps/library[azure]"
+        ./components/power-bi ./components/adf ./packages/contracts ./packages/engines ./packages/relationships "./apps/library[azure]"
 
 FROM python:3.11.13-slim-bookworm
 RUN useradd --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin bidoc \
     && mkdir /data && chown bidoc /data
 COPY --from=build /wheels /wheels
-# The builder resolved every dependency (including the git-pinned engines) into /wheels.
+# The builder resolved every dependency (including the local engines) into /wheels.
 RUN pip install --no-cache-dir --no-index --no-deps /wheels/*.whl && pip check && rm -rf /wheels
 ENV LOCAL_DATA_DIR=/data \
     BIND_HOST=0.0.0.0 \
