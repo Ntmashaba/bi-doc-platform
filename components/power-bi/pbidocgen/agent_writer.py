@@ -156,7 +156,7 @@ def build_agent_md(payload: dict) -> str:
     if payload["mode"] == "report-only":
         live = (report or {}).get("liveConnection")
         if live:
-            honesty.append("The report is live-connected (DirectQuery) to "
+            honesty.append("The report has a live connection to "
                            + ", ".join(x for x in (live["kind"], live["server"], live["database"]) if x)
                            + "; its model and data sources live there and were not supplied.")
         honesty.append("No semantic model was supplied — field references are a "

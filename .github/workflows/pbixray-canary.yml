@@ -1,0 +1,42 @@
+name: pbixray canary
+
+# Portable PBIX/ABF extraction relies on private pbixray internals and accepts only a validated range of pbixray
+# versions (portable.SUPPORTED). This checks the newest release (or one you name) every week, so a breaking change
+# is noticed before it is released into the range or anyone widens it. It is not a merge gate: it only runs on a
+# schedule or by hand, and a red run is the alert. The same checks run against the installed version on every build
+# (components/power-bi/tests/test_pbixray_contract.py).
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "pbixray version to check (leave empty for the newest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]   # the Windows installer bundles this reader too
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the newest pbixray (or the requested version)
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ -n "$VERSION" ]; then python -m pip install "pbixray==$VERSION"; else python -m pip install --upgrade pbixray; fi
+          python -m pip show pbixray
+      - name: Check the private internals and the output against the validated behaviour
+        run: python components/power-bi/tests/tools/pbixray_canary.py

@@ -59,6 +59,15 @@ def webview2_version():
     return None
 
 
+def _pbixray_status() -> dict:
+    """Whether the portable (pbixray) reader can run here; see pbidocgen.portable.status."""
+    try:
+        from pbidocgen.portable import status  # noqa: PLC0415
+    except ImportError:
+        return {"installed": None, "supported": None, "ok": False, "reason": "pbi-doc-gen is not installed"}
+    return status()
+
+
 def diagnose(pbi_tools: str | None = None) -> dict:
     checks, ready = [], {}
     py_ok = sys.version_info >= (3, 11)
@@ -80,7 +89,14 @@ def diagnose(pbi_tools: str | None = None) -> dict:
         ready[kind] = {"available": adf_ok, "reason": None if adf_ok else "adf-doc-gen is not installed"}
 
     windows = platform.system() == "Windows"
-    tools = _pbi_tools(pbi_tools)
+    configured = _pbi_tools(pbi_tools)
+    pbixray_state = _pbixray_status()
+    portable = pbi_tools == "pbixray" and pbixray_state["ok"]   # opt-in: asked for explicitly, never a default
+    tools = "pbixray" if portable else configured
+    if pbixray_state["installed"] or pbi_tools == "pbixray":
+        checks.append({"check": "pbixray", "ok": pbixray_state["ok"],
+                       "detail": pbixray_state["installed"] or "not installed",
+                       "fix": None if pbixray_state["ok"] else pbixray_state["reason"]})
     desktop = _power_bi_desktop()
     checks.append({"check": "pbi-tools", "ok": bool(tools), "detail": tools or "not found",
                    "fix": None if tools else "Install pbi-tools Desktop (https://pbi.tools, AGPL-3.0) separately and "
@@ -97,6 +113,8 @@ def diagnose(pbi_tools: str | None = None) -> dict:
                                 ("Power BI Desktop not found", not desktop)) if bad]
     if not pbi_ok:
         reasons.append("pbi-doc-gen is not installed")
+    if portable and pbi_ok:
+        reasons = []
     ready["pbix"] = {"available": not reasons, "reason": "; ".join(reasons) or None}
     return {"platform": f"{platform.system()} {platform.release()}", "checks": checks, "inputs": ready,
             "pbi_tools": tools}

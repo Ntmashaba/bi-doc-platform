@@ -1,7 +1,7 @@
 # Development install of the platform packages, in dependency order.
 -c requirements-lock.txt
 # Engines live in this repository; provenance is in components/README.md.
--e components/power-bi
+-e components/power-bi[portable]
 -e components/adf
 -e packages/contracts[dev]
 -e packages/engines

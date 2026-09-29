@@ -9,7 +9,7 @@ description = "Adapters from pbi-doc-gen and adf-doc-gen to BI Documentation Pla
 requires-python = ">=3.11"
 # bi-doc-contracts is a local package: install it from packages/contracts first
 # (requirements.txt does). Engine packages are also installed from components/.
-dependencies = ["pbi-doc-gen", "adf-doc-gen"]
+dependencies = ["pbi-doc-gen[portable]", "adf-doc-gen"]
 
 [tool.setuptools]
 packages = ["bidoc_engines"]

@@ -219,6 +219,7 @@ const has = { model: !!M, report: !!R, linked: !!L };
 // "\\$#,0;(\\$#,0);\\$#,0" -> "$#,0": positive section, escapes and quotes removed.
 const fmtShort = f => String(f).split(";")[0].replace(/\\(.)/g,"$1").replace(/"([^"]*)"/g,"$1");
 const num = n => (n ?? 0).toLocaleString();
+const plural = (n, one, many = one + "s") => `${num(n)} ${n === 1 ? one : many}`;
 const typeBadge = t => {
   const map = {fact:"b-fact", dimension:"b-dimension", "date dimension":"b-date"};
   return `<span class="badge ${map[t]||"b-other"}">${esc(t)}</span>`;
@@ -301,7 +302,7 @@ function openSection(sid){
 function buildNav(){
   const nav = document.getElementById("nav");
   // On narrow screens the sections collapse behind a menu button (B8).
-  let html = `<a class="library-back" href="pbi-home.html#reports">← Report library</a><div class="brand">Power BI documentation</div><div class="doc-title">${esc(DATA.title)}</div>
+  let html = `<a class="library-back" href="pbi-home.html#reports">← Report library</a><div class="brand">${DATA.extraction?.inputKind === "abf" && !R ? "Analysis Services documentation" : "Power BI documentation"}</div><div class="doc-title">${esc(DATA.title)}</div>
     <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-sections" onclick="toggleNav()"><span aria-hidden="true">☰</span> <span id="nav-current">Menu</span></button><div id="nav-sections">`;
   for(const s of SECTIONS){
     const avail = sectionTabs(s).some(t=>t.avail);
@@ -444,10 +445,10 @@ function coupler(){
   // Shown once, on Overview; repeating it on every view pushed content down.
   if(activeTab!=="overview") return "";
   const mHalf = has.model
-    ? `<div class="half"><div class="tag">Semantic model</div><div class="val">${esc(M.name)}</div><div class="sub">${num(M.tables.length)} tables · ${num(M.measures.length)} measures</div></div>`
+    ? `<div class="half"><div class="tag">Semantic model</div><div class="val">${esc(M.name)}</div><div class="sub">${plural(M.tables.length,"table")} · ${plural(M.measures.length,"measure")}</div></div>`
     : `<div class="half off"><div class="tag">Semantic model</div><div class="val">Not supplied</div><div class="sub">model-side analysis unavailable</div></div>`;
   const rHalf = has.report
-    ? `<div class="half"><div class="tag">Report</div><div class="val">${esc(R.name)}</div><div class="sub">${num(R.pages.length)} pages · ${num(R.pages.reduce((a,p)=>a+p.visuals.length,0))} visuals</div></div>`
+    ? `<div class="half"><div class="tag">Report</div><div class="val">${esc(R.name)}</div><div class="sub">${plural(R.pages.length,"page")} · ${plural(R.pages.reduce((a,p)=>a+p.visuals.length,0),"visual")}</div></div>`
     : `<div class="half off"><div class="tag">Report</div><div class="val">Not supplied</div><div class="sub">report-side analysis unavailable</div></div>`;
   return `<div class="coupler" role="img" aria-label="Inputs supplied: ${MODE} mode">${mHalf}<div class="joint ${has.linked?'':'off'}">${has.linked?'⟷':'·'}</div>${rHalf}</div>`;
 }
@@ -469,12 +470,15 @@ function rOverview(){
 
   let modeNote = "";
   if(MODE==="semantic-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Semantic-only mode.</b> No report was supplied, so nothing here can be called "unused" — the most this document can say is that a column or table has <i>no internal references</i> within the model itself. External reports, Excel connections, or composite models may still depend on it.</div>`;
-  if(MODE==="report-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Report-only mode.</b> ${(R&&R.liveConnection)?`This report is live-connected (DirectQuery) to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there, not in this file. `:""}No semantic model was supplied, so field references below are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, distinguish measures from columns, or trace them to a data source.</div>`;
+  if(MODE==="report-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Report-only mode.</b> ${(R&&R.liveConnection)?`This report has a live connection to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there, not in this file. `:""}No semantic model was supplied, so field references below are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, distinguish measures from columns, or trace them to a data source.</div>`;
 
   return `${coupler()}
   <h1>${esc(DATA.title)}</h1>
   <p class="sub">Generated ${esc(DATA.generated)} · mode: <b>${MODE}</b></p>
   ${modeNote}
+  ${DATA.livePairing ? `<div class="card" style="border-left:3px solid var(--poss)"><h3>External model pairing</h3><p>${esc(DATA.livePairing.note)}</p><p>Field resolution uses the supplied snapshot. Server identity and backup freshness have not been verified.</p></div>` : ""}
+  ${DATA.extraction ? `<div class="card"><h3>Extraction coverage</h3><p>${esc(DATA.extraction.inputKind.toUpperCase())} · ${esc(DATA.extraction.backend)} ${esc(DATA.extraction.version)} · ${DATA.extraction.complete ? "Supported metadata extracted" : "Partial metadata — review required"}</p>${[...(DATA.extraction.warnings||[]),...(DATA.extraction.limitations||[])].map(w=>`<p>${esc(w)}</p>`).join("")}</div>` : ""}
+  ${M ? `<div class="card"><h3>Storage modes by table</h3><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${M.tables.map(t=>`<tr><td>${esc(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table></div>` : ""}
   <div class="grid c4" style="margin-top:1rem">
     ${stats.map(([l,v])=>`<div class="card stat"><div class="big">${num(v)}</div><div class="lbl">${l}</div></div>`).join("")}
   </div>
@@ -715,7 +719,7 @@ function rTables(){
       <td class="mut">${(DATA.columns?.rows||[]).filter(inPageScope).filter(r=>r.table===t.name&&r.column===c.name).map(r=>`${esc(pageLabel(r))}: ${esc(r.pageUsage)}`).join('<br>')||'No page reference'}</td></tr>`;
     return `<details id="tbl-${slug(t.name)}">
       <summary>${esc(t.name)} ${typeBadge(t.tableType)} ${t.isHidden?'<span class="badge b-hidden">hidden</span>':""} ${u?usageBadge(u):""}
-        <span class="mut" style="font-weight:400;margin-left:auto">${t.columns.length} cols · ${t.measures.length} measures</span></summary>
+        <span class="mut" style="font-weight:400;margin-left:auto">${t.columns.length} cols · ${plural(t.measures.length,"measure")}</span></summary>
       <div class="body">
         ${t.description?`<p class="mut" style="margin:.5rem 0">${esc(t.description)}</p>`:""}
         <h2 style="margin-top:.6rem">Source</h2>

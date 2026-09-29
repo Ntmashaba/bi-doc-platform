@@ -12,10 +12,3 @@ The `DP500 *` files in `pbix-samples/` come from MicrosoftLearning/DP-500-Azure-
 11 = Dual storage mode. They need pbi-tools to extract, so run them locally with `--pbix`.
 
 Not yet found publicly: a thin report on Azure/SQL Server Analysis Services; DirectQuery on Snowflake/Databricks/Oracle/etc.
-
-## Running PBIX samples without pbi-tools
-
-`python generate_docs.py --pbix FILE --pbixray` (needs `pip install pbixray`) extracts with pbixray instead of pbi-tools, on any OS.
-It is an approximation: no shared M queries beyond parameters, no roles/RLS, no bookmarks folder. Cross-checked against pbixray's own
-counts on 125 public PBIX files (tables, columns, measures, relationships) and against the raw Report/Layout (pages, visuals).
-Use pbi-tools for authoritative output.

@@ -26,6 +26,8 @@ def resolve_tool(value):
     tool = shutil.which(value) if value else shutil.which('pbi-tools')
     if not tool and value and Path(value).is_file():
         tool = str(Path(value).resolve())
+    if value == "pbixray":
+        return "pbixray"
     if not tool:
         raise ValueError('pbi-tools Desktop was not found. Install the Windows Desktop edition from https://github.com/pbi-tools/pbi-tools/releases and pass --pbi-tools "C:\\Tools\\pbi-tools\\pbi-tools.exe". Power BI Desktop 64-bit must also be installed.')
     if Path(tool).suffix.lower() in {'.bat', '.cmd'}:
@@ -37,7 +39,11 @@ def resolve_tool(value):
 
 def extract_pbix(source, destination, tool, timeout, log):
     started = time.time()
-    command = [tool, 'extract', str(source), '-extractFolder', str(destination), '-modelSerialization', 'Raw']
+    if tool == 'pbixray':
+        import sys
+        command = [sys.executable, '-m', 'pbidocgen.portable', str(source), str(destination)]
+    else:
+        command = [tool, 'extract', str(source), '-extractFolder', str(destination), '-modelSerialization', 'Raw']
     with log.open('w', encoding='utf-8') as stream:
         try:
             result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout, shell=False)
@@ -117,7 +123,7 @@ def load_extracted(folder, source, has_embedded_model):
         if live:
             report['liveConnection'] = live
             where = live_summary(live)
-            message = ('This report is live-connected (DirectQuery to a remote semantic model): ' + where + '. '
+            message = ('This report has a live connection to a remote semantic model: ' + where + '. '
                        'It has no embedded model, so tables, measures and data sources live in that model and '
                        'are not available here. Supply the model (e.g. exported via XMLA or as a .SemanticModel) '
                        'to document them; the field manifest lists what the report needs from it.')
@@ -127,6 +133,9 @@ def load_extracted(folder, source, has_embedded_model):
         report['warnings'].append(dict(severity='warning', category='External semantic model', message=message))
     # Custom visual display names ship inside the PBIX (Report/CustomVisuals/).
     report['customVisuals'] = {**custom_visuals_from_pbix(source), **report.get('customVisuals', {})}
+    coverage = folder / "extraction.json"
+    if report is not None and coverage.is_file():
+        report["extraction"] = json.loads(coverage.read_text(encoding="utf-8"))
     return model, report
 
 

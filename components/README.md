@@ -13,10 +13,10 @@ The trees are copies of those commits with two deliberate differences:
 - The CLI moved from the root `generate_docs.py` into the package (`pbidocgen/cli.py`, `adfdocgen/cli.py`) so the
   wheel contains it; `generate_docs.py` remains as a thin compatibility shim, and the console-script entry point and
   packaging test follow the move. The moved code is otherwise unchanged.
-- `power-bi/pbi-tools/` (Windows binaries) is not imported, and `power-bi/pbix-samples/` holds only the three small
-  DP-500 `.pbix` files (about 170 KB) that `test_pbixray_extract.py` reads; the other sample `.pbix` files (about 74 MB)
-  are not imported. Tests that read those are unchanged from the standalone repository.
+- `power-bi/pbi-tools/` (Windows binaries) and `power-bi/pbix-samples/` (sample `.pbix` files, about 74 MB) are not
+  imported. Tests that read them are unchanged from the standalone repository.
 
-To re-check the copies against the original repositories (each checked out at the commit above):
+To re-check the copies against the original repositories (each checked out at the commit above), run this at the
+import commit (`63d210c`); later changes to `components/` are in git history and are described in `docs/PROGRESS.md`:
 
     python scripts/verify_components.py <pbi-doc-gen checkout> <adf-doc-gen checkout>

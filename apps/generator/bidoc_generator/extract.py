@@ -28,7 +28,13 @@ class ExtractionCancelled(Exception):
 
 
 def check_tool(tool: str | None) -> str:
-    """The configured pbi-tools Desktop executable, or ExtractionError."""
+    """The configured pbi-tools Desktop executable, "pbixray" for the portable reader, or ExtractionError."""
+    if tool == "pbixray":
+        from pbidocgen.portable import status  # noqa: PLC0415
+        state = status()
+        if not state["ok"]:
+            raise ExtractionError("PREREQUISITE_MISSING", state["reason"])
+        return "pbixray"
     if not tool:
         raise ExtractionError("PREREQUISITE_MISSING", "pbi-tools is not configured; run 'bidoc doctor'")
     path = Path(tool)
@@ -73,9 +79,12 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
         raise ExtractionError("INVALID_INPUT", f"not a PBIX file: {source.name}")
     workspace.mkdir(parents=True, exist_ok=True)
     target = workspace / source.stem
-    log_path = workspace / "pbi-tools.log"
-    argv = list(command or [tool]) + ["extract", str(source), "-extractFolder", str(target),
-                                      "-modelSerialization", "Raw"]
+    log_path = workspace / ("pbixray.log" if tool == "pbixray" else "pbi-tools.log")
+    if tool == "pbixray" and command is None:
+        argv = [sys.executable, "-m", "pbidocgen.portable", str(source), str(target)]
+    else:
+        argv = list(command or [tool]) + ["extract", str(source), "-extractFolder", str(target),
+                                          "-modelSerialization", "Raw"]
     started = time.monotonic()
     with log_path.open("w", encoding="utf-8", errors="replace") as log:
         proc = _spawn(argv, log)
@@ -86,7 +95,7 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
                     raise ExtractionCancelled()
                 if time.monotonic() - started > timeout:
                     kill_tree(proc)
-                    raise ExtractionError("EXTRACTION_TIMEOUT", f"pbi-tools did not finish within {timeout:g} s")
+                    raise ExtractionError("EXTRACTION_TIMEOUT", f"Extraction did not finish within {timeout:g} s")
                 time.sleep(POLL_SECONDS)
         except BaseException:
             if proc.poll() is None:
@@ -94,7 +103,7 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
             raise
     if proc.returncode:
         tail = log_path.read_text(encoding="utf-8", errors="replace")[-600:].strip()
-        raise ExtractionError("EXTRACTION_FAILED", f"pbi-tools exited with code {proc.returncode}. {tail}")
+        raise ExtractionError("EXTRACTION_FAILED", f"Extraction exited with code {proc.returncode}. {tail}")
     beside = source.with_suffix("")
     if not (target.is_dir() and any(target.iterdir())) and (beside / "Model").is_dir():
         # Older PBIX files: pbi-tools ignores -extractFolder and writes beside the PBIX.
@@ -106,12 +115,12 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
 
 
 def pbixray_command() -> list[str]:
-    """Run the pbixray extractor as the extraction command (same child-process handling as pbi-tools).
-
-    An approximation of a pbi-tools extract that works on any OS; see pbidocgen.pbixray_extract."""
+    """Compatibility command using the pinned portable reader and the pbi-tools command-line shape."""
     import importlib.util  # noqa: PLC0415
-    if importlib.util.find_spec("pbixray") is None:
-        raise ExtractionError("PREREQUISITE_MISSING", "pbixray is not installed; run: pip install pbixray")
+    from pbidocgen.portable import status  # noqa: PLC0415
+    state = status()
+    if not state["ok"]:
+        raise ExtractionError("PREREQUISITE_MISSING", state["reason"])
     if importlib.util.find_spec("pbidocgen.pbixray_extract") is None:
         raise ExtractionError("PREREQUISITE_MISSING", "this pbi-doc-gen does not include the pbixray extractor; upgrade it")
     return [sys.executable, "-m", "pbidocgen.pbixray_extract"]

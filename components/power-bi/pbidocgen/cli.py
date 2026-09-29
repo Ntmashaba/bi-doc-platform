@@ -74,8 +74,7 @@ def main(argv=None) -> int:
     ap.add_argument("--output-dir", metavar="FOLDER", help="PBIX HTML destination (default: input folder/documentation)")
     ap.add_argument("--recursive", action="store_true", help="Include PBIX files in subfolders")
     ap.add_argument("--pbi-tools", metavar="EXE", help="Path to the pbi-tools Desktop executable")
-    ap.add_argument("--pbixray", action="store_true",
-                    help="Extract PBIX files with pbixray instead of pbi-tools (any OS; approximate; needs pip install pbixray)")
+    ap.add_argument("--pbixray", action="store_true", help="Use portable PBIX extraction")
     ap.add_argument("--extract-timeout", type=int, default=600, metavar="SECONDS", help="Extraction timeout per PBIX (default: 600)")
     args = ap.parse_args(argv)
     if args.pbix_folder or args.pbix:
@@ -84,22 +83,21 @@ def main(argv=None) -> int:
                      args.csv_out, args.word_out, args.agent_out is not None, args.metadata, args.catalog, args.no_hub)
         if any(conflicts) or (args.model and not args.pbix):
             ap.error("PBIX mode uses --output-dir and always creates a home page; do not combine it with project/report or individual export options.")
-        from pbidocgen.pbix_batch import run_batch
-        extractor = None
+        if args.pbixray and args.pbi_tools:
+            ap.error("--pbixray and --pbi-tools are alternatives; use one")
         if args.pbixray:
-            from pbidocgen.pbixray_extract import extract_pbix as extractor
-            if args.pbi_tools:
-                ap.error("--pbixray and --pbi-tools are alternatives; use one")
+            args.pbi_tools = "pbixray"
+        from pbidocgen.pbix_batch import run_batch
         try:
             summary = run_batch(args.pbix_folder or args.pbix, args.output_dir,
                                 args.recursive, args.pbi_tools, args.extract_timeout,
-                                extractor=extractor, model_path=args.model)
+                                model_path=args.model)
         except (OSError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         return 1 if summary['failed'] else 0
     if args.output_dir or args.recursive or args.pbi_tools or args.pbixray or args.extract_timeout != 600:
-        ap.error("--output-dir, --recursive, --pbi-tools, --pbixray and --extract-timeout require --pbix or --pbix-folder")
+        ap.error("--output-dir, --recursive, --pbi-tools and --extract-timeout require --pbix or --pbix-folder")
     from pbidocgen.catalog import build_catalog, validate_metadata
     if args.catalog and not (args.model or args.report or args.project):
         if args.metadata:

@@ -458,6 +458,14 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 
 - A PBIR page is now identified by the `name` in its `page.json`, not its folder name. Reports whose folders are not named after the page (for example `ReportSection1`) no longer get a false "Declared page is missing from the extract" warning, and page order and the active page are matched correctly. Tests: `components/power-bi/tests/test_pbir_page_ids.py`.
 
+### 2026-09-29 — Portable PBIX reader (opt-in)
+
+- `bidoc generate --kind pbix --pbixray` and `pbi-doc-gen --pbix FILE --pbixray` extract a PBIX with the pinned portable reader (`pbidocgen/portable.py`) instead of pbi-tools. pbi-tools remains the default; batch, desktop and worker are unchanged. The earlier `pbixray_extract` module now delegates to the reader.
+- pbixray is accepted only in the validated range `>=0.15.0,<0.16` (0.15.0–0.15.5 gave byte-identical documents on 121 public models). Contract tests keep the range, both `pyproject.toml` extras and the lock file consistent, and a weekly canary workflow (not a merge gate) checks the newest release. `bidoc doctor` names the installed version and the range.
+- Untrusted-input limits: decompressed size is capped (larger of 256 MiB and 50x the input, at most 16 GiB and 90% of free disk; `BIDOC_MAX_DECOMPRESSED_BYTES`), the embedded metadata database is opened read-only with only plain tables accepted, and connection strings are redacted with an allowlist parser.
+- Partial extractions (unsupported features found) make the document local-only and the shared profile still withholds query code.
+- Not yet: ABF input and model pairing, the default-backend change, the Windows frozen build, and any same-file comparison with a real pbi-tools extract.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.

@@ -90,7 +90,10 @@ def scope(payload):
     """(descriptor, complete, coverage warnings). A parsed project/model/report is a complete snapshot."""
     warnings = [w.get("message", "") for w in (payload.get("model") or {}).get("warnings", [])
                 if w.get("message")][:50]
-    return power_bi_scope(payload["mode"]), True, warnings
+    extraction = payload.get("extraction") or {}
+    # The limitation lines already reach the model warnings through the reader; add only those that did not.
+    warnings += [line for line in extraction.get("limitations", []) if line not in warnings]
+    return power_bi_scope(payload["mode"]), extraction.get("complete", True), warnings
 
 
 def render(payload) -> str:
