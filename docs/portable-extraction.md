@@ -96,4 +96,9 @@ pin; the contract test confirms they agree.
 - Partial shared output still applies projection and withholds query code by default; it remains local-only.
   Projection is best-effort, not a guarantee of anonymisation.
 - No same-file comparison against a real pbi-tools extract has been run.
-- Windows behaviour (this reader in the frozen build) has not been validated.
+- Windows: the frozen executables bundle the reader (pbixray, its metadata and modules) and start the extraction by
+  re-invoking themselves with `--portable-extract`. That path is checked on Linux with a PyInstaller build run with no
+  Python on `PATH`, and on a hosted Windows runner by `packaging/windows/verify-install.ps1` (install, `doctor`, PBIX
+  generation with the bundled reader, upgrade, uninstall). A hosted runner still has Python on disk, so a **clean
+  Windows machine** run of the same script (`docs/b09/VERIFICATION.md`) remains the open gate. ABF has no small fixture
+  in that script and is checked only in the Linux frozen build.

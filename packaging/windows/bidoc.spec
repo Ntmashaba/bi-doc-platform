@@ -1,6 +1,6 @@
 # PyInstaller spec: bidoc.exe (console) and "BI Documentation Generator.exe" (windowed)
 # sharing one folder. Build: pyinstaller --noconfirm packaging/windows/bidoc.spec
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 HERE = SPECPATH  # noqa: F821 (provided by PyInstaller)
 
@@ -9,6 +9,10 @@ for package in ("pbidocgen", "adfdocgen", "bidoc_contracts", "bidoc_engines", "b
                 "bidoc_generator"):
     datas += collect_data_files(package)             # engine templates, schema, desktop static files
     hidden += collect_submodules(package)            # engines import some modules lazily
+# Portable PBIX/ABF extraction: pbixray is imported lazily and pbidocgen.portable checks its installed version
+# through importlib.metadata, so its distribution metadata must ship with the executable.
+datas += copy_metadata("pbixray") + collect_data_files("pbixray")
+hidden += collect_submodules("pbixray")
 hidden += collect_submodules("uvicorn") + ["webview.platforms.edgechromium", "webview.platforms.winforms"]
 excludes = ["tkinter", "test"]
 
