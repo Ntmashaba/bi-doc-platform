@@ -1,0 +1,26 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+(async()=>{
+ const nodes=new Map();
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',classList:{add(){},remove(){}},setAttribute(){}});return nodes.get(id)};
+ let blob,filename;
+ const c=vm.createContext({console,Blob,setTimeout:fn=>fn(),URL:{createObjectURL:b=>(blob=b,'blob:test'),revokeObjectURL(){}},document:{getElementById:node,querySelectorAll:()=>[],body:{appendChild(){}},createElement:()=>({click(){filename=this.download},remove(){}})},window:{scrollTo(){}}});
+ const run=s=>vm.runInContext(s,c);
+ run(fs.readFileSync(process.argv[2],'utf8').match(/<script>([\s\S]*)<\/script>/)[1]);
+ run("switchTab('primary-sources');setPageScope('p2')");
+ assert.equal(run('visiblePrimarySources.length'),1);
+ assert.ok(!node('primary-source-rows').innerHTML.includes('CODE_MUST_NOT_LEAK'));
+ node('primary-source-search').value='CODE_MUST_NOT_LEAK';run('filterPrimarySources()');
+ assert.equal(run('visiblePrimarySources.length'),0);
+ node('primary-source-search').value='Orders';run('filterPrimarySources()');
+ assert.equal(run('visiblePrimarySources.length'),1);
+ node('primary-source-usage').value='No reporting usage found';run('filterPrimarySources()');assert.equal(run('visiblePrimarySources.length'),0);
+ node('primary-source-usage').value='Potential reporting dependency';run('filterPrimarySources()');assert.equal(run('visiblePrimarySources.length'),1);
+ run('downloadPrimarySourcesCsv()');assert.equal(filename,'Sales-primary-sources.csv');
+ fs.writeFileSync(process.argv[3],Buffer.from(await blob.arrayBuffer()));
+ node('primary-source-usage').value='';node('primary-source-search').value='';
+ run("setPageScope('*')");assert.equal(run('visiblePrimarySources.length'),5);
+ run("setPageScope('')");assert.equal(run('visiblePrimarySources.length'),3);
+ run('downloadPrimarySourcesCsv()');
+ fs.writeFileSync(process.argv[3]+'.unassigned.csv',Buffer.from(await blob.arrayBuffer()));
+ console.log('Primary-source UI, filters and export checks passed.');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -447,6 +447,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - A real public PBIX (DP-500 lab 08: DirectQuery + Import, parameterised server) now goes end to end here: 6 tables, 2 measures, SQL Server source objects, personal path withheld, envelope validates. Tested in `apps/generator/tests/test_cli.py` (skipped when pbixray or the pbi-doc-gen samples are absent).
 - Not covered: `bidoc batch`, the desktop app and the worker still use pbi-tools only. Not compared with a real pbi-tools extract of the same file.
 
+### 2026-09-29 — Engines moved into this repository (`components/`)
+
+- `components/power-bi` and `components/adf` are copies of `pbi-doc-gen@0b04cf4` and `adf-doc-gen@960b4bc`; the platform installs them locally instead of from pinned git URLs. Behaviour is unchanged: the engine code equals what was already pinned.
+- Only deliberate differences: the CLI moved into the package (`pbidocgen/cli.py`, `adfdocgen/cli.py`, with a `generate_docs.py` shim), and `pbi-tools/` and most `pbix-samples/` were not imported (three small DP-500 files were, for `test_pbixray_extract.py`). `scripts/verify_components.py` checks the copies against the source repositories.
+- CI runs the two component suites, and its skip guard now matches real unittest skip markers instead of the word "skipped" (an imported ADF test has that word in its name).
+- The standalone repositories are unchanged for now; nothing here changes what they contain.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
