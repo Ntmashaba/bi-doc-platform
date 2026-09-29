@@ -454,6 +454,10 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - CI runs the two component suites, and its skip guard now matches real unittest skip markers instead of the word "skipped" (an imported ADF test has that word in its name).
 - The standalone repositories are unchanged for now; nothing here changes what they contain.
 
+### 2026-09-29 — PBIR page ids
+
+- A PBIR page is now identified by the `name` in its `page.json`, not its folder name. Reports whose folders are not named after the page (for example `ReportSection1`) no longer get a false "Declared page is missing from the extract" warning, and page order and the active page are matched correctly. Tests: `components/power-bi/tests/test_pbir_page_ids.py`.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
