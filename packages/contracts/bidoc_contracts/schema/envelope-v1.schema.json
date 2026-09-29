@@ -158,6 +158,7 @@
    "properties": {
     "kind": {
      "enum": [
+      "abf",
       "pbix",
       "pbip",
       "tmdl",

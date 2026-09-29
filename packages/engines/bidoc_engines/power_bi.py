@@ -41,7 +41,7 @@ def native_schema(payload) -> str:
     return f"{ENGINE}/{payload.get('schemaVersion')}"
 
 
-def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = None) -> dict:
+def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = None, model_path: str | None = None) -> dict:
     """Run the engine on a PBIP project, a model (TMDL folder or model.bim) or a PBIR report.
 
     `pbix`: for an extract made from a PBIX, the PBIX itself (the engine reads PBIR report
@@ -81,6 +81,16 @@ def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = 
         if isinstance(exc, InputError):
             raise
         raise InputError(str(exc)) from exc
+    if model_path:
+        if model is not None:
+            raise InputError("A local/composite model is already present; external pairing must not replace it. Document the remote model separately.")
+        if report is None:
+            raise InputError("Model pairing requires a report")
+        if Path(model_path).suffix.lower() in (".pbix", ".abf"):
+            raise InputError("Extract the paired model in the generator before loading it")
+        model = parse_model(Path(model_path))
+        report.setdefault("warnings", []).append({"severity":"warning", "category":"Model pairing",
+            "message":"External model supplied explicitly; server identity and backup freshness are not verified. Field resolution is checked against this snapshot only."})
     linked = link(model, report) if model and report else None
     name = title or (model["name"] if model else None) or project_title or (report["name"] if report else "Power BI")
     return build_payload(model, report, linked, name)

@@ -1,0 +1,9 @@
+{
+ "asset_id": "932a0733-e8f5-4e5b-85ae-5b6bfdf3cd08",
+ "path": "/tmp/claude-0/wt-04/components/power-bi/pbip-samples/thin-report-live-connection/K201-MonthSlicer.Report",
+ "streams": {
+  "power_bi|unknown|model_and_report": "17e4cc4a-b7f3-42d8-92cf-52df729e0a70",
+  "power_bi|unknown|report": "afcb5760-879d-4e8d-a6f8-3e69496a32f2"
+ },
+ "version": 1
+}

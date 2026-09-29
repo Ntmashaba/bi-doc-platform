@@ -135,6 +135,31 @@ class Cli(unittest.TestCase):
             self.assertNotEqual(diagnose()["pbi_tools"], "pbixray")           # not chosen unless asked for
             self.assertEqual(diagnose("pbixray")["pbi_tools"], "pbixray")
 
+    # --- Tabular ABF input --------------------------------------------------------------------------------
+    def test_an_abf_file_is_recognised_and_needs_the_portable_reader(self):
+        from bidoc_generator.batch import classify  # noqa: PLC0415
+        from bidoc_generator.doctor import diagnose  # noqa: PLC0415
+        from bidoc_generator.extract import ExtractionError, extract_pbix  # noqa: PLC0415
+        abf = self.tmp / "model.abf"
+        abf.write_bytes(b"not a real backup")
+        found = classify(abf)
+        self.assertEqual((found["engine"], found["kind"]), ("power_bi", "abf"))
+        with self.assertRaisesRegex(ExtractionError, "ABF requires the pbixray backend"):
+            extract_pbix(abf, self.tmp / "ws", "C:/tools/pbi-tools.exe")
+        with mock.patch("importlib.metadata.version", return_value="0.16.0"):
+            state = diagnose()["inputs"]["abf"]
+        self.assertFalse(state["available"])
+        self.assertIn("validated only for", state["reason"])
+        self.assertTrue(diagnose()["inputs"]["abf"]["available"])       # the installed pbixray is in range
+
+    def test_abf_generation_cannot_be_combined_with_pbi_tools(self):
+        abf = self.tmp / "model.abf"
+        abf.write_bytes(b"x")
+        code, _, err = run(["generate", "--engine", "power_bi", "--source", str(abf), "--kind", "abf",
+                            "--output-dir", str(self.tmp / "out"), "--pbi-tools", "C:/tools/pbi-tools.exe"])
+        self.assertEqual(code, 2)
+        self.assertIn("cannot be combined with --pbi-tools", err)
+
     def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
         home = self.tmp / "home"
         os.environ["BIDOC_HOME"] = str(home)

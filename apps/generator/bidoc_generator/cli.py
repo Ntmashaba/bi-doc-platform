@@ -16,7 +16,7 @@ from . import __version__
 from .doctor import diagnose, home
 
 EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0, 2, 3, 4, 5, 130
-KINDS = ("pbix", "pbip", "tmdl", "bim", "pbir", "extracted", "adf_git", "adf_arm", "adf_resources")
+KINDS = ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted", "adf_git", "adf_arm", "adf_resources")
 
 
 def _parser():
@@ -30,7 +30,7 @@ def _parser():
                                    "URL tokens cleaned (best effort), and query code withheld unless "
                                    "--include-query-code is given.")
     g.add_argument("--engine", required=True, choices=("power_bi", "adf"))
-    g.add_argument("--source", required=True, help="PBIX file (needs pbi-tools), PBIP project/folder, TMDL folder, model.bim, PBIR folder, pbi-tools extract folder, "
+    g.add_argument("--source", required=True, help="PBIX (pbi-tools, or --pbixray) or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, PBIR folder, pbi-tools extract folder, "
                                                    "or ADF Git folder / ARM export / resource JSON")
     g.add_argument("--kind", required=True, choices=KINDS, help="input kind")
     g.add_argument("--output-dir", required=True)
@@ -48,6 +48,7 @@ def _parser():
     g.add_argument("--owner", default="")
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
+    g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
     g.add_argument("--extract-timeout", type=float, default=900, help="PBIX only: seconds before extraction is stopped")
     g.add_argument("--pbixray", action="store_true",
                    help="PBIX only: extract with pbixray instead of pbi-tools (any OS; an approximation: no shared M "
@@ -157,24 +158,29 @@ def _generate(args) -> int:
         print(f"error: prerequisites missing: {exc}. Run 'bidoc doctor'.", file=sys.stderr)
         return EXIT_PREREQ
     extracted, workspace = None, None
-    if args.kind == "pbix":
+    if args.kind in ("pbix", "abf"):
         if args.engine != "power_bi":
             print("error: a PBIX input needs --engine power_bi", file=sys.stderr)
             return EXIT_INPUT
         from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         from .history import History  # noqa: PLC0415
+        portable = args.pbixray or args.kind == "abf"          # an ABF file only the portable reader can read
         if args.pbixray and args.pbi_tools:
             print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
             return EXIT_INPUT
-        report = diagnose("pbixray" if args.pbixray else args.pbi_tools)
-        if not report["inputs"]["pbix"]["available"]:
-            print(f"error: PBIX generation is unavailable: {report['inputs']['pbix']['reason']}. "
-                  "PBIP, model and ADF inputs still work (or try --pbixray).", file=sys.stderr)
+        if args.kind == "abf" and args.pbi_tools:
+            print("error: an ABF file cannot be combined with --pbi-tools; it is read by the portable reader",
+                  file=sys.stderr)
+            return EXIT_INPUT
+        report = diagnose("pbixray" if portable else args.pbi_tools)
+        if not report["inputs"][args.kind]["available"]:
+            print(f"error: {args.kind.upper()} generation is unavailable: {report['inputs'][args.kind]['reason']}. "
+                  "PBIP, model and ADF inputs still work" + ("" if portable else " (or try --pbixray)") + ".", file=sys.stderr)
             return EXIT_PREREQ
         history = History(home())
         workspace = str(uuid.uuid4())
         try:
-            print("  extracting (portable pbixray)" if args.pbixray else "  extracting", file=sys.stderr)
+            print("  extracting (portable pbixray)" if portable else "  extracting", file=sys.stderr)
             extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(report["pbi_tools"]),
                                      timeout=args.extract_timeout)
         except ExtractionCancelled:
@@ -184,13 +190,29 @@ def _generate(args) -> int:
             return EXIT_INPUT if exc.code == "INVALID_INPUT" else EXIT_FAILED
         except KeyboardInterrupt:
             return EXIT_CANCELLED
+    paired_work = None
+    paired = args.model
+    if paired and Path(paired).suffix.lower() in (".abf", ".pbix"):
+        import tempfile  # noqa: PLC0415
+        from .extract import ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
+        # Keep the paired extract until generate returns.
+        paired_work = tempfile.TemporaryDirectory(prefix="bidoc-paired-")
+        try:
+            paired = str(extract_pbix(paired, paired_work.name, check_tool("pbixray"), timeout=args.extract_timeout)
+                         / "Model" / "database.json")
+        except ExtractionError as exc:
+            paired_work.cleanup()
+            if workspace:
+                history.release_workspace(workspace)
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_PREREQ if exc.code == "PREREQUISITE_MISSING" else EXIT_FAILED
     request = GenerateRequest(
         engine=args.engine, source_path=args.source, source_kind=args.kind, output_dir=args.output_dir,
         profile=args.profile, query_code="included" if args.include_query_code else "withheld",
         document_id=args.document_id, identity_choice=args.identity, title=args.title,
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
-        extracted_path=str(extracted) if extracted else None)
+        extracted_path=str(extracted) if extracted else None, model_path=paired)
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",
               file=sys.stderr)
@@ -203,6 +225,8 @@ def _generate(args) -> int:
         cancel.set()
         return EXIT_CANCELLED
     finally:
+        if paired_work:
+            paired_work.cleanup()
         if workspace:
             history.release_workspace(workspace)
     if args.json:

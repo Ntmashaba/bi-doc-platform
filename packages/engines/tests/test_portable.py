@@ -1,4 +1,4 @@
-"""Portable reader boundaries and coverage."""
+"""Portable boundaries, coverage and explicit external-model pairing."""
 import json
 from pathlib import Path
 import sqlite3
@@ -34,6 +34,14 @@ class PortableBoundaries(unittest.TestCase):
             self.assertFalse((p/'extract/Model').exists())
             self.assertEqual(json.loads((p/'extract/extraction.json').read_text())['backend'],'zip')
 
+    def test_abf_extract_has_no_phantom_report(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); (p/'Model').mkdir()
+            (p/'Model/database.json').write_text(json.dumps({'model':{'name':'Tabular','tables':[{'name':'Sales'}]}}))
+            payload=power_bi.load(p,'extracted',pbix=p/'input.abf')
+            self.assertEqual(payload['mode'],'semantic-only')
+            self.assertIsNone(payload['report'])
+
     def test_partial_shared_output_still_withholds_query_code(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d);source=p/'model.bim'
@@ -48,6 +56,13 @@ class PortableBoundaries(unittest.TestCase):
             self.assertNotIn('Sql.Database(',text)
             self.assertIn('[query code withheld]',text)
             self.assertIn('.shared.local.html',result.artifact_path)
+
+    def test_composite_model_cannot_be_replaced_by_external_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d); f=p/'model.bim'
+            f.write_text(json.dumps({'model':{'tables':[{'name':'Local Sales'}]}}))
+            with self.assertRaisesRegex(power_bi.InputError,'must not replace'):
+                power_bi.load(f,'bim',model_path=str(f))
 
     def test_extraction_scope_is_not_complete_when_reader_reports_gaps(self):
         _,complete,warnings=power_bi.scope({'mode':'semantic-only','extraction':{

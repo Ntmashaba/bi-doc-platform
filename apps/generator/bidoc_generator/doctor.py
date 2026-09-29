@@ -116,6 +116,9 @@ def diagnose(pbi_tools: str | None = None) -> dict:
     if portable and pbi_ok:
         reasons = []
     ready["pbix"] = {"available": not reasons, "reason": "; ".join(reasons) or None}
+    abf_ok = pbixray_state["ok"] and pbi_ok
+    ready["abf"] = {"available": abf_ok,
+                    "reason": None if abf_ok else (pbixray_state["reason"] or "pbi-doc-gen is not installed")}
     return {"platform": f"{platform.system()} {platform.release()}", "checks": checks, "inputs": ready,
             "pbi_tools": tools}
 

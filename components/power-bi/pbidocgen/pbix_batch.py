@@ -12,7 +12,7 @@ import time
 import zipfile
 
 from .catalog import build_catalog, read_metadata, validate_metadata, describe_html
-from .extracted_report import parse_extracted_report, is_legacy_layout, parse_legacy_layout
+from .extracted_report import parse_extracted_report, parse_legacy_layout, is_legacy_layout
 from .model_parser import parse_model
 from .pbitools_folder import assemble, is_folder_model
 from .custom_visuals import from_pbix as custom_visuals_from_pbix
@@ -98,6 +98,8 @@ def load_extracted(folder, source, has_embedded_model):
     if model and raw_database and model.get('name') in (None, '', 'database'):
         # pbi-tools' raw database.json often carries no model name.
         model['name'] = source.stem
+    if source.suffix.lower() == '.abf':
+        return model, None
     report_root = folder / 'Report'
     if not report_root.exists():
         candidates = list(folder.glob('*.Report'))
@@ -114,7 +116,6 @@ def load_extracted(folder, source, has_embedded_model):
         report = parse_report(report_root)
         report['name'] = source.stem
     elif is_legacy_layout(report_root):
-        # A single Report/report.json holding every page (written by the pbixray extractor).
         report = parse_legacy_layout(report_root, source.stem)
     else:
         report = parse_extracted_report(report_root, source.stem)
@@ -133,6 +134,8 @@ def load_extracted(folder, source, has_embedded_model):
         report['warnings'].append(dict(severity='warning', category='External semantic model', message=message))
     # Custom visual display names ship inside the PBIX (Report/CustomVisuals/).
     report['customVisuals'] = {**custom_visuals_from_pbix(source), **report.get('customVisuals', {})}
+    if source.suffix.lower() == '.abf':
+        report = None
     coverage = folder / "extraction.json"
     if report is not None and coverage.is_file():
         report["extraction"] = json.loads(coverage.read_text(encoding="utf-8"))
