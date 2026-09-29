@@ -91,12 +91,13 @@ def diagnose(pbi_tools: str | None = None) -> dict:
     windows = platform.system() == "Windows"
     configured = _pbi_tools(pbi_tools)
     pbixray_state = _pbixray_status()
-    portable = pbi_tools == "pbixray" and pbixray_state["ok"]   # opt-in: asked for explicitly, never a default
+    # Portable when asked for explicitly, or when no pbi-tools is configured at all. A configured pbi-tools is never
+    # replaced here; `generate` falls back only when it cannot run (see cli.select_report).
+    portable = pbixray_state["ok"] and (pbi_tools == "pbixray" or (pbi_tools is None and not configured))
     tools = "pbixray" if portable else configured
-    if pbixray_state["installed"] or pbi_tools == "pbixray":
-        checks.append({"check": "pbixray", "ok": pbixray_state["ok"],
-                       "detail": pbixray_state["installed"] or "not installed",
-                       "fix": None if pbixray_state["ok"] else pbixray_state["reason"]})
+    checks.append({"check": "pbixray", "ok": pbixray_state["ok"],
+                   "detail": pbixray_state["installed"] or "not installed",
+                   "fix": None if pbixray_state["ok"] else pbixray_state["reason"]})
     desktop = _power_bi_desktop()
     checks.append({"check": "pbi-tools", "ok": bool(tools), "detail": tools or "not found",
                    "fix": None if tools else "Install pbi-tools Desktop (https://pbi.tools, AGPL-3.0) separately and "

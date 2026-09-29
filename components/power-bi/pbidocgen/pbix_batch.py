@@ -26,6 +26,10 @@ def resolve_tool(value):
     tool = shutil.which(value) if value else shutil.which('pbi-tools')
     if not tool and value and Path(value).is_file():
         tool = str(Path(value).resolve())
+    if not tool and not value:
+        from .portable import available
+        if available():
+            return "pbixray"
     if value == "pbixray":
         return "pbixray"
     if not tool:

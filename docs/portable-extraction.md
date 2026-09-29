@@ -2,9 +2,9 @@
 
 ## What it is
 
-An opt-in way to document a PBIX file without pbi-tools, on any operating system: `bidoc generate --kind pbix
---pbixray` (or `pbi-doc-gen --pbix FILE --pbixray`). pbi-tools stays the default and the authoritative route; nothing
-changes for a user who does not ask for this.
+A way to document a PBIX file without pbi-tools, on any operating system. pbi-tools stays the preferred and
+authoritative route: the portable reader is used when you ask for it (`--backend pbixray`), or when no usable
+pbi-tools is available. It never replaces a pbi-tools that can run.
 
 The reader is `pbidocgen/portable.py`, built on pbixray, and runs in the same child process as pbi-tools extraction,
 so the timeout and cancellation are unchanged. No Analysis Services server is started and no business-table rows are
@@ -25,15 +25,18 @@ not read marks the document partial, which keeps it local-only and suppresses de
 
 | Workflow | Behaviour |
 |---|---|
-| `bidoc generate --kind pbix` | pbi-tools, as before |
-| `bidoc generate --kind pbix --pbixray` | Portable reader |
-| `pbi-doc-gen --pbix FILE --pbixray` | Portable reader (same flag on the engine's own command line) |
+| `bidoc generate --kind pbix` (`--backend auto`, the default) | A configured pbi-tools (`--pbi-tools`, `BIDOC_PBI_TOOLS`, `config.json` or `PATH`), otherwise the portable reader. If that pbi-tools cannot run here (not Windows, no Power BI Desktop) it falls back to the portable reader and says so |
+| `--backend pbixray` (alias `--pbixray`) | Portable reader, whatever is configured |
+| `--backend pbi-tools` | pbi-tools only; an error if none is available, never a silent fallback |
+| An explicit `--pbi-tools EXE` that cannot run | An error, not a fallback |
+| `pbi-doc-gen --pbix FILE` | pbi-tools if found, otherwise the portable reader; `--pbixray` forces the portable reader |
+| Batch, worker, desktop | Same rule: a configured pbi-tools, otherwise the portable reader |
 | `bidoc doctor` | Reports the installed pbixray and the supported range |
 | `bidoc generate --kind abf` | Offline Analysis Services **Tabular** backup (`.abf`); model-only documentation; always the portable reader |
 | Thin report with `--model model.abf` / `.bim` / TMDL | Explicit pairing; the document says server identity and backup freshness are not verified |
 | Report that already has a local or composite model, plus `--model` | Rejected, so its own model is never silently replaced |
-| Batch and the desktop file picker | `.abf` files are recognised; PBIX still uses pbi-tools |
-| Worker, hosted upload UI | Unchanged (no ABF upload) |
+| Batch and the desktop file picker | `.abf` files are recognised |
+| Hosted upload UI | Unchanged (no ABF upload) |
 
 Install with `pip install "pbi-doc-gen[portable]"` (`requirements.txt` already does).
 

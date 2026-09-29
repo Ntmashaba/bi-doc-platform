@@ -30,7 +30,7 @@ def _parser():
                                    "URL tokens cleaned (best effort), and query code withheld unless "
                                    "--include-query-code is given.")
     g.add_argument("--engine", required=True, choices=("power_bi", "adf"))
-    g.add_argument("--source", required=True, help="PBIX (pbi-tools, or --pbixray) or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, PBIR folder, pbi-tools extract folder, "
+    g.add_argument("--source", required=True, help="PBIX or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, PBIR folder, pbi-tools extract folder, "
                                                    "or ADF Git folder / ARM export / resource JSON")
     g.add_argument("--kind", required=True, choices=KINDS, help="input kind")
     g.add_argument("--output-dir", required=True)
@@ -50,9 +50,11 @@ def _parser():
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
     g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
     g.add_argument("--extract-timeout", type=float, default=900, help="PBIX only: seconds before extraction is stopped")
-    g.add_argument("--pbixray", action="store_true",
-                   help="PBIX only: extract with pbixray instead of pbi-tools (any OS; an approximation: no shared M "
-                        "queries beyond parameters, no roles or bookmarks). Needs: pip install pbixray")
+    g.add_argument("--pbixray", action="store_true", help="Alias for --backend pbixray")
+    g.add_argument("--backend", choices=("auto", "pbixray", "pbi-tools"), default="auto",
+                   help="PBIX extractor: auto (default) uses a configured pbi-tools, or the portable pbixray reader "
+                        "(any OS; an approximation, no shared M queries beyond parameters, no roles or bookmarks) "
+                        "when pbi-tools is not configured or cannot run here")
 
     b = sub.add_parser("batch", help="document several inputs; each item succeeds or fails on its own",
                        description="Inputs are recognised by their shape: .pbix files, PBIP project folders, "
@@ -151,12 +153,43 @@ def _doctor(args) -> int:
     return EXIT_OK if all(c["ok"] for c in core) else EXIT_PREREQ
 
 
+def backend_choice(backend, pbi_tools):
+    """The value to hand diagnose(): which PBIX extractor `generate` should ask for.
+
+    "pbixray" forces the portable reader. Otherwise pass the --pbi-tools path through, or None: diagnose(None)
+    then uses a pbi-tools configured by BIDOC_PBI_TOOLS, config.json or PATH, and only uses the portable reader
+    when there is none."""
+    return "pbixray" if backend == "pbixray" else pbi_tools
+
+
+def select_report(backend, pbi_tools, diagnose_fn=None):
+    """diagnose() for the extractor `generate` will use, and whether it fell back to the portable reader.
+
+    The default ("auto") prefers a configured pbi-tools, as doctor, batch and the worker do, so it never silently
+    replaces the authoritative extractor with the approximate one. Only when that pbi-tools cannot run here
+    (not Windows, no Power BI Desktop) does auto fall back to the portable reader. An explicit backend or an
+    explicit --pbi-tools path is never overridden."""
+    diagnose_fn = diagnose_fn or diagnose
+    report = diagnose_fn(backend_choice(backend, pbi_tools))
+    implicit = pbi_tools is None          # an explicit --pbi-tools that cannot run is an error, not a fallback
+    if backend == "auto" and implicit and report["pbi_tools"] != "pbixray" and not report["inputs"]["pbix"]["available"]:
+        portable = diagnose_fn("pbixray")
+        if portable["inputs"]["pbix"]["available"]:
+            return portable, True
+    return report, False
+
+
 def _generate(args) -> int:
     try:
         from bidoc_engines.generate import GenerateRequest, generate  # noqa: PLC0415
     except ImportError as exc:
         print(f"error: prerequisites missing: {exc}. Run 'bidoc doctor'.", file=sys.stderr)
         return EXIT_PREREQ
+    if args.pbixray:
+        if args.pbi_tools or args.backend == "pbi-tools":
+            print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
+            return EXIT_INPUT
+        args.backend = "pbixray"
     extracted, workspace = None, None
     if args.kind in ("pbix", "abf"):
         if args.engine != "power_bi":
@@ -164,23 +197,30 @@ def _generate(args) -> int:
             return EXIT_INPUT
         from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         from .history import History  # noqa: PLC0415
-        portable = args.pbixray or args.kind == "abf"          # an ABF file only the portable reader can read
-        if args.pbixray and args.pbi_tools:
-            print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
-            return EXIT_INPUT
-        if args.kind == "abf" and args.pbi_tools:
-            print("error: an ABF file cannot be combined with --pbi-tools; it is read by the portable reader",
+        if args.kind == "abf":                                   # only the portable reader can read an ABF file
+            if args.pbi_tools or args.backend == "pbi-tools":
+                print("error: an ABF file cannot be combined with --pbi-tools; it is read by the portable reader",
+                      file=sys.stderr)
+                return EXIT_INPUT
+            report, fell_back = diagnose("pbixray"), False
+        else:
+            report, fell_back = select_report(args.backend, args.pbi_tools)
+        portable = report["pbi_tools"] == "pbixray"
+        if fell_back:
+            print("note: the configured pbi-tools cannot run here, so the portable pbixray reader is used",
                   file=sys.stderr)
-            return EXIT_INPUT
-        report = diagnose("pbixray" if portable else args.pbi_tools)
+        if args.backend == "pbi-tools" and portable:
+            print("error: --backend pbi-tools needs pbi-tools: pass --pbi-tools EXE, or set BIDOC_PBI_TOOLS / "
+                  "config.json / PATH", file=sys.stderr)
+            return EXIT_PREREQ
         if not report["inputs"][args.kind]["available"]:
             print(f"error: {args.kind.upper()} generation is unavailable: {report['inputs'][args.kind]['reason']}. "
-                  "PBIP, model and ADF inputs still work" + ("" if portable else " (or try --pbixray)") + ".", file=sys.stderr)
+                  "PBIP, model and ADF inputs still work.", file=sys.stderr)
             return EXIT_PREREQ
         history = History(home())
         workspace = str(uuid.uuid4())
         try:
-            print("  extracting (portable pbixray)" if portable else "  extracting", file=sys.stderr)
+            print("  extracting (portable pbixray)" if portable else "  extracting (pbi-tools)", file=sys.stderr)
             extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(report["pbi_tools"]),
                                      timeout=args.extract_timeout)
         except ExtractionCancelled:
