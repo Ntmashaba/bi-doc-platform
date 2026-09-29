@@ -171,3 +171,28 @@ class PowerBIGeneration(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveConnectedPbix(Base):
+    """A thin PBIX (no DataModel) reads its model from Analysis Services."""
+
+    def make_pbix(self):
+        import zipfile
+        pbix = self.tmp / "thin.pbix"
+        with zipfile.ZipFile(pbix, "w") as z:
+            z.writestr("Connections", json.dumps({"Connections": [{"ConnectionString":
+                       "Data Source=asazure://uks.asazure.windows.net/srv;Initial Catalog=Sales;Password=x"}]}))
+            z.writestr("Report/definition/report.json", "{}")
+            z.writestr("Report/definition/pages/p1/page.json", json.dumps({"name": "p1", "displayName": "P1"}))
+        (self.tmp / "extract").mkdir()
+        return pbix
+
+    def test_thin_pbix_generates_with_live_source(self):
+        pbix = self.make_pbix()
+        result = generate(GenerateRequest(engine="power_bi", source_path=str(pbix), source_kind="pbix",
+                                          extracted_path=str(self.tmp / "extract"), output_dir=str(self.out),
+                                          profile="shared"))
+        data, artifact = self.artifact(result, ["pbi.overview", "pbi.source", "pbi.page"])
+        text = data.decode("utf-8", "replace")
+        self.assertIn("asazure://uks.asazure.windows.net/srv", text)
+        self.assertNotIn("Password", text)

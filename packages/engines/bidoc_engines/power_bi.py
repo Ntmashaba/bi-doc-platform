@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
 
 import pbidocgen
@@ -25,6 +26,15 @@ VIEW_IDS = frozenset({"pbi.overview", "pbi.table", "pbi.measure", "pbi.source", 
 
 class InputError(ValueError):
     pass
+
+
+def _has_embedded_model(pbix: Path) -> bool:
+    """A live-connected (thin) PBIX has no DataModel part; without a PBIX to read, assume one."""
+    try:
+        with zipfile.ZipFile(pbix) as archive:
+            return any(n.replace("\\", "/").strip("/").casefold() == "datamodel" for n in archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return True
 
 
 def native_schema(payload) -> str:
@@ -62,7 +72,8 @@ def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = 
             with tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp) / source.name
                 shutil.copytree(source, work)
-                model, report = load_extracted(work, Path(pbix) if pbix else work.with_suffix(".pbix"), True)
+                pbix_path = Path(pbix) if pbix else work.with_suffix(".pbix")
+                model, report = load_extracted(work, pbix_path, _has_embedded_model(pbix_path))
             project_title = source.name
         else:
             raise InputError(f"unsupported Power BI input kind {kind!r}; supported: {', '.join(SOURCE_KINDS)}")
@@ -186,6 +197,30 @@ def describe(payload: dict, coverage: str = "complete"):
                "database": str(s.get("database") or "")[:500], "object": str(s.get("object") or "")[:500]}
         targets.append({"target_id": sid_obj[:512], "view_id": "pbi.source",
                         "args": {k: v for k, v in nav.items() if v}})
+
+    live = payload.get("liveSource")
+    if isinstance(live, dict) and (live.get("server") or live.get("location")):
+        # The remote model a live-connected report reads; there are no tables to hang it on.
+        ep = endpoints.endpoint(system=live.get("sourceType"), server=live.get("server"),
+                                database=live.get("database"), object=live.get("location"))
+        lid = _source_id(ep)
+        lsid = anchor("s", lid)
+        llabel = (live.get("label") or live.get("sourceType") or "Live connection")[:512]
+        objects.append({"object_id": lid[:512], "kind": "source", "label": llabel, "section_id": lsid,
+                        "parent_object_id": None, "dynamic": False, "opaque": False, "coverage": coverage,
+                        "bindings": [{"binding_id": f"{lid}#read"[:512], "operation": "read", "endpoint": ep,
+                                      "normalized_endpoint": endpoints.normalize(ep),
+                                      "normalization_version": endpoints.NORMALIZATION_VERSION,
+                                      "invocation_context": {"connection": "live (DirectQuery)"},
+                                      "evidence_refs": ["/liveSource"], "resolution": "static",
+                                      "coverage": coverage}]})
+        sections.append(section(lsid, f"Live source {llabel}"[:200], [
+            f"Type: {live.get('sourceType')}", live.get("server") and f"Server: {live['server']}",
+            live.get("database") and f"Database: {live['database']}",
+            "The report reads this remote model live; its tables and measures are not part of this document."]))
+        targets.append({"target_id": lid[:512], "view_id": "pbi.source",
+                        "args": {k: v for k, v in {"source": llabel[:200], "server": str(live.get("server") or "")[:500],
+                                                   "database": str(live.get("database") or "")[:500]}.items() if v}})
 
     for p in report.get("pages", []):
         psid = anchor("p", f"page:{p.get('id') or p.get('name')}")
