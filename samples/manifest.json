@@ -1,0 +1,72 @@
+[
+  {
+    "id": "DP500 04 DirectQuery SQL Server",
+    "file": "DP500 04 DirectQuery SQL Server.pbix",
+    "url": "https://raw.githubusercontent.com/Ntmashaba/pbi-doc-gen/20dfd598c3bfec0efe9abdd049a295ddfad8ce2b/pbix-samples/DP500%2004%20DirectQuery%20SQL%20Server.pbix",
+    "sha256": "286e295f65f6c60d56a609243d16320d1141f9b7862dd77cb7550dbf165e922d",
+    "provenance": "Microsoft public training/report sample, retained at pinned engine revision. See upstream sample README."
+  },
+  {
+    "id": "DP500 08 Composite model",
+    "file": "DP500 08 Composite model.pbix",
+    "url": "https://raw.githubusercontent.com/Ntmashaba/pbi-doc-gen/20dfd598c3bfec0efe9abdd049a295ddfad8ce2b/pbix-samples/DP500%2008%20Composite%20model.pbix",
+    "sha256": "8f39ecc0ffb786dc11756e049555a83686419563f9bc621c2de93d16394a8941",
+    "provenance": "Microsoft public training/report sample, retained at pinned engine revision. See upstream sample README."
+  },
+  {
+    "id": "DP500 11 Dual storage mode",
+    "file": "DP500 11 Dual storage mode.pbix",
+    "url": "https://raw.githubusercontent.com/Ntmashaba/pbi-doc-gen/20dfd598c3bfec0efe9abdd049a295ddfad8ce2b/pbix-samples/DP500%2011%20Dual%20storage%20mode.pbix",
+    "sha256": "c9bb5dd09efbcfb0671f15aa7b163890144e63c470fe493d32dbba91af122c16",
+    "provenance": "Microsoft public training/report sample, retained at pinned engine revision. See upstream sample README."
+  },
+  {
+    "id": "AdventureWorks Sales",
+    "file": "AdventureWorks Sales.pbix",
+    "url": "https://raw.githubusercontent.com/Ntmashaba/pbi-doc-gen/20dfd598c3bfec0efe9abdd049a295ddfad8ce2b/pbix-samples/AdventureWorks%20Sales.pbix",
+    "sha256": "76c89b64cd1c5a9514b43cc5ea356efc82f8e92f9a96b49f6679d9ccd57fc4f5",
+    "provenance": "Microsoft public training/report sample, retained at pinned engine revision. See upstream sample README."
+  },
+  {
+    "id": "adventure-works-tabular-model-1200-project",
+    "file": "adventure-works-tabular-model-1200-project.zip",
+    "url": "https://github.com/microsoft/sql-server-samples/releases/download/adventureworks-analysis-services/adventure-works-tabular-model-1200-project.zip",
+    "sha256": "a7e4ca384cc49bebcecdf8ba3159136d674aaa66d12d926dd0a3e9037d2e42dd",
+    "provenance": "Microsoft AdventureWorks Analysis Services release; genuine server backup and independently published model project."
+  },
+  {
+    "id": "adventure-works-tabular-model-1200-full-database-backup",
+    "file": "adventure-works-tabular-model-1200-full-database-backup.zip",
+    "url": "https://github.com/microsoft/sql-server-samples/releases/download/adventureworks-analysis-services/adventure-works-tabular-model-1200-full-database-backup.zip",
+    "sha256": "3944a96f14c11a9d67b76cb644de0a7e7691fb3617e71654f289267384ea100b",
+    "provenance": "Microsoft AdventureWorks Analysis Services release; genuine server backup and independently published model project."
+  },
+  {
+    "id": "live-connection-ssas",
+    "file": "live-connection-ssas.pbix",
+    "url": "https://raw.githubusercontent.com/Hugoberry/pbixray/c5da940b45d2806c8f8d3e109f0d1909117a7db0/data/live-connection-ssas.pbix",
+    "sha256": "3dd6752a812f4e291bfdbd89e224f1e926f810c8709ad720686bedce920f1a12",
+    "provenance": "PBIXRay upstream public test fixture, commit c5da940b45d2806c8f8d3e109f0d1909117a7db0"
+  },
+  {
+    "id": "live-connection-pbiservice",
+    "file": "live-connection-pbiservice.pbix",
+    "url": "https://raw.githubusercontent.com/Hugoberry/pbixray/c5da940b45d2806c8f8d3e109f0d1909117a7db0/data/live-connection-pbiservice.pbix",
+    "sha256": "0d38e0d6c7f7b0678f6fa5afd9b7ec52600148e846ecf99e7e017fe9d145ad5b",
+    "provenance": "PBIXRay upstream public test fixture, commit c5da940b45d2806c8f8d3e109f0d1909117a7db0"
+  },
+  {
+    "id": "Adventure Works, Internet Sales",
+    "file": "Adventure Works, Internet Sales.pbix",
+    "url": "https://raw.githubusercontent.com/Hugoberry/pbixray/c5da940b45d2806c8f8d3e109f0d1909117a7db0/data/Adventure%20Works%2C%20Internet%20Sales.pbix",
+    "sha256": "7739ffdc66a58885e0a1a047353a4aae2408bb9b01c6dfb2cb85fc6545a5a067",
+    "provenance": "PBIXRay upstream public test fixture, commit c5da940b45d2806c8f8d3e109f0d1909117a7db0"
+  },
+  {
+    "id": "adf-adventureworks",
+    "file": "Adventure Works Demo Pipeline.json",
+    "url": "https://raw.githubusercontent.com/Azure/Azure-DataFactory/ce4c9cab41e5e4fa66f4bddd042cab649c36a4ca/templates/Adventure%20Works%20Demo%20Pipeline/Adventure%20Works%20Demo%20Pipeline.json",
+    "sha256": "3deaa4d2fa5588142da28caf10e6976b65fcd9c2e5b61c61a8321c94973e10a2",
+    "provenance": "Microsoft Azure Data Factory public template; runtime parameters remain unresolved."
+  }
+]

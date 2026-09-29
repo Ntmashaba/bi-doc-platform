@@ -27,6 +27,36 @@ jobs:
           done
           if grep -Eq '\.\.\. skipped|\(.*skipped=' test.log; then echo "::error::tests were skipped"; exit 1; fi
 
+  portable-samples:
+    # Public inputs, pinned by checksum (samples/manifest.json): 24 generated documents checked against explicit
+    # questions, then opened in Chromium. The downloads are cached by manifest hash so a network hiccup only
+    # matters the first time a manifest changes.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: samples/downloads
+          key: public-samples-${{ hashFiles('samples/manifest.json') }}
+      - run: python scripts/acceptance.py
+      - run: npm ci
+        working-directory: apps/library/frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/library/frontend
+      - run: NODE_PATH="$PWD/apps/library/frontend/node_modules" node scripts/check_sample_html.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-sample-documentation
+          path: samples/output/
+
   large-documents:
     # A41: import, memory, search and relationship rebuild with large documents; server
     # search must return exactly what the browser search returns.
