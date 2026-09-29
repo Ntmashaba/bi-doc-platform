@@ -8,7 +8,7 @@ pip install -r requirements.txt          # contracts, engines (components/), gen
 bidoc doctor                             # what this machine can generate, with fixes
 bidoc generate --engine adf --kind adf_git --source path/to/factory --output-dir docs
 bidoc generate --engine power_bi --kind pbip --source Sales.pbip --output-dir docs --profile shared
-bidoc generate --engine power_bi --kind pbix --source Sales.pbix --output-dir docs    # needs pbi-tools
+bidoc generate --engine power_bi --kind pbix --source Sales.pbix --output-dir docs    # pbi-tools if configured, else portable
 bidoc batch Finance/*.pbix Sales-project/ adf-repo/ --output-dir docs                  # one at a time
 bidoc history                                                                          # recent batches
 bidoc retry ITEM_ID                                                                    # failed, cancelled or interrupted
@@ -18,7 +18,7 @@ bidoc desktop                                                                   
 | Option | Meaning |
 |---|---|
 | `--engine` | `power_bi` or `adf` |
-| `--kind` | Power BI: `pbix` (extracted with pbi-tools first), `pbip`, `tmdl`, `bim`, `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources` |
+| `--kind` | Power BI: `pbix` (extracted first: pbi-tools if configured, otherwise the portable reader, see `portable-extraction.md`), `abf` (Tabular backup), `pbip`, `tmdl`, `bim`, `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources` |
 | `--profile local` (default) | Everything the engines produce, query code included, for your own use |
 | `--profile shared` | Projected for the shared library: machine paths removed, credentials, URL tokens and entered data cleaned (best effort), query code withheld |
 | `--include-query-code` | Shared profile only: publish M/SQL as written. The cleaning above still runs, but it is not a guarantee |

@@ -473,6 +473,12 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Checked on a real 7-table AdventureWorks Tabular backup, and on a thin PBIR report paired with it.
 - Not covered: a matched real thin-report and backup pair (none found publicly), password-protected or multidimensional backups.
 
+### 2026-09-29 — Default PBIX extractor: pbi-tools if it can run, otherwise portable
+
+- `bidoc generate --kind pbix` now has `--backend auto|pbixray|pbi-tools` (default `auto`; `--pbixray` stays as an alias). Auto uses a configured pbi-tools; if none is configured it uses the portable reader; if a pbi-tools is configured but cannot run here (not Windows, no Power BI Desktop) it falls back to the portable reader and prints a note. An explicit `--pbi-tools` path that cannot run, or `--backend pbi-tools` with none available, is an error, never a silent fallback.
+- Batch, the worker, the desktop app and `pbi-doc-gen --pbix` follow the same rule. A machine with pbi-tools configured behaves exactly as before.
+- Behaviour change to be aware of: on a machine with no pbi-tools, PBIX generation now works (approximately) instead of stopping with "PBIX generation is unavailable". Portable output is labelled as such and suppresses deletion recommendations.
+- Checked on the DP-500 composite PBIX on Linux: nothing configured (portable), a configured tool that cannot run (falls back with a note), `--backend pbi-tools` with none (error), an explicit unusable path (error).
 ### 2026-09-29 — Public-sample acceptance
 
 - `python scripts/acceptance.py` fetches a checksum-pinned public corpus (`samples/manifest.json`: three DP-500 PBIX files, AdventureWorks Sales and Internet Sales PBIX, two live-connection PBIX fixtures, Microsoft's AdventureWorks Tabular backup and project, an Azure Data Factory template), generates local and shared documents for 12 cases (24 outputs), and checks each against an explicit question (storage modes, thin-report pages and visuals, the 19-measure backup, partial-coverage warnings, PBIR page order). `scripts/check_sample_html.cjs` opens all 24 in Chromium, switches every available tab and fails on any script error. `python scripts/test.py [--samples]` runs the seven suites, and the acceptance run with `--samples`.
