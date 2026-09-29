@@ -52,8 +52,8 @@ az acr login -n <registry>
 docker push <registry>.azurecr.io/bidoc-library:<version>
 ```
 
-The image runs as a non-root user and includes the Azure SDKs. The engines come from the
-commits pinned in `packages/engines/pyproject.toml`.
+The image runs as a non-root user and includes the Azure SDKs. The engines are built from
+`components/` (see `components/README.md`).
 
 ## 4. Deploy
 

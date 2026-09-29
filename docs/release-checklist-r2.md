@@ -15,7 +15,7 @@ below is ticked with evidence.
 | | Check | Who | Evidence |
 |---|---|---|---|
 | ☐ | All CI jobs green on the release commit | CI | the run URL |
-| ☐ | Engines pinned to merged commits (`packages/engines/pyproject.toml`); lock files current | CI (`tests`, `docker`) | |
+| ☐ | Engine sources match their recorded commits (`scripts/verify_components.py`); lock files current | CI (`tests`, `docker`) | |
 | ☐ | pbi-tools is not bundled; the installer checks for it as a prerequisite (AGPL-3.0, ADR 0001) | CI (`windows-installer`) | |
 | ☐ | Installer built with version metadata, `SHA256SUMS.txt` and release notes | CI (`windows-installer`) | artifact |
 | ☐ | Installer **code-signed** with the client's certificate (development builds are labelled unsigned) | Owner | signing log |
