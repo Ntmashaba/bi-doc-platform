@@ -81,6 +81,9 @@ Check "doctor: PBIP ready" ([bool]$doctor.inputs.pbip.available)
 Check "doctor: ADF ready" ([bool]$doctor.inputs.adf_git.available)
 $pbix = $doctor.inputs.pbix
 Check "doctor: PBIX readiness explained" ([bool]$pbix.available -or [bool]$pbix.reason) $(if ($pbix.available) { "ready" } else { $pbix.reason })
+$portable = @($doctor.checks | Where-Object { $_.check -eq "pbixray" })[0]
+Check "doctor: portable PBIX reader bundled and in its supported range" ([bool]$portable.ok) "pbixray $($portable.detail)"
+Check "doctor: PBIX ready without pbi-tools" ([bool]$pbix.available) $(if ($pbix.available) { "ready" } else { $pbix.reason })
 
 # ---- generation ----------------------------------------------------------------------
 Copy-Item -Recurse $Inputs (Join-Path $Work "inputs")
@@ -94,6 +97,10 @@ $docs = @(Get-ChildItem $out -Filter *.shared.html -ErrorAction SilentlyContinue
 Check "shared documents written with a publication manifest" ($docs.Count -eq 2 -and ($docs | Where-Object { (Get-Content $_.FullName -Raw) -match 'id="pbidoc-manifest"' }).Count -eq 2) "$($docs.Count) file(s)"
 $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "pbip", "--source", "$Work\inputs\Sales", "--output-dir", "$Work\out-local")
 Check "local generation of a PBIP project" ($r.code -eq 0) "exit $($r.code)"
+# The frozen executable cannot run "python -m", so it re-invokes itself with --portable-extract.
+$r = Bidoc @("generate", "--engine", "power_bi", "--kind", "pbix", "--source", "$Work\inputs\dp500-08-composite.pbix", "--output-dir", "$Work\out-pbix", "--pbixray")
+$pbixDocs = @(Get-ChildItem "$Work\out-pbix" -Filter *.html -ErrorAction SilentlyContinue)
+Check "PBIX generation with the bundled portable reader" ($r.code -eq 0 -and $pbixDocs.Count -eq 1) "exit $($r.code); $($pbixDocs.Count) document(s)"
 $tool = Join-Path $Work "pbi-tools.exe"
 Set-Content $tool "" -Encoding ascii
 $r = Bidoc @("config", "--pbi-tools", $tool)

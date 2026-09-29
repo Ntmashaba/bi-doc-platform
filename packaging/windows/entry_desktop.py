@@ -7,6 +7,12 @@ runtime) as JSON in that log and in the exit code, without opening a window.
 import json
 import sys
 
+if len(sys.argv) > 1 and sys.argv[1] == "--portable-extract":
+    # The extraction child process (see entry_cli.py); the desktop app starts extractions the same way.
+    sys.argv.pop(1)
+    from pbidocgen.portable import main as portable_main
+    raise SystemExit(portable_main())
+
 from bidoc_generator.doctor import home
 
 

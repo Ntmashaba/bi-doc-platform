@@ -84,7 +84,9 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
     target = workspace / source.stem
     log_path = workspace / ("pbixray.log" if tool == "pbixray" else "pbi-tools.log")
     if tool == "pbixray" and command is None:
-        argv = [sys.executable, "-m", "pbidocgen.portable", str(source), str(target)]
+        # A frozen executable cannot run "python -m"; it re-invokes itself (packaging/windows/entry_*.py).
+        argv = ([sys.executable, "--portable-extract"] if getattr(sys, "frozen", False)
+                else [sys.executable, "-m", "pbidocgen.portable"]) + [str(source), str(target)]
     else:
         if source.suffix.lower() == ".abf":
             raise ExtractionError("INVALID_INPUT", "ABF requires the pbixray backend")

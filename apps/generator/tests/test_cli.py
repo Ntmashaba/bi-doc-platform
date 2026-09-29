@@ -233,6 +233,24 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("cannot be combined with --pbi-tools", err)
 
+    def test_a_frozen_executable_reinvokes_itself_for_portable_extraction(self):
+        # A frozen executable cannot run "python -m"; entry_cli.py / entry_desktop.py handle --portable-extract.
+        from bidoc_generator import extract  # noqa: PLC0415
+        pbix = self.tmp / "r.pbix"
+        pbix.write_bytes(b"PK")
+        seen = []
+
+        def spawn(argv, log):
+            seen.append(list(argv))
+            raise RuntimeError("stop before starting a process")
+        for frozen, expected in ((True, [sys.executable, "--portable-extract"]),
+                                 (False, [sys.executable, "-m", "pbidocgen.portable"])):
+            with mock.patch.object(sys, "frozen", frozen, create=True), mock.patch.object(extract, "_spawn", spawn):
+                with self.assertRaises(RuntimeError):
+                    extract.extract_pbix(pbix, self.tmp / "ws", "pbixray")
+            self.assertEqual(seen[-1][:len(expected)], expected)
+            self.assertEqual(seen[-1][len(expected):], [str(pbix), str(self.tmp / "ws" / "r")])
+
     def test_batch_partial_failure_exits_5_and_history_lists_it(self):  # A08
         home = self.tmp / "home"
         os.environ["BIDOC_HOME"] = str(home)

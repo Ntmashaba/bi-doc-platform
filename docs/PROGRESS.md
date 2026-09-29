@@ -486,6 +486,13 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - The Tabular backup is genuine; its published model project is used to check measures, columns and roles field by field. The live-connection samples point at a different database than the backup, so the "thin report plus backup" case uses a synthetic report and is labelled as a pairing demonstration, not a discovered pair.
 - Three DP-500 files are fetched from the standalone `pbi-doc-gen` repository at a pinned commit. If that repository is ever deleted or made private the job fails; archiving keeps it readable.
 
+### 2026-09-29 — Portable reader in the Windows frozen build
+
+- The PyInstaller spec now ships pbixray with its metadata and modules, and `bidoc.exe` and the desktop executable accept `--portable-extract` (a frozen executable cannot run `python -m pbidocgen.portable`, so the extraction child process re-invokes the executable itself). Without this, the default from the previous change would have failed inside an installed app on a machine with no pbi-tools.
+- Checked here: a PyInstaller build of the CLI from a clean, non-editable install (as `build.ps1` does), run with no Python on `PATH`, reports PBIX and ABF ready in `doctor` and generates both a PBIX and the AdventureWorks Tabular backup; the previous `-m` form is rejected by the frozen executable.
+- `verify-install.ps1` gains checks that the bundled reader is present and in range, that PBIX is ready without pbi-tools, and that a PBIX generates with the installed executable (input: the 54 KB DP-500 composite fixture). They run in the `windows-installer` CI job on a hosted Windows runner.
+- Still open: the same script on a clean Windows machine (the runner has Python on disk), and an ABF generation check on Windows.
+
 ### Next
 - Owner: run `docs/b16/CHECKLIST.md` (and the earlier owner steps: W2, A13, A15,
   deployment, signing), then send back `VERIFICATION.md` and `results.jsonl`.
