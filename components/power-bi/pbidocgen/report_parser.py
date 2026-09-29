@@ -299,15 +299,18 @@ def parse_report(report_path: str | Path) -> dict:
         order = []
     if (pages_dir / "pages.json").exists() and not pages_meta:
         warnings.append({"severity": "warning", "category": "Incomplete report", "message": "Unreadable pages.json; page coverage is uncertain."})
+    def page_id(d):
+        return (_load(d / "page.json") or {}).get("name") or d.name
+
     for pid in order:
-        if pid not in {d.name for d in pages_dir.iterdir() if d.is_dir()}:
+        if pid not in {page_id(d) for d in pages_dir.iterdir() if d.is_dir()}:
             warnings.append({"severity": "warning", "category": "Incomplete report", "message": f"Declared page {pid!r} is missing from the extract."})
     active = pages_meta.get("activePageName")
 
     page_dirs = [d for d in pages_dir.iterdir() if d.is_dir()] if pages_dir.exists() else []
 
     def sort_key(d: Path):
-        return order.index(d.name) if d.name in order else len(order)
+        return order.index(page_id(d)) if page_id(d) in order else len(order)
 
     for page_dir in sorted(page_dirs, key=sort_key):
         page_json = _load(page_dir / "page.json")
@@ -398,10 +401,10 @@ def parse_report(report_path: str | Path) -> dict:
                 })
 
         pages_out.append({
-            "id": page_dir.name,
+            "id": page_id(page_dir),
             "name": display,
             "hidden": hidden,
-            "isActive": page_dir.name == active,
+            "isActive": page_id(page_dir) == active,
             "width": page_json.get("width"), "height": page_json.get("height"),
             "visuals": visuals_out,
             "filters": page_filters,
