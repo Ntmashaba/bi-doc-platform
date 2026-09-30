@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class Options:
     business_area: str = ""
     owner: str = ""
     extract_timeout: float = 900
+    pbix_backend: dict | None = None    # set once per batch that has PBIX items: which extractor, and any fallback reason
 
 
 def _is_arm(path: Path) -> bool:
@@ -83,8 +85,9 @@ def classify(path) -> dict:
 class Runner:
     """Runs queued items on one background thread; the UI and CLI read state from History."""
 
-    def __init__(self, history: History, *, pbi_tools=None, pbix_ready=None, tool_command=None):
+    def __init__(self, history: History, *, pbi_tools=None, pbix_ready=None, tool_command=None, backend=None):
         self.history = history
+        self.backend = backend                    # the backend.Selection behind pbi_tools/pbix_ready, when built from one
         self.pbi_tools = pbi_tools
         self.pbix_ready = pbix_ready              # None = ready; otherwise the reason PBIX is unavailable
         self.tool_command = tool_command          # tests: run a script instead of pbi-tools.exe
@@ -100,6 +103,10 @@ class Runner:
 
     def submit(self, paths, options: Options) -> str:
         items = [classify(p) for p in paths]
+        if self.backend is not None and any(i.get("kind") == "pbix" for i in items):
+            # Recorded once for the batch, not once per file, so the CLI, the history and the desktop app can all say
+            # which extractor is used and why.
+            options = dataclasses.replace(options, pbix_backend=self.backend.as_dict())
         batch_id = self.history.create_batch(options.output_dir, options.__dict__, items)
         self._kick()
         return batch_id
@@ -205,7 +212,7 @@ class Runner:
                     return finish("failed", errors=[{"code": "PREREQUISITE_MISSING", "message": self.pbix_ready}])
                 self.history.update(item_id, state="extracting")
                 workspace = self.history.workspace(item_id)
-                tool = "pbixray" if item["kind"] == "abf" else (None if self.tool_command else check_tool(self.pbi_tools))
+                tool = check_tool("pbixray") if item["kind"] == "abf" else (None if self.tool_command else check_tool(self.pbi_tools))
                 extracted = extract_pbix(item["source"], workspace, tool,
                                          timeout=opts.extract_timeout, cancellation=cancel,
                                          command=self.tool_command)

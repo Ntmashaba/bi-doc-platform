@@ -10,7 +10,8 @@ interface Item { item_id: string; label: string; source: string; engine: string 
   state: string; attempt: number; elapsed_seconds: number | null; started_at: string | null;
   artifact_path: string | null; warnings: string[]; errors: Problem[]; }
 interface Batch { batch_id: string; created_at: string; output_dir: string; items: Item[];
-  options: { profile: string; query_code: string }; }
+  options: { profile: string; query_code: string; pbix_backend?: PbixBackend | null }; }
+interface PbixBackend { backend: string | null; available: boolean; reason: string | null; fallback: string | null; }
 interface ReviewItem { source: string; label: string; engine?: string; kind?: string; errors?: Problem[]; warnings?: string[]; }
 interface Doctor { platform: string; checks: { check: string; ok: boolean; detail: string; fix: string | null }[];
   inputs: Record<string, { available: boolean; reason: string | null }>; }
@@ -150,6 +151,7 @@ function elapsed(it: Item): string {
 async function batchView(id: string): Promise<void> {
   const table = h("tbody", {});
   const status = h("p", { id: "batch-status", "aria-live": "polite" });
+  const backendNote = h("div", { id: "batch-backend" });      // the PBIX extractor, once for the whole batch
   const cancelAll = h("button", { onclick: async () => { await api(`/api/batches/${id}/cancel`, "POST"); await refresh(); } }, "Cancel remaining");
   const act = (label: string, fn: () => Promise<unknown>) => h("button", { onclick: async () => {
     try { await fn(); } catch (e) { status.replaceChildren(notice("error", (e as Error).message)); }
@@ -177,6 +179,8 @@ async function batchView(id: string): Promise<void> {
     const done = b.items.filter(i => i.state === "completed" || i.state === "local_only").length;
     status.textContent = running ? `Working… ${done} of ${b.items.length} done.` : `Finished: ${done} of ${b.items.length} succeeded.`;
     cancelAll.disabled = !running;
+    const pb = b.options.pbix_backend;
+    backendNote.replaceChildren(...(pb && pb.fallback ? [notice("info", `PBIX extractor: ${pb.backend}. ${pb.fallback}`)] : []));
     table.replaceChildren(...b.items.map(it => h("tr", { "data-item": it.item_id },
       h("td", {}, h("strong", {}, it.label), h("div", { class: "muted small" }, it.kind ? KIND_LABEL[it.kind] || it.kind : "")),
       h("td", { class: `state s-${it.state}` }, STATE_LABEL[it.state] || it.state),
@@ -192,7 +196,7 @@ async function batchView(id: string): Promise<void> {
         RETRYABLE.has(it.state) ? act("Retry", () => api(`/api/items/${it.item_id}/retry`, "POST")) : null))));
     if (running) timer = window.setTimeout(refresh, 1000);
   }
-  mount(h("p", {}, h("a", { href: "#/history" }, "← History")), h("h1", {}, "Batch"), status,
+  mount(h("p", {}, h("a", { href: "#/history" }, "← History")), h("h1", {}, "Batch"), status, backendNote,
     h("div", { class: "card" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "State"),
       h("th", {}, "Time"), h("th", {}, "Details"), h("th", {}, ""))), table), h("p", {}, cancelAll)),
     h("div", { id: "preview" }));

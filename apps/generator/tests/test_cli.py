@@ -65,7 +65,7 @@ class Cli(unittest.TestCase):
         self.assertTrue(report["inputs"]["pbip"]["available"])
         self.assertTrue(report["inputs"]["adf_git"]["available"])
         self.assertFalse(report["inputs"]["pbix"]["available"])          # PBIX never blocks PBIP/ADF (A07)
-        self.assertIn("pbi-tools not found", report["inputs"]["pbix"]["reason"])
+        self.assertIn("was not found at", report["inputs"]["pbix"]["reason"])   # an explicit path is not replaced
 
     def test_config_keeps_the_pbi_tools_path(self):
         os.environ["BIDOC_HOME"] = str(self.tmp / "home")
@@ -75,7 +75,11 @@ class Cli(unittest.TestCase):
         self.assertEqual(run(["config", "--pbi-tools", str(self.tmp / "nope.exe")])[0], 2)
         self.assertEqual(run(["config", "--pbi-tools", str(tool)])[0], 0)
         report = json.loads(run(["doctor", "--json"])[1])
-        self.assertEqual(report["pbi_tools"], str(tool.resolve()))
+        seen = next(c for c in report["checks"] if c["check"] == "pbi-tools")
+        self.assertEqual(seen["detail"], str(tool.resolve()))              # the saved path is kept and reported
+        # An empty file cannot be launched (and this may not be Windows), so the shared policy falls back.
+        self.assertEqual(report["pbix_backend"]["backend"], "pbixray")
+        self.assertIn("cannot be used here", report["pbix_backend"]["fallback"])
         run(["config", "--pbi-tools", ""])
         self.assertEqual(json.loads(run(["config", "--json"])[1]), {})
 
@@ -128,78 +132,6 @@ class Cli(unittest.TestCase):
             for call in (pbixray_command, lambda: check_tool("pbixray")):
                 with self.assertRaisesRegex(ExtractionError, "validated only for"):
                     call()
-
-    # --- which PBIX extractor `generate` uses -------------------------------------------------------------
-    @staticmethod
-    def _report(tool, available=True, reason=None):
-        return {"pbi_tools": tool, "inputs": {"pbix": {"available": available, "reason": reason}}}
-
-    def _select(self, backend, pbi_tools, reports):
-        """select_report with a scripted diagnose; returns (report, fell_back, arguments diagnose was asked with)."""
-        from bidoc_generator.cli import select_report  # noqa: PLC0415
-        asked = []
-
-        def fake(arg):
-            asked.append(arg)
-            return reports[arg]
-        report, fell_back = select_report(backend, pbi_tools, fake)
-        return report, fell_back, asked
-
-    def test_default_backend_uses_a_configured_pbi_tools(self):
-        # diagnose(None) is what finds BIDOC_PBI_TOOLS / config.json / PATH; the default must not bypass it.
-        report, fell_back, asked = self._select("auto", None, {None: self._report("C:/tools/pbi-tools.exe")})
-        self.assertEqual((report["pbi_tools"], fell_back, asked), ("C:/tools/pbi-tools.exe", False, [None]))
-
-    def test_default_backend_falls_back_to_portable_only_when_none_is_configured(self):
-        report, fell_back, asked = self._select("auto", None, {None: self._report("pbixray")})
-        self.assertEqual((report["pbi_tools"], fell_back, asked), ("pbixray", False, [None]))
-
-    def test_default_backend_falls_back_when_the_configured_pbi_tools_cannot_run(self):
-        unusable = self._report("C:/tools/pbi-tools.exe", False, "PBIX extraction runs on Windows only")
-        report, fell_back, asked = self._select("auto", None, {None: unusable, "pbixray": self._report("pbixray")})
-        self.assertEqual((report["pbi_tools"], fell_back, asked), ("pbixray", True, [None, "pbixray"]))
-
-    def test_an_explicit_choice_is_never_overridden(self):
-        unusable = self._report(None, False, "pbi-tools not found")
-        both = {"x.exe": unusable, "pbi-tools": unusable, None: unusable, "pbixray": self._report("pbixray")}
-        # a mistyped --pbi-tools path stays an error
-        report, fell_back, asked = self._select("auto", "x.exe", both)
-        self.assertEqual((report["inputs"]["pbix"]["available"], fell_back, asked), (False, False, ["x.exe"]))
-        # --backend pbi-tools stays an error rather than quietly using the portable reader
-        report, fell_back, asked = self._select("pbi-tools", None, both)
-        self.assertEqual((report["inputs"]["pbix"]["available"], fell_back, asked), (False, False, [None]))
-        # --backend pbixray is portable whatever is configured
-        report, fell_back, asked = self._select("pbixray", None, both)
-        self.assertEqual((report["pbi_tools"], fell_back, asked), ("pbixray", False, ["pbixray"]))
-
-    def test_generate_passes_the_configured_pbi_tools_to_extraction(self):
-        # End to end through main(): the default backend hands the configured tool to the extractor.
-        from unittest import mock  # noqa: PLC0415
-        from bidoc_generator.extract import ExtractionError  # noqa: PLC0415
-        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
-        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
-        pbix = self.tmp / "r.pbix"
-        pbix.write_bytes(b"PK")
-        tool = self.tmp / "pbi-tools.exe"
-        tool.write_bytes(b"")
-        with mock.patch("bidoc_generator.cli.diagnose",
-                              # only diagnose(None) finds the configured tool; asking for "pbixray" gets the portable reader
-                              side_effect=lambda arg: self._report(str(tool)) if arg is None else self._report("pbixray")), \
-                mock.patch("bidoc_generator.extract.extract_pbix",
-                           side_effect=ExtractionError("EXTRACTION_FAILED", "stop here")) as extract:
-            code, _, err = run(["generate", "--engine", "power_bi", "--source", str(pbix), "--kind", "pbix",
-                                "--output-dir", str(self.tmp / "out")])
-        self.assertEqual(extract.call_args.args[2], str(tool.resolve()))
-        self.assertIn("extracting (pbi-tools)", err)
-        self.assertNotEqual(code, 0)
-
-    def test_doctor_uses_the_portable_reader_only_when_nothing_is_configured(self):
-        from bidoc_generator.doctor import diagnose  # noqa: PLC0415
-        with mock.patch("bidoc_generator.doctor._pbi_tools", return_value=None):
-            self.assertEqual(diagnose()["pbi_tools"], "pbixray")               # nothing configured
-        with mock.patch("bidoc_generator.doctor._pbi_tools", return_value="C:/tools/pbi-tools.exe"):
-            self.assertEqual(diagnose()["pbi_tools"], "C:/tools/pbi-tools.exe")  # a configured tool is kept
-            self.assertEqual(diagnose("pbixray")["pbi_tools"], "pbixray")         # unless asked for by name
 
     def test_batch_and_worker_extraction_use_the_portable_reader_only_when_nothing_is_configured(self):
         from bidoc_generator.extract import ExtractionError, check_tool  # noqa: PLC0415

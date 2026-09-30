@@ -30,6 +30,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from . import __version__
+from .backend import portable_status, select_backend
 from .publisher import PublishError, _NoRedirect, normalize_url
 
 HEARTBEAT_SECONDS = 30
@@ -153,20 +154,27 @@ class Worker:
     def readiness(self) -> dict:
         from bidoc_engines import power_bi  # noqa: PLC0415
 
-        from .extract import check_tool  # noqa: PLC0415
         types, detail, extractor = ["pbip_zip"], None, None
         if self.tool_command:
             types.append("pbix")
             extractor = "configured command"
         else:
-            try:
-                extractor = check_tool(self.pbi_tools)
+            # The same policy as generate, batch and the desktop app: PBIX is advertised only when the selected
+            # backend is present and can start, not because a file exists at the configured path.
+            selection = self.backend()
+            if selection.available:
                 types.append("pbix")
-            except Exception as exc:  # noqa: BLE001 - reported to the library, never fatal
-                detail = f"PBIX not available: {exc}"
+                extractor = selection.tool if selection.backend == "pbi-tools" else f"pbixray {portable_status()['installed']}"
+                detail = selection.note
+            else:
+                detail = f"PBIX not available: {selection.reason}"
         return {"engine_version": f"bidoc {__version__}; {power_bi.ENGINE} {power_bi.ENGINE_VERSION}",
                 "extractor_version": str(extractor)[:100] if extractor else None, "input_types": types,
                 "readiness": "ready", "readiness_detail": detail}
+
+    def backend(self):
+        """The PBIX backend for this worker's explicit --pbi-tools (or none): see backend.select_backend."""
+        return select_backend("auto", self.pbi_tools)
 
     def heartbeat(self):
         self.client.call("POST", "/heartbeat", body=self.readiness())
@@ -299,8 +307,13 @@ class Worker:
         try:
             if job["input_type"] == "pbix":
                 progress("extracting")
-                extracted = extract_pbix(source, workspace / "extract",
-                                         None if self.tool_command else check_tool(self.pbi_tools),
+                tool = None
+                if not self.tool_command:
+                    selection = self.backend()
+                    if not selection.available:
+                        raise ExtractionError("PREREQUISITE_MISSING", selection.reason)
+                    tool = check_tool(selection.tool)
+                extracted = extract_pbix(source, workspace / "extract", tool,
                                          timeout=self.extract_timeout, cancellation=cancel, command=self.tool_command)
                 kind = "pbix"
             else:

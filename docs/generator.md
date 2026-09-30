@@ -35,8 +35,12 @@ Output is `<title>--<document id prefix>.html` (`.shared.html` for the shared pr
 ## PBIX extraction
 
 PBIX files are read by pbi-tools Desktop, installed separately (AGPL-3.0; see ADR 0001), with
-Power BI Desktop, on Windows. `bidoc doctor` reports whether PBIX generation is ready and why
-not. PBIP, model, report and Data Factory inputs never depend on it (A07).
+Power BI Desktop, on Windows, or by the portable reader on any OS (an approximation; see
+`portable-extraction.md` for what it covers and where it is incomplete). One policy chooses between
+them for `generate`, `batch`, the desktop app and the worker: a pbi-tools that can run here is used,
+the portable reader otherwise, and an explicit `--pbi-tools` or `--backend` is never overridden.
+`bidoc doctor` reports the choice, whether PBIX generation is ready and why not. PBIP, model, report
+and Data Factory inputs never depend on it (A07).
 
 - The tool path is local configuration (`--pbi-tools`, `BIDOC_PBI_TOOLS`, or `PATH`). Script
   wrappers and pbi-tools.core are refused.

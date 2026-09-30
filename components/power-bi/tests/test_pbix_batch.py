@@ -214,9 +214,14 @@ class PbixBatchTests(unittest.TestCase):
             'if Path(sys.argv[2]).stem == "Fail":\n print("Synthetic extraction failure"); sys.exit(7)\n'
             'extracted_fixture(Path(sys.argv[sys.argv.index("-extractFolder") + 1]))\n')
         tool.chmod(0o755)
-        result = subprocess.run([sys.executable, 'generate_docs.py', '--pbix-folder', str(self.inputs),
-            '--output-dir', str(self.output), '--pbi-tools', str(tool)], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        # In-process, with the platform prerequisite (Windows + Power BI Desktop) and the launch probe stood in for: the
+        # synthetic extractor is a real child process, which is what this test is about.
+        from unittest import mock
+        from pbidocgen.cli import main as engine_main
+        with mock.patch('pbidocgen.pbi_tools_runtime.prerequisite_problem', return_value=None), \
+                mock.patch('pbidocgen.pbi_tools_runtime.launch_problem', return_value=None):
+            code = engine_main(['--pbix-folder', str(self.inputs), '--output-dir', str(self.output), '--pbi-tools', str(tool)])
+        self.assertEqual(code, 1)
         summary = json.loads((self.output / 'pbix-batch-results.json').read_text())
         self.assertEqual((summary['generated'], summary['failed']), (1, 1))
         self.assertIn('code 7', summary['files'][0]['error'])

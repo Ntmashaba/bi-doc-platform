@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 
 from . import __version__
+from .backend import for_runner, select_backend
 from .doctor import diagnose, home
 
 EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0, 2, 3, 4, 5, 130
@@ -52,9 +53,10 @@ def _parser():
     g.add_argument("--extract-timeout", type=float, default=900, help="PBIX only: seconds before extraction is stopped")
     g.add_argument("--pbixray", action="store_true", help="Alias for --backend pbixray")
     g.add_argument("--backend", choices=("auto", "pbixray", "pbi-tools"), default="auto",
-                   help="PBIX extractor: auto (default) uses a configured pbi-tools, or the portable pbixray reader "
-                        "(any OS; an approximation, no shared M queries beyond parameters, no roles or bookmarks) "
-                        "when pbi-tools is not configured or cannot run here")
+                   help="PBIX extractor. auto (default): a pbi-tools that can run here, else the portable pbixray "
+                        "reader, with a note when it falls back. pbi-tools: require it (an error if unusable, never "
+                        "a silent switch). pbixray: the portable reader on any OS. Coverage and limits of the "
+                        "portable reader: docs/portable-extraction.md")
 
     b = sub.add_parser("batch", help="document several inputs; each item succeeds or fails on its own",
                        description="Inputs are recognised by their shape: .pbix files, PBIP project folders, "
@@ -153,32 +155,6 @@ def _doctor(args) -> int:
     return EXIT_OK if all(c["ok"] for c in core) else EXIT_PREREQ
 
 
-def backend_choice(backend, pbi_tools):
-    """The value to hand diagnose(): which PBIX extractor `generate` should ask for.
-
-    "pbixray" forces the portable reader. Otherwise pass the --pbi-tools path through, or None: diagnose(None)
-    then uses a pbi-tools configured by BIDOC_PBI_TOOLS, config.json or PATH, and only uses the portable reader
-    when there is none."""
-    return "pbixray" if backend == "pbixray" else pbi_tools
-
-
-def select_report(backend, pbi_tools, diagnose_fn=None):
-    """diagnose() for the extractor `generate` will use, and whether it fell back to the portable reader.
-
-    The default ("auto") prefers a configured pbi-tools, as doctor, batch and the worker do, so it never silently
-    replaces the authoritative extractor with the approximate one. Only when that pbi-tools cannot run here
-    (not Windows, no Power BI Desktop) does auto fall back to the portable reader. An explicit backend or an
-    explicit --pbi-tools path is never overridden."""
-    diagnose_fn = diagnose_fn or diagnose
-    report = diagnose_fn(backend_choice(backend, pbi_tools))
-    implicit = pbi_tools is None          # an explicit --pbi-tools that cannot run is an error, not a fallback
-    if backend == "auto" and implicit and report["pbi_tools"] != "pbixray" and not report["inputs"]["pbix"]["available"]:
-        portable = diagnose_fn("pbixray")
-        if portable["inputs"]["pbix"]["available"]:
-            return portable, True
-    return report, False
-
-
 def _generate(args) -> int:
     try:
         from bidoc_engines.generate import GenerateRequest, generate  # noqa: PLC0415
@@ -186,7 +162,7 @@ def _generate(args) -> int:
         print(f"error: prerequisites missing: {exc}. Run 'bidoc doctor'.", file=sys.stderr)
         return EXIT_PREREQ
     if args.pbixray:
-        if args.pbi_tools or args.backend == "pbi-tools":
+        if args.backend == "pbi-tools":
             print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
             return EXIT_INPUT
         args.backend = "pbixray"
@@ -197,31 +173,22 @@ def _generate(args) -> int:
             return EXIT_INPUT
         from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         from .history import History  # noqa: PLC0415
-        if args.kind == "abf":                                   # only the portable reader can read an ABF file
-            if args.pbi_tools or args.backend == "pbi-tools":
-                print("error: an ABF file cannot be combined with --pbi-tools; it is read by the portable reader",
-                      file=sys.stderr)
-                return EXIT_INPUT
-            report, fell_back = diagnose("pbixray"), False
-        else:
-            report, fell_back = select_report(args.backend, args.pbi_tools)
-        portable = report["pbi_tools"] == "pbixray"
-        if fell_back:
-            print("note: the configured pbi-tools cannot run here, so the portable pbixray reader is used",
-                  file=sys.stderr)
-        if args.backend == "pbi-tools" and portable:
-            print("error: --backend pbi-tools needs pbi-tools: pass --pbi-tools EXE, or set BIDOC_PBI_TOOLS / "
-                  "config.json / PATH", file=sys.stderr)
-            return EXIT_PREREQ
-        if not report["inputs"][args.kind]["available"]:
-            print(f"error: {args.kind.upper()} generation is unavailable: {report['inputs'][args.kind]['reason']}. "
-                  "PBIP, model and ADF inputs still work.", file=sys.stderr)
-            return EXIT_PREREQ
+        selection = select_backend(args.backend, args.pbi_tools, kind=args.kind)
+        if selection.note:
+            print(f"note: {selection.note}", file=sys.stderr)
+        if not selection.available:
+            if selection.error_code == "INVALID_INPUT":
+                print(f"error: {selection.reason}", file=sys.stderr)
+            else:
+                lead = "" if selection.explicit else f"{args.kind.upper()} generation is unavailable: "
+                print(f"error: {lead}{selection.reason}. PBIP, model and ADF inputs still work.", file=sys.stderr)
+            return EXIT_INPUT if selection.error_code == "INVALID_INPUT" else EXIT_PREREQ
+        portable = selection.backend == "pbixray"
         history = History(home())
         workspace = str(uuid.uuid4())
         try:
             print("  extracting (portable pbixray)" if portable else "  extracting (pbi-tools)", file=sys.stderr)
-            extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(report["pbi_tools"]),
+            extracted = extract_pbix(args.source, history.workspace(workspace), check_tool(selection.tool),
                                      timeout=args.extract_timeout)
         except ExtractionCancelled:
             return EXIT_CANCELLED
@@ -289,10 +256,24 @@ def _generate(args) -> int:
 def _runner(pbi_tools):
     from .batch import Runner  # noqa: PLC0415
     from .history import History  # noqa: PLC0415
-    report = diagnose(pbi_tools)
-    pbix = report["inputs"]["pbix"]
-    return Runner(History(home()), pbi_tools=report["pbi_tools"],
-                  pbix_ready=None if pbix["available"] else pbix["reason"])
+    tool, pbix_ready, selection = for_runner(pbi_tools)
+    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready, backend=selection)
+
+
+def _announce_backend(runner, items) -> None:
+    """Say once, on stderr, which extractor PBIX items use when that is a fallback (never once per file)."""
+    if runner.backend is not None and runner.backend.note and any(i.get("kind") == "pbix" for i in items):
+        print(f"note: {runner.backend.note}", file=sys.stderr)
+
+
+def _backend_line(options) -> str | None:
+    """One summary line for a batch's PBIX extractor, or None when the batch has no PBIX items."""
+    info = (options or {}).get("pbix_backend")
+    if not info:
+        return None
+    if not info.get("available"):
+        return f"PBIX extractor: unavailable ({info.get('reason')})"
+    return f"PBIX extractor: {info['backend']}" + (f" ({info['fallback']})" if info.get("fallback") else "")
 
 
 def _print_items(items, as_json):
@@ -320,6 +301,7 @@ def _batch(args) -> int:
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
                    extract_timeout=args.extract_timeout)
     batch_id = runner.submit([str(Path(p).resolve()) for p in args.inputs], opts)
+    _announce_backend(runner, runner.history.batch(batch_id)["items"])
     try:
         runner.wait()
     except KeyboardInterrupt:
@@ -331,6 +313,9 @@ def _batch(args) -> int:
         print(json.dumps(batch, indent=1))
     else:
         print(f"Batch {batch_id}")
+        line = _backend_line(batch["options"])
+        if line:
+            print(line)
     _print_items(batch["items"], args.json)
     return _outcome(batch["items"])
 
@@ -351,6 +336,7 @@ def _retry(args) -> int:
     runner = _runner(args.pbi_tools)
     try:
         item = runner.retry(args.item_id)
+        _announce_backend(runner, [item])
     except KeyError:
         print(f"error: no item {args.item_id}", file=sys.stderr)
         return EXIT_INPUT
@@ -534,7 +520,8 @@ def _worker(args) -> int:
     if not url or not token:
         print("error: the worker is not connected; run 'bidoc worker connect URL'", file=sys.stderr)
         return EXIT_PREREQ
-    worker = Worker(WorkerClient(url, token), pbi_tools=args.pbi_tools or settings.get("pbi_tools"),
+    # Only an explicit --pbi-tools is passed on: the saved setting is found (as an implicit one) by the shared policy.
+    worker = Worker(WorkerClient(url, token), pbi_tools=args.pbi_tools,
                     extract_timeout=args.extract_timeout, workspace_root=home() / "worker",
                     log=lambda m: print(m, flush=True))
     try:
