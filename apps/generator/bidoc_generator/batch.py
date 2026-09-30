@@ -205,7 +205,7 @@ class Runner:
                     return finish("failed", errors=[{"code": "PREREQUISITE_MISSING", "message": self.pbix_ready}])
                 self.history.update(item_id, state="extracting")
                 workspace = self.history.workspace(item_id)
-                tool = "pbixray" if item["kind"] == "abf" else (None if self.tool_command else check_tool(self.pbi_tools))
+                tool = check_tool("pbixray") if item["kind"] == "abf" else (None if self.tool_command else check_tool(self.pbi_tools))
                 extracted = extract_pbix(item["source"], workspace, tool,
                                          timeout=opts.extract_timeout, cancellation=cancel,
                                          command=self.tool_command)

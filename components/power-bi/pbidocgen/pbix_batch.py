@@ -22,23 +22,45 @@ from .linker import link
 from .live_connection import from_pbix as live_from_pbix, summary as live_summary
 
 
-def resolve_tool(value):
+def resolve_backend(value):
+    """(tool, note) for the PBIX extractor: a pbi-tools executable path, or 'pbixray' for the portable reader.
+
+    `value` is what the caller named: None (nothing: use pbi-tools from PATH), 'pbixray' (the portable reader,
+    explicitly) or a pbi-tools path (explicitly). An explicit choice that cannot be used is an error and never
+    replaced by the other extractor. Only a pbi-tools found implicitly on PATH that cannot run here (not Windows,
+    no Power BI Desktop, not launchable) falls back to the portable reader, and `note` says why."""
+    from . import pbi_tools_runtime as runtime
+    from .portable import status
+    portable = status()
+    if value == 'pbixray':
+        if not portable['ok']:
+            raise ValueError(portable['reason'])
+        return 'pbixray', None
+    explicit = bool(value)
     tool = shutil.which(value) if value else shutil.which('pbi-tools')
     if not tool and value and Path(value).is_file():
         tool = str(Path(value).resolve())
-    if not tool and not value:
-        from .portable import available
-        if available():
-            return "pbixray"
-    if value == "pbixray":
-        return "pbixray"
+    if tool:
+        problem = runtime.unusable_reason(tool)
+    elif explicit:
+        problem = 'pbi-tools Desktop was not found at ' + str(value)
+    else:
+        problem = None
+    if tool and not problem:
+        return str(Path(tool).resolve()), None
+    if not explicit and portable['ok']:
+        if tool:
+            return 'pbixray', f'the pbi-tools found on PATH cannot be used here ({problem}), so the portable pbixray reader is used'
+        return 'pbixray', None
     if not tool:
-        raise ValueError('pbi-tools Desktop was not found. Install the Windows Desktop edition from https://github.com/pbi-tools/pbi-tools/releases and pass --pbi-tools "C:\\Tools\\pbi-tools\\pbi-tools.exe". Power BI Desktop 64-bit must also be installed.')
-    if Path(tool).suffix.lower() in {'.bat', '.cmd'}:
-        raise ValueError('Supply the pbi-tools executable, not a shell wrapper (.bat/.cmd).')
-    if 'pbi-tools.core' in Path(tool).name.lower():
-        raise ValueError('PBIX extraction requires pbi-tools Desktop, not pbi-tools.core.')
-    return str(Path(tool).resolve())
+        problem = ('pbi-tools Desktop was not found' + (f' at {value}' if explicit else '') + '. Install the Windows Desktop edition from https://github.com/pbi-tools/pbi-tools/releases and pass --pbi-tools "C:\\Tools\\pbi-tools\\pbi-tools.exe". Power BI Desktop 64-bit must also be installed.')
+        if not portable['ok']:
+            problem += ' The portable reader is not available either: ' + portable['reason']
+    raise ValueError(problem)
+
+
+def resolve_tool(value):
+    return resolve_backend(value)[0]
 
 
 def extract_pbix(source, destination, tool, timeout, log):
@@ -51,6 +73,8 @@ def extract_pbix(source, destination, tool, timeout, log):
     with log.open('w', encoding='utf-8') as stream:
         try:
             result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout, shell=False)
+        except OSError as exc:
+            raise ValueError(f'The extractor could not be started ({exc.strerror or exc}): {command[0]}') from exc
         except subprocess.TimeoutExpired as exc:
             raise ValueError(f'Extraction timed out after {timeout}s; see {log.name}. Increase --extract-timeout if needed.') from exc
     if result.returncode:
@@ -217,7 +241,13 @@ def run_batch(input_path, output_dir=None, recursive=False, tool=None, timeout=6
         raise ValueError(f'Model not found: {model_path}')
     if timeout <= 0:
         raise ValueError('--extract-timeout must be greater than zero')
-    executable = resolve_tool(tool) if extractor is None else tool
+    if extractor is None:
+        executable, note = resolve_backend(tool)
+        if note:
+            import sys
+            print('note: ' + note, file=sys.stderr)
+    else:
+        executable = tool
     extractor = extractor or extract_pbix
     output = Path(output_dir).resolve() if output_dir else root / 'documentation'
     output.mkdir(parents=True, exist_ok=True)

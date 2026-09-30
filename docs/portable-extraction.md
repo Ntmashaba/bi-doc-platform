@@ -21,24 +21,68 @@ Measure format strings, hidden flags, descriptions, display folders, lineage tag
 where present. The HTML shows storage modes, extraction provenance and coverage warnings; anything the reader could
 not read marks the document partial, which keeps it local-only and suppresses deletion recommendations.
 
-## Entry points
+## Which extractor is used, and where
 
-| Workflow | Behaviour |
+One policy decides it for every entry point (`apps/generator/bidoc_generator/backend.py`, using the launch and
+prerequisite checks in `pbidocgen/pbi_tools_runtime.py`, which the engine's own command line shares). The same machine
+and configuration give the same answer in `bidoc generate`, `bidoc batch`, the desktop app, the worker and `bidoc doctor`.
+
+An **explicit** instruction (`--pbi-tools EXE`, `--backend pbi-tools`, `--backend pbixray`) is never overridden. A
+pbi-tools that was only **configured** (`BIDOC_PBI_TOOLS`, `config.json`) or found on `PATH` is used when it can run and
+replaced, with a printed reason, when it cannot.
+
+| Situation | Result |
 |---|---|
-| `bidoc generate --kind pbix` (`--backend auto`, the default) | A configured pbi-tools (`--pbi-tools`, `BIDOC_PBI_TOOLS`, `config.json` or `PATH`), otherwise the portable reader. If that pbi-tools cannot run here (not Windows, no Power BI Desktop) it falls back to the portable reader and says so |
-| `--backend pbixray` (alias `--pbixray`) | Portable reader, whatever is configured |
-| `--backend pbi-tools` | pbi-tools only; an error if none is available, never a silent fallback |
-| An explicit `--pbi-tools EXE` that cannot run | An error, not a fallback |
-| `pbi-doc-gen --pbix FILE` | pbi-tools if found, otherwise the portable reader; `--pbixray` forces the portable reader |
-| Batch, worker, desktop | Same rule: a configured pbi-tools, otherwise the portable reader |
-| `bidoc doctor` | Reports the installed pbixray and the supported range |
-| `bidoc generate --kind abf` | Offline Analysis Services **Tabular** backup (`.abf`); model-only documentation; always the portable reader |
-| Thin report with `--model model.abf` / `.bim` / TMDL | Explicit pairing; the document says server identity and backup freshness are not verified |
-| Report that already has a local or composite model, plus `--model` | Rejected, so its own model is never silently replaced |
-| Batch and the desktop file picker | `.abf` files are recognised |
+| Auto; a usable pbi-tools is configured | pbi-tools |
+| Auto; no pbi-tools configured | The portable reader (if its pbixray version is supported) |
+| Auto; the configured pbi-tools cannot run here (not Windows, no Power BI Desktop, not launchable, missing file) | The portable reader, with a note giving the reason |
+| `--pbi-tools EXE` or `--backend pbi-tools` that cannot be used | An error with the reason; never a silent switch |
+| `--backend pbixray` (alias `--pbixray`) | The portable reader, or the reason it is unavailable, whatever else is configured |
+| Neither usable | PBIX reported unavailable, with both reasons, the same way everywhere |
+| ABF input | Always the portable reader; `--pbi-tools` or `--backend pbi-tools` is rejected |
+| `--pbixray` together with `--pbi-tools` | Rejected: they are alternatives |
+| `pbi-doc-gen --pbix FILE` (the engine's own command line) | The same rules, using pbi-tools from `PATH` as the implicit one |
+
+"Can run" is checked in three steps: the file exists and is not a script wrapper or `pbi-tools.core`; this machine can run
+pbi-tools Desktop at all (Windows with Power BI Desktop); and the file starts and exits within 15 seconds. The last step
+shows the file is a launchable program on this platform. It is not a functional test.
+
+**Readiness is not extraction success.** The worker advertises PBIX, and `bidoc doctor` and the desktop app report it, when
+the selected backend is present and can start; a file being present at the configured path is not enough. Whether one
+particular PBIX extracts is known only when it is extracted. A failed extraction (including a program that cannot be
+started, which is reported as a structured `PREREQUISITE_MISSING` error rather than an exception) is reported for that
+file and is never retried through the other backend.
+
+| Other entry points | |
+|---|---|
+| `bidoc doctor` | Reports pbixray, the pbi-tools it would look at and why it is unusable, and the selected backend |
+| `bidoc batch` and the desktop file picker | `.abf` files are recognised and use the portable reader |
 | Hosted upload UI | Unchanged (no ABF upload) |
 
 Install with `pip install "pbi-doc-gen[portable]"` (`requirements.txt` already does).
+
+## What a document can and cannot say
+
+Each of these is a different claim, and the documents keep them apart.
+
+- **Thin (live-connection) report detection** identifies the remote connection (server, database, model or workspace, as far
+  as the file records it) and what the report requires: its pages, visuals and field references. It does not retrieve the
+  remote model's metadata. The HTML keeps its warning that, without a model, field references are unresolved
+  requirements: the document cannot confirm the fields exist, tell measures from columns or trace them to a source.
+- **Remote semantic-model metadata is not retrieved automatically.** Nothing connects to a server, workspace or service. To
+  document the model you must supply it (a `.bim`, TMDL, an ABF backup or a PBIX with the model embedded).
+- **Explicit model pairing** (`--model`) resolves the report's fields against the snapshot you supplied. It does not verify
+  that the snapshot is the server's model, or that it is current: server identity and freshness stay unverified, and the
+  document says so. A report that already has its own local or composite model is rejected rather than having it replaced.
+- **DirectQuery lineage depends on the input representation and the partition type.** From a PBIP, TMDL or BIM model,
+  a table whose partition reads a remote Analysis Services or Power BI model (an entity partition with an
+  `expressionSource`) is traced to that remote model. From an embedded PBIX model or an ABF backup, the portable reader maps
+  query, M and calculated partitions and calculation groups; any other partition type is recorded with an unknown source,
+  the extraction notes that remote-model lineage is incomplete, and the document is marked partial. Storage mode
+  (Import, DirectQuery, Dual) is read for every table.
+- **Still incomplete where documented:** embedded entity partitions in remote-model PBIX files, advanced calculation-group
+  semantics (extracted, but selection and format semantics are not verified) and object-level security. A detected gap
+  marks the document partial, which keeps it local-only.
 
 ## Input limits (untrusted files)
 

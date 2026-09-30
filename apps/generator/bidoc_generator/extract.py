@@ -40,14 +40,11 @@ def check_tool(tool: str | None) -> str:
             raise ExtractionError("PREREQUISITE_MISSING", state["reason"])
     if not tool:
         raise ExtractionError("PREREQUISITE_MISSING", "pbi-tools is not configured; run 'bidoc doctor'")
-    path = Path(tool)
-    if not path.is_file():
-        raise ExtractionError("PREREQUISITE_MISSING", f"pbi-tools was not found at {tool}")
-    if path.suffix.lower() in {".bat", ".cmd", ".ps1", ".sh"}:
-        raise ExtractionError("PREREQUISITE_MISSING", "configure the pbi-tools executable, not a script wrapper")
-    if "pbi-tools.core" in path.name.lower():
-        raise ExtractionError("PREREQUISITE_MISSING", "PBIX extraction needs pbi-tools Desktop, not pbi-tools.core")
-    return str(path.resolve())
+    from pbidocgen.pbi_tools_runtime import executable_problem  # noqa: PLC0415 - shared with the engine's own CLI
+    problem = executable_problem(tool)
+    if problem:
+        raise ExtractionError("PREREQUISITE_MISSING", problem)
+    return str(Path(tool).resolve())
 
 
 def _spawn(command, log):
@@ -94,7 +91,11 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
                                           "-modelSerialization", "Raw"]
     started = time.monotonic()
     with log_path.open("w", encoding="utf-8", errors="replace") as log:
-        proc = _spawn(argv, log)
+        try:
+            proc = _spawn(argv, log)
+        except OSError as exc:      # not launchable: wrong platform, not an executable, blocked
+            raise ExtractionError("PREREQUISITE_MISSING",
+                                  f"the extractor could not be started ({exc.strerror or exc}): {argv[0]}") from exc
         try:
             while proc.poll() is None:
                 if cancellation is not None and cancellation.is_set():

@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ..batch import Options, Runner, classify
+from ..backend import for_runner
 from ..doctor import diagnose, home
 from ..history import History
 
@@ -294,12 +295,16 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def build_runner(pbi_tools=None) -> Runner:
+    """The batch runner for the desktop app: PBIX backend and readiness from the shared policy (backend.for_runner).
+    `pbi_tools` is only an explicit --pbi-tools; a saved or PATH pbi-tools is found by the policy."""
+    tool, pbix_ready, _ = for_runner(pbi_tools)
+    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready)
+
+
 def run(*, pbi_tools=None, window=True, port=0) -> int:
     import uvicorn  # noqa: PLC0415
-    report = diagnose(pbi_tools)
-    pbix = report["inputs"]["pbix"]
-    runner = Runner(History(home()), pbi_tools=report["pbi_tools"],
-                    pbix_ready=None if pbix["available"] else pbix["reason"])
+    runner = build_runner(pbi_tools)
     port = port or _free_port()
     secret = secrets.token_urlsafe(32)
     app = create_app(runner, session_secret=secret, port=port, doctor=lambda: diagnose(pbi_tools))
