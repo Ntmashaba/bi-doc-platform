@@ -45,7 +45,16 @@ replaced, with a printed reason, when it cannot.
 
 "Can run" is checked in three steps: the file exists and is not a script wrapper or `pbi-tools.core`; this machine can run
 pbi-tools Desktop at all (Windows with Power BI Desktop); and the file starts and exits within 15 seconds. The last step
-shows the file is a launchable program on this platform. It is not a functional test.
+shows the file is a launchable program on this platform. It is not a functional test. The probe runs the file as the
+leader of its own process group; if it does not finish in time, or the caller is interrupted, the **whole process tree** is
+ended (POSIX: SIGKILL to the group; Windows: `taskkill /T /F`), bounded to 10 s, and an interrupted probe is not cached. A
+child that outlives a probe that already exited normally is not chased.
+
+**A fallback is reported, once.** When PBIX items in a batch use the portable reader because the configured pbi-tools
+cannot be used, the reason is printed once on stderr, shown as one `PBIX extractor:` line in the normal batch output,
+recorded once in the batch's structured record (`options.pbix_backend` in `bidoc batch --json`, `bidoc history --json` and
+the desktop API's batch and `/api/state` responses), and shown as one notice above the desktop app's batch table. It is
+not repeated per file, and the same record says when neither backend is usable.
 
 **Readiness is not extraction success.** The worker advertises PBIX, and `bidoc doctor` and the desktop app report it, when
 the selected backend is present and can start; a file being present at the configured path is not enough. Whether one

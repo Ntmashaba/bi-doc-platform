@@ -256,8 +256,24 @@ def _generate(args) -> int:
 def _runner(pbi_tools):
     from .batch import Runner  # noqa: PLC0415
     from .history import History  # noqa: PLC0415
-    tool, pbix_ready, _ = for_runner(pbi_tools)
-    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready)
+    tool, pbix_ready, selection = for_runner(pbi_tools)
+    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready, backend=selection)
+
+
+def _announce_backend(runner, items) -> None:
+    """Say once, on stderr, which extractor PBIX items use when that is a fallback (never once per file)."""
+    if runner.backend is not None and runner.backend.note and any(i.get("kind") == "pbix" for i in items):
+        print(f"note: {runner.backend.note}", file=sys.stderr)
+
+
+def _backend_line(options) -> str | None:
+    """One summary line for a batch's PBIX extractor, or None when the batch has no PBIX items."""
+    info = (options or {}).get("pbix_backend")
+    if not info:
+        return None
+    if not info.get("available"):
+        return f"PBIX extractor: unavailable ({info.get('reason')})"
+    return f"PBIX extractor: {info['backend']}" + (f" ({info['fallback']})" if info.get("fallback") else "")
 
 
 def _print_items(items, as_json):
@@ -285,6 +301,7 @@ def _batch(args) -> int:
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
                    extract_timeout=args.extract_timeout)
     batch_id = runner.submit([str(Path(p).resolve()) for p in args.inputs], opts)
+    _announce_backend(runner, runner.history.batch(batch_id)["items"])
     try:
         runner.wait()
     except KeyboardInterrupt:
@@ -296,6 +313,9 @@ def _batch(args) -> int:
         print(json.dumps(batch, indent=1))
     else:
         print(f"Batch {batch_id}")
+        line = _backend_line(batch["options"])
+        if line:
+            print(line)
     _print_items(batch["items"], args.json)
     return _outcome(batch["items"])
 
@@ -316,6 +336,7 @@ def _retry(args) -> int:
     runner = _runner(args.pbi_tools)
     try:
         item = runner.retry(args.item_id)
+        _announce_backend(runner, [item])
     except KeyError:
         print(f"error: no item {args.item_id}", file=sys.stderr)
         return EXIT_INPUT

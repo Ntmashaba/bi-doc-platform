@@ -8,10 +8,13 @@ deterministic mocks of the platform prerequisite and launch checks, then asks ev
 import contextlib
 import importlib.metadata
 import io
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -20,14 +23,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bidoc_generator import backend, cli  # noqa: E402
 from bidoc_generator.batch import Options  # noqa: E402
-from bidoc_generator.desktop.app import build_runner  # noqa: E402
-from bidoc_generator.doctor import diagnose  # noqa: E402
+from bidoc_generator.desktop.app import build_runner, create_app  # noqa: E402
+from bidoc_generator.doctor import diagnose, home  # noqa: E402
 from bidoc_generator.extract import ExtractionError, extract_pbix  # noqa: E402
 from bidoc_generator.history import History  # noqa: E402
 from bidoc_generator.worker import Worker  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
 
 RUNTIME = "pbidocgen.pbi_tools_runtime"
 PORTABLE, TOOL = "pbixray", "pbi-tools"
+
+
+def pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:                                   # a zombie is not running
+        return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+    except OSError:
+        return True
 
 
 def label(tool):
@@ -138,28 +156,6 @@ class Machine(unittest.TestCase):
         self.assertAgree(seen, PORTABLE)                 # the real launch probe rejected it: portable everywhere
         self.assertIn("could not be started", seen["_report"]["pbix_backend"]["pbi_tools_problem"])
 
-    def test_the_launch_probe_is_bounded(self):
-        slow = self.tmp / "hangs.exe"
-        slow.write_bytes(b"")
-        class Hangs:
-            killed = False
-
-            def wait(self, timeout=None):
-                import subprocess
-                if not self.killed:
-                    raise subprocess.TimeoutExpired("hangs", timeout)
-
-            def kill(self):
-                self.killed = True
-        proc = Hangs()
-        from pbidocgen import pbi_tools_runtime as runtime
-        runtime._launch_cache.clear()
-        with mock.patch.object(runtime.subprocess, "Popen", return_value=proc):
-            problem = runtime.launch_problem(slow, timeout=0.01)
-        runtime._launch_cache.clear()
-        self.assertIn("did not respond within", problem)
-        self.assertTrue(proc.killed)
-
     def test_an_explicit_invalid_pbi_tools_is_an_error_and_never_replaced_by_pbixray(self):
         missing = str(self.tmp / "nowhere" / "pbi-tools.exe")
         with self.machine(implicit=None):                 # pbixray is fine; the explicit request must still fail
@@ -236,6 +232,161 @@ class Machine(unittest.TestCase):
             with self.assertRaises(_JobError) as caught:
                 worker._generate({"input_type": "pbix"}, self.pbix, self.tmp / "ws", lambda *_: None, mock.Mock())
         self.assertEqual(caught.exception.code, "PREREQUISITE_MISSING")
+
+    # ---- the launch probe ends its whole process tree ------------------------------------------------------------
+
+    def hanging_tree(self):
+        """An executable that starts a child process and then hangs. Returns (launcher, file the pids are written to)."""
+        pids = self.tmp / "pids.json"
+        script = self.tmp / "hang.py"
+        script.write_text(
+            "import json, os, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])\n"
+            f"open({str(pids)!r}, 'w').write(json.dumps({{'parent': os.getpid(), 'child': child.pid}}))\n"
+            "time.sleep(600)\n")
+        if os.name == "nt":
+            launcher = self.tmp / "launcher.cmd"
+            launcher.write_text(f'@"{sys.executable}" "{script}"\r\n')
+        else:
+            launcher = self.tmp / "launcher"
+            launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}"\n')
+            launcher.chmod(0o755)
+        return launcher, pids
+
+    def assertTreeStopped(self, pids):
+        found = json.loads(pids.read_text())
+        self.addCleanup(lambda: [os.kill(p, 9) for p in found.values() if pid_alive(p) and os.name != "nt"])
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and any(pid_alive(p) for p in found.values()):
+            time.sleep(0.1)
+        self.assertEqual({name: pid_alive(p) for name, p in found.items()}, {"parent": False, "child": False},
+                         "the probe left part of its process tree running")
+
+    def test_a_probe_that_times_out_ends_its_child_as_well_as_itself(self):
+        from pbidocgen import pbi_tools_runtime as runtime
+        launcher, pids = self.hanging_tree()
+        runtime._launch_cache.clear()
+        self.addCleanup(runtime._launch_cache.clear)
+        started = time.monotonic()
+        problem = runtime.launch_problem(launcher, timeout=6)
+        self.assertIn("did not respond within", problem)
+        self.assertLess(time.monotonic() - started, 6 + runtime.CLEANUP_SECONDS + 5)       # bounded, cleanup included
+        self.assertTreeStopped(pids)
+
+    def test_an_interrupted_probe_ends_its_process_tree_and_the_interrupt_propagates(self):
+        from pbidocgen import pbi_tools_runtime as runtime
+        launcher, pids = self.hanging_tree()
+        runtime._launch_cache.clear()
+        self.addCleanup(runtime._launch_cache.clear)
+        real_popen = subprocess.Popen
+
+        class InterruptedOnce(real_popen):
+            interrupted = False
+
+            def wait(self, timeout=None):
+                if not InterruptedOnce.interrupted:
+                    InterruptedOnce.interrupted = True
+                    time.sleep(4)                          # let the tree start, then act like Ctrl+C
+                    raise KeyboardInterrupt
+                return super().wait(timeout)
+        with mock.patch.object(runtime.subprocess, "Popen", InterruptedOnce):
+            with self.assertRaises(KeyboardInterrupt):
+                runtime.launch_problem(launcher, timeout=60)
+        self.assertEqual(runtime._launch_cache, {})                                         # an interrupt is not cached
+        self.assertTreeStopped(pids)
+
+    # ---- a batch that falls back tells its caller why, once ------------------------------------------------------
+
+    FALLBACK = dict(implicit=None, prerequisite="PBIX extraction with pbi-tools runs on Windows only")
+
+    def run_batch_cli(self, *args, files=2):
+        """`bidoc batch` over `files` PBIX files with extraction stopped. Returns (exit code, stdout, stderr, tools)."""
+        paths = []
+        for n in range(files):
+            p = self.tmp / f"r{n}.pbix"
+            p.write_bytes(b"PK")
+            paths.append(str(p))
+        tools = []
+
+        def stop(source, workspace, tool, **kw):
+            tools.append(tool)
+            raise ExtractionError("EXTRACTION_FAILED", "stop here")
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch("bidoc_generator.batch.extract_pbix", side_effect=stop), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["batch", *paths, "--output-dir", str(self.tmp / "out"), *args])
+        return code, out.getvalue(), err.getvalue(), tools
+
+    def test_a_batch_that_falls_back_exposes_the_reason_in_its_structured_record_once(self):
+        with self.machine(implicit=str(self.exe), prerequisite=self.FALLBACK["prerequisite"]):
+            code, out, err, tools = self.run_batch_cli("--json")
+        self.assertEqual(tools, [PORTABLE, PORTABLE])                       # both files used the fallback backend
+        batch = json.loads(out)
+        info = batch["options"]["pbix_backend"]
+        self.assertEqual((info["backend"], info["available"]), (PORTABLE, True))
+        self.assertIn("cannot be used here", info["fallback"])
+        self.assertIn("Windows only", info["fallback"])
+        self.assertEqual(err.count("cannot be used here"), 1)              # said once on stderr, not once per file
+        for item in batch["items"]:                                        # and not repeated inside every item
+            self.assertFalse(any("cannot be used here" in w for w in item["warnings"]))
+        # the history the desktop app and `bidoc history --json` read carries the same record
+        recorded = History(home()).batches(5)[0]["options"]["pbix_backend"]
+        self.assertEqual(recorded["fallback"], info["fallback"])
+
+    def test_a_batch_that_falls_back_says_so_in_its_normal_output(self):
+        with self.machine(implicit=str(self.exe), prerequisite=self.FALLBACK["prerequisite"]):
+            code, out, err, tools = self.run_batch_cli()
+        lines = [line for line in out.splitlines() if line.startswith("PBIX extractor:")]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("pbixray", lines[0])
+        self.assertIn("cannot be used here", lines[0])
+        self.assertEqual(err.count("cannot be used here"), 1)
+
+    def test_a_batch_with_a_usable_pbi_tools_reports_no_fallback(self):
+        with self.machine(implicit=str(self.exe)):
+            code, out, err, tools = self.run_batch_cli("--json")
+        info = json.loads(out)["options"]["pbix_backend"]
+        self.assertEqual((info["backend"], info["fallback"]), (TOOL, None))
+        self.assertEqual(label(tools[0]), TOOL)
+        self.assertNotIn("note:", err)
+
+    def test_a_batch_without_pbix_items_has_a_null_backend_record(self):
+        model = self.tmp / "m.bim"
+        model.write_text(json.dumps({"model": {"name": "M", "tables": [{"name": "T", "columns": [{"name": "C"}]}]}}))
+        out, err = io.StringIO(), io.StringIO()
+        with self.machine(implicit=str(self.exe), prerequisite=self.FALLBACK["prerequisite"]), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            cli.main(["batch", str(model), "--output-dir", str(self.tmp / "out"), "--json"])
+        self.assertIsNone(json.loads(out.getvalue())["options"]["pbix_backend"])          # null: no PBIX items
+        self.assertNotIn("cannot be used here", err.getvalue())
+
+    def test_a_batch_that_cannot_use_any_backend_records_that_too(self):
+        with self.machine(implicit=None, pbixray="missing"):
+            code, out, err, tools = self.run_batch_cli("--json", files=1)
+        info = json.loads(out)["options"]["pbix_backend"]
+        self.assertFalse(info["available"])
+        self.assertIn("not installed", info["reason"])
+        self.assertEqual(tools, [])                                        # nothing was extracted
+
+    def test_the_desktop_app_exposes_the_fallback_in_its_state_and_batch_status(self):
+        with self.machine(implicit=str(self.exe), prerequisite=self.FALLBACK["prerequisite"]):
+            runner = build_runner(None)
+            self.addCleanup(runner.shutdown)
+            secret = "s3cret"
+            client = TestClient(create_app(runner, session_secret=secret, port=8797, doctor=lambda: diagnose(None)),
+                                base_url="http://127.0.0.1:8797")
+            state = client.get("/api/state").json()
+            self.assertEqual(state["pbix_backend"]["backend"], PORTABLE)
+            self.assertIn("cannot be used here", state["pbix_backend"]["fallback"])
+            with mock.patch("bidoc_generator.batch.extract_pbix",
+                            side_effect=ExtractionError("EXTRACTION_FAILED", "stop here")):
+                created = client.post("/api/batches", json={"inputs": [str(self.pbix)], "output_dir": str(self.tmp / "o")},
+                                      headers={"X-Bidoc-Session": secret, "X-Requested-With": "bidoc"})
+                self.assertEqual(created.status_code, 201)
+                self.assertTrue(runner.wait(60))
+            polled = client.get(f"/api/batches/{created.json()['batch_id']}").json()
+        self.assertIn("cannot be used here", polled["options"]["pbix_backend"]["fallback"])
+        self.assertTrue(client.get("/static/desktop.js").text.count("pbix_backend") >= 1)      # the UI reads it
 
     # ---- ABF ----------------------------------------------------------------------------------------------------
 

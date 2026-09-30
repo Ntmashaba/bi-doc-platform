@@ -118,7 +118,8 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
 
     @app.get("/api/state")
     def state():
-        return {"active": runner.active(), "interrupted_on_start": history.interrupted}
+        return {"active": runner.active(), "interrupted_on_start": history.interrupted,
+                "pbix_backend": runner.backend.as_dict() if runner.backend is not None else None}
 
     @app.post("/api/review")
     def review(body: ReviewIn):
@@ -298,8 +299,8 @@ def _free_port() -> int:
 def build_runner(pbi_tools=None) -> Runner:
     """The batch runner for the desktop app: PBIX backend and readiness from the shared policy (backend.for_runner).
     `pbi_tools` is only an explicit --pbi-tools; a saved or PATH pbi-tools is found by the policy."""
-    tool, pbix_ready, _ = for_runner(pbi_tools)
-    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready)
+    tool, pbix_ready, selection = for_runner(pbi_tools)
+    return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready, backend=selection)
 
 
 def run(*, pbi_tools=None, window=True, port=0) -> int:

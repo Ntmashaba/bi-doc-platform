@@ -137,6 +137,7 @@ function elapsed(it) {
 async function batchView(id) {
     const table = h("tbody", {});
     const status = h("p", { id: "batch-status", "aria-live": "polite" });
+    const backendNote = h("div", { id: "batch-backend" }); // the PBIX extractor, once for the whole batch
     const cancelAll = h("button", { onclick: async () => { await api(`/api/batches/${id}/cancel`, "POST"); await refresh(); } }, "Cancel remaining");
     const act = (label, fn) => h("button", { onclick: async () => {
             try {
@@ -181,12 +182,14 @@ async function batchView(id) {
         const done = b.items.filter(i => i.state === "completed" || i.state === "local_only").length;
         status.textContent = running ? `Working… ${done} of ${b.items.length} done.` : `Finished: ${done} of ${b.items.length} succeeded.`;
         cancelAll.disabled = !running;
+        const pb = b.options.pbix_backend;
+        backendNote.replaceChildren(...(pb && pb.fallback ? [notice("info", `PBIX extractor: ${pb.backend}. ${pb.fallback}`)] : []));
         table.replaceChildren(...b.items.map(it => h("tr", { "data-item": it.item_id }, h("td", {}, h("strong", {}, it.label), h("div", { class: "muted small" }, it.kind ? KIND_LABEL[it.kind] || it.kind : "")), h("td", { class: `state s-${it.state}` }, STATE_LABEL[it.state] || it.state), h("td", {}, elapsed(it)), h("td", {}, ...it.errors.map(e => h("div", { class: "s-failed" }, e.message)), ...it.warnings.map(w => h("div", { class: "muted small" }, w)), it.artifact_path ? h("div", { class: "muted small" }, h("code", {}, it.artifact_path)) : null), h("td", { class: "actions" }, it.artifact_path && (it.state === "completed" || it.state === "local_only")
             ? h("button", { onclick: () => openDoc(it.item_id) }, "Open") : null, connected && it.state === "completed" && b.options.profile === "shared" ? publish(it) : null, ACTIVE.has(it.state) ? act("Cancel", () => api(`/api/items/${it.item_id}/cancel`, "POST")) : null, RETRYABLE.has(it.state) ? act("Retry", () => api(`/api/items/${it.item_id}/retry`, "POST")) : null))));
         if (running)
             timer = window.setTimeout(refresh, 1000);
     }
-    mount(h("p", {}, h("a", { href: "#/history" }, "← History")), h("h1", {}, "Batch"), status, h("div", { class: "card" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "State"), h("th", {}, "Time"), h("th", {}, "Details"), h("th", {}, ""))), table), h("p", {}, cancelAll)), h("div", { id: "preview" }));
+    mount(h("p", {}, h("a", { href: "#/history" }, "← History")), h("h1", {}, "Batch"), status, backendNote, h("div", { class: "card" }, h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "State"), h("th", {}, "Time"), h("th", {}, "Details"), h("th", {}, ""))), table), h("p", {}, cancelAll)), h("div", { id: "preview" }));
     await refresh();
 }
 async function openDoc(itemId) {

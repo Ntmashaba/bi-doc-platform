@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import os
 import platform
+import signal
 import subprocess
 from pathlib import Path
 
 PROBE_TIMEOUT_SECONDS = 15.0
+CLEANUP_SECONDS = 10.0          # upper bound on ending a probe's process tree
 _SCRIPT_SUFFIXES = {".bat", ".cmd", ".ps1", ".sh"}
 _launch_cache: dict[tuple, str | None] = {}
 
@@ -60,11 +62,47 @@ def prerequisite_problem() -> str | None:
     return None
 
 
+def _spawn_probe(path):
+    """Start `path --version` as the leader of its own process group (POSIX session / Windows process group), so the
+    whole tree it starts can be ended together."""
+    kwargs = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return subprocess.Popen([str(path), "--version"], **kwargs)
+
+
+def stop_process_tree(proc, grace: float = CLEANUP_SECONDS) -> None:
+    """End `proc` and everything it started, bounded by `grace` seconds; never raises for an already-gone process.
+
+    `proc` must lead its own group (see `_spawn_probe`). POSIX: SIGKILL to the group. Windows: `taskkill /T /F`, which
+    follows the parent-child links of a running process."""
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, shell=False,
+                           timeout=grace)
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.SubprocessError):     # already gone, not permitted, or taskkill hung: fall through
+        pass
+    try:
+        proc.kill()                                   # the immediate process, whatever the group step managed
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def launch_problem(tool, timeout: float = PROBE_TIMEOUT_SECONDS) -> str | None:
     """Start `tool --version` once, bounded by `timeout`; None when it started and finished.
 
     Any exit code counts: the aim is to find a file that cannot be started (wrong platform, not an executable,
-    blocked, hangs), not to judge its output. The result is cached per file version."""
+    blocked, hangs), not to judge its output. If it does not finish in time, or the caller is interrupted, the probe's
+    whole process tree is ended (bounded), not only the process it started. The result is cached per file version;
+    an interrupted probe is not cached."""
     path = Path(str(tool))
     try:
         stat = path.stat()
@@ -75,20 +113,18 @@ def launch_problem(tool, timeout: float = PROBE_TIMEOUT_SECONDS) -> str | None:
         return _launch_cache[key]
     problem = None
     try:
-        proc = subprocess.Popen([str(path), "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, shell=False)
+        proc = _spawn_probe(path)
     except OSError as exc:
         problem = f"pbi-tools at {tool} could not be started ({exc.strerror or exc})"
     else:
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
+            stop_process_tree(proc)
             problem = f"pbi-tools at {tool} did not respond within {timeout:g} s"
+        except BaseException:                          # KeyboardInterrupt, SystemExit, ...: clean up, then propagate
+            stop_process_tree(proc)
+            raise
     _launch_cache[key] = problem
     return problem
 
