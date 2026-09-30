@@ -295,6 +295,32 @@ class Machine(unittest.TestCase):
         self.assertEqual(runtime._launch_cache, {})                                         # an interrupt is not cached
         self.assertTreeStopped(pids)
 
+    def test_cleanup_shares_one_deadline_across_its_steps(self):
+        from pbidocgen import pbi_tools_runtime as runtime
+        spent = []
+
+        class Stuck:                                        # a process that never ends however it is asked
+            pid = 4242
+
+            def kill(self):
+                pass
+
+            def wait(self, timeout=None):
+                time.sleep(timeout)
+                spent.append(timeout)
+                raise subprocess.TimeoutExpired("stuck", timeout)
+
+        def slow_step(*args, **kwargs):
+            time.sleep(0.6)                                 # the group kill / taskkill uses up most of the budget
+        with mock.patch.object(runtime.os, "killpg", slow_step, create=True), \
+                mock.patch.object(runtime.subprocess, "run", slow_step):
+            started = time.monotonic()
+            runtime.stop_process_tree(Stuck(), grace=1.0)
+            elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.0 + 0.4)                 # one budget in total, not one per step (would be 1.6 s)
+        self.assertEqual(len(spent), 1)
+        self.assertLess(spent[0], 0.5)                      # the final wait got only what was left
+
     # ---- a batch that falls back tells its caller why, once ------------------------------------------------------
 
     FALLBACK = dict(implicit=None, prerequisite="PBIX extraction with pbi-tools runs on Windows only")
