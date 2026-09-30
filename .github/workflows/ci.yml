@@ -220,12 +220,21 @@ jobs:
       - name: Build 0.2.1 (upgrade target)
         shell: pwsh
         run: ./packaging/windows/build.ps1 -Version 0.2.1 -BuildLabel "CI build (unsigned)" -SkipInstall
+      - name: Fetch the pinned public ABF sample (Microsoft AdventureWorks, MIT; 2 MB, not committed)
+        shell: pwsh
+        run: |
+          $id = "adventure-works-tabular-model-1200-full-database-backup"
+          python scripts/fetch_samples.py $id
+          $item = (Get-Content samples/manifest.json -Raw | ConvertFrom-Json) | Where-Object { $_.id -eq $id }
+          "ABF_ARCHIVE=samples/downloads/$($item.file)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "ABF_SHA256=$($item.sha256)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
       - name: Install, use, upgrade and uninstall
         shell: pwsh
         run: >
           ./packaging/windows/verify-install.ps1
           -Installer "$env:RUNNER_TEMP/old/bidoc-setup-0.2.0-unsigned.exe"
           -UpgradeInstaller dist/installer/bidoc-setup-0.2.1-unsigned.exe
+          -AbfArchive "$env:ABF_ARCHIVE" -AbfSha256 "$env:ABF_SHA256"
           -Report dist/verify-report.json
       - uses: actions/upload-artifact@v4
         if: always()

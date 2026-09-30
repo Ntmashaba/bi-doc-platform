@@ -1,7 +1,7 @@
 # B09 verification report: Windows installer
 
 Status: **built and verified on Windows CI (30 of 30 checks). Clean-machine run (A13)
-waiting on the owner.**
+waiting on the owner.** Since then the script also generates the public ABF backup (`-AbfArchive`); see `docs/validation/windows-validation-pack.md`.
 
 ## What is built
 
