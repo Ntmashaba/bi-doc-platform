@@ -59,11 +59,14 @@ def _parser():
                         "portable reader: docs/portable-extraction.md")
 
     b = sub.add_parser("batch", help="document several inputs; each item succeeds or fails on its own",
-                       description="Inputs are recognised by their shape: .pbix files, PBIP project folders, "
+                       description="Inputs are recognised by their shape: .pbix and .abf files, PBIP project folders, "
                                    "TMDL/PBIR folders, model.bim, pbi-tools extracts, ADF Git folders and "
-                                   "ARM or resource JSON. Items run one at a time. Exit code 5 means some "
+                                   "ARM or resource JSON. Any other folder is searched recursively for .pbix and "
+                                   ".abf files, .bim models and project folders (a project folder is one input and is "
+                                   "not searched inside; other files are ignored; links, the output folder and "
+                                   ".git/.venv are skipped). Items run one at a time. Exit code 5 means some "
                                    "items failed; retry them with 'bidoc retry ITEM_ID'.")
-    b.add_argument("inputs", nargs="+", metavar="INPUT")
+    b.add_argument("inputs", nargs="+", metavar="INPUT", help="files, project folders, or folders to search")
     b.add_argument("--output-dir", required=True)
     b.add_argument("--profile", choices=("local", "shared"), default="local")
     b.add_argument("--include-query-code", action="store_true")
@@ -293,6 +296,15 @@ def _outcome(items) -> int:
     return EXIT_PARTIAL if ok else EXIT_FAILED
 
 
+def _scan_line(scan) -> str:
+    """One line on what the selection turned into, so a folder's contents are not a surprise."""
+    text = f"Found {scan.usable} input(s) in {scan.selections} selection(s)"
+    if scan.folders_scanned:
+        text += f" ({scan.folders_scanned} folder(s) searched)"
+    problems = len(scan.items) - scan.usable
+    return text + (f"; {problems} problem(s) recorded as failed items" if problems else "")
+
+
 def _batch(args) -> int:
     from .batch import Options  # noqa: PLC0415
     runner = _runner(args.pbi_tools)
@@ -300,7 +312,12 @@ def _batch(args) -> int:
                    query_code="included" if args.include_query_code else "withheld",
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
                    extract_timeout=args.extract_timeout)
-    batch_id = runner.submit([str(Path(p).resolve()) for p in args.inputs], opts)
+    scan = runner.discover(list(args.inputs), opts.output_dir)       # as given: discovery normalises them, and sees links
+    if not args.json:
+        print(_scan_line(scan), file=sys.stderr)
+    for note in scan.warnings:
+        print(f"  note: {note}", file=sys.stderr)
+    batch_id = runner.submit_items(scan.items, opts)
     _announce_backend(runner, runner.history.batch(batch_id)["items"])
     try:
         runner.wait()
@@ -310,7 +327,7 @@ def _batch(args) -> int:
     runner.shutdown()
     batch = runner.history.batch(batch_id)
     if args.json:
-        print(json.dumps(batch, indent=1))
+        print(json.dumps({**batch, "discovery": scan.as_dict()}, indent=1))
     else:
         print(f"Batch {batch_id}")
         line = _backend_line(batch["options"])
