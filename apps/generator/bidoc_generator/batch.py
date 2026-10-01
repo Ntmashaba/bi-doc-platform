@@ -72,12 +72,13 @@ def classify(path) -> dict:
             "not a recognised Power BI project, model, report, pbi-tools extract or Data Factory folder"}]}
 
 
-def classify_folder(path, children=None, on_list=None) -> dict | None:
+def classify_folder(path, children=None, on_list=None, blocked=None) -> dict | None:
     """The input a folder is: a recognised project folder, or an error item when it cannot be read or is a broken project.
     None when it is not itself an input (it may hold inputs: see `discovery.discover`).
 
     `children` is the folder's listing when the caller already has it. `on_list` is called before every further folder listing
-    this makes (checking a Data Factory part for JSON), so a caller can count them."""
+    this makes (checking a Data Factory part for JSON), so a caller can count them. `blocked(path)` says a path must not be
+    looked at (a link, or a folder that is left out): such a child never counts towards recognising a project."""
     p = Path(path)
     item = {"source": str(p), "label": p.name or str(p)}
     if children is None:
@@ -87,32 +88,40 @@ def classify_folder(path, children=None, on_list=None) -> dict | None:
             children = {c.name for c in p.iterdir()}
         except OSError as exc:
             return {**item, "errors": [{"code": "INVALID_INPUT", "message": f"cannot read folder {p}: {exc.strerror or exc}"}]}
+
+    def ok(*parts) -> bool:                                   # every step down from the folder is allowed
+        return not blocked or not any(blocked(p.joinpath(*parts[:n + 1])) for n in range(len(parts)))
+
+    children = {c for c in children if ok(c)}
     if any(c.endswith(".SemanticModel") for c in children):
         return {**item, "engine": "power_bi", "kind": "pbip"}
     if any(c.endswith(".pbip") for c in children):
         return {**item, "errors": [{"code": "INVALID_INPUT", "message":
                 "this project folder has a .pbip pointer but no .SemanticModel folder"}]}
-    if (p / "Model").is_dir() and ((p / "Report").is_dir() or (p / "Model" / "database.json").is_file()):
+    if ok("Model") and (p / "Model").is_dir() and (
+            (ok("Report") and (p / "Report").is_dir()) or (ok("Model", "database.json") and (p / "Model" / "database.json").is_file())):
         return {**item, "engine": "power_bi", "kind": "extracted"}
-    if p.name.endswith(".SemanticModel") or (p / "definition" / "model.tmdl").is_file() or (p / "model.tmdl").is_file():
+    if p.name.endswith(".SemanticModel") or (ok("definition", "model.tmdl") and (p / "definition" / "model.tmdl").is_file()) \
+            or (ok("model.tmdl") and (p / "model.tmdl").is_file()):
         return {**item, "engine": "power_bi", "kind": "tmdl"}
-    if p.name.endswith(".Report") or (p / "definition" / "report.json").is_file():
+    if p.name.endswith(".Report") or (ok("definition", "report.json") and (p / "definition" / "report.json").is_file()):
         return {**item, "engine": "power_bi", "kind": "pbir"}
-    if any(_holds_json(p / name, on_list) for name in sorted(children & ADF_FOLDERS)):
+    if any(_holds_json(p / name, on_list, blocked) for name in sorted(children & ADF_FOLDERS)):
         return {**item, "engine": "adf", "kind": "adf_git"}
     return None
 
 
-def _holds_json(folder: Path, on_list=None) -> bool:
+def _holds_json(folder: Path, on_list=None, blocked=None) -> bool:
     """A Data Factory Git folder's `pipeline/`, `dataset/`... hold the JSON definitions; a folder that merely has one of
-    those names (a reports folder with a `pipeline` subfolder) is not a factory."""
-    if not folder.is_dir():
+    those names (a reports folder with a `pipeline` subfolder) is not a factory. A part that is a link, or JSON that is a
+    link, does not count."""
+    if (blocked and blocked(folder)) or not folder.is_dir():
         return False
     if on_list:
         on_list()
     try:
         with os.scandir(folder) as entries:                      # stops at the first JSON file, however large the folder
-            return any(e.name.lower().endswith(".json") for e in entries)
+            return any(e.name.lower().endswith(".json") and not (blocked and blocked(folder / e.name)) for e in entries)
     except OSError:
         return False
 

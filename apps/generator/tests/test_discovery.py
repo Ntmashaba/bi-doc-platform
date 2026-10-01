@@ -183,6 +183,53 @@ class Discovering(Base):
         self.assertEqual(self.labels(scan), ["h3 Reports/Inside.pbix"])
         self.assertTrue(any("dirlink" in w for w in scan.warnings) and any("filelink" in w for w in scan.warnings))
 
+    def test_links_and_left_out_folders_do_not_make_a_container_look_like_a_project(self):
+        pbix(self.h3 / "Sales.pbix")
+        (self.h3 / "pipeline").mkdir()
+        (self.h3 / "pipeline" / "A.json").write_text("{}")                  # a linked or left-out folder holding JSON
+        scan = self.discover(self.h3)
+        self.assertEqual([i["kind"] for i in scan.items], ["adf_git"])        # control: unflagged, it is a Data Factory folder
+        with self.flag_links("pipeline"):                                    # the same folder, as a link
+            scan = self.discover(self.h3)
+        self.assertEqual(self.labels(scan), ["h3 Reports/Sales.pbix"])
+        self.assertEqual(scan.items[0]["kind"], "pbix")
+        scan = self.discover(self.h3, exclude=[self.h3 / "pipeline"])       # the same folder, as the output folder
+        self.assertEqual(self.labels(scan), ["h3 Reports/Sales.pbix"])
+
+    def test_a_linked_model_or_report_part_does_not_make_a_project(self):
+        pbix(self.h3 / "Sales.pbix")
+        (self.h3 / "Other.SemanticModel").mkdir()                            # would make a PBIP project
+        with self.flag_links("Other.SemanticModel"):
+            self.assertEqual(self.labels(self.discover(self.h3)), ["h3 Reports/Sales.pbix"])
+        (self.h3 / "Other.SemanticModel").rmdir()
+        (self.h3 / "Model").mkdir()                                          # would make a pbi-tools extract
+        (self.h3 / "Model" / "database.json").write_text("{}")
+        self.assertEqual(self.discover(self.h3).items[0]["kind"], "extracted")
+        with self.flag_links("Model"):
+            self.assertEqual(self.labels(self.discover(self.h3)), ["h3 Reports/Sales.pbix"])
+        with self.flag_links("database.json"):
+            self.assertEqual(self.labels(self.discover(self.h3)), ["h3 Reports/Sales.pbix"])
+
+    def test_a_linked_json_file_does_not_make_a_factory(self):
+        pbix(self.h3 / "Sales.pbix")
+        (self.h3 / "dataset").mkdir()
+        (self.h3 / "dataset" / "D.json").write_text("{}")
+        with self.flag_links("D.json"):
+            self.assertEqual(self.labels(self.discover(self.h3)), ["h3 Reports/Sales.pbix"])
+
+    def test_a_real_symlinked_pipeline_folder_does_not_hide_the_reports_beside_it(self):
+        elsewhere = self.tmp / "elsewhere"
+        (elsewhere).mkdir()
+        (elsewhere / "A.json").write_text("{}")
+        pbix(self.h3 / "Sales.pbix")
+        try:
+            os.symlink(elsewhere, self.h3 / "pipeline", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return                                                           # no symlinks here; the mocked tests cover it
+        scan = self.discover(self.h3)
+        self.assertEqual(self.labels(scan), ["h3 Reports/Sales.pbix"])
+        self.assertTrue(any("pipeline" in w for w in scan.warnings))
+
     def test_a_selected_link_is_refused_not_followed(self):
         pbix(self.tmp / "selected-link" / "Behind.pbix")
         pbix(self.tmp / "selected-file.pbix")

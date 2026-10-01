@@ -78,7 +78,9 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
   search target and as a selection (selecting one is a failed item that says why);
 - **links are never followed**: a symbolic link or Windows junction is reported and skipped whether it is a selection, a folder
   or a file; a selected one is a failed item. (`bidoc batch` passes paths as given, so a selected link is seen, not hidden.)
-  OneDrive-style cloud placeholders are ordinary files, not links;
+  OneDrive-style cloud placeholders are ordinary files, not links. Recognising a project obeys the same rule: a linked or
+  left-out `pipeline` folder, `Model` folder, `.SemanticModel` entry, `definition` folder or JSON file never counts towards
+  making its parent a project, so it cannot hide the reports beside it;
 - paths are normalised in the shared discovery, once, so the command line and the desktop name every input with the same string
   (relative paths and Windows short names such as `RUNNER~1` included);
 - the limits cover the whole call, not each selection: at most 1000 inputs and 20000 folder listings in total, counting the
@@ -94,8 +96,8 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
 
 `bidoc batch` prints what it found before it starts. The desktop review lists the same inputs and **Generate queues exactly that
 reviewed list** (a snapshot: files added after the review are not included; review again to pick them up). The review remembers
-the inputs and the output folder it was made from: changing either in the window withdraws the review, and the server refuses to
-queue an old review for a different list (409). The offline hub is a
+the inputs and the output folder it was made from: changing either in the window withdraws the review (including one still
+running, whose answer is dropped when it arrives), and the server refuses to queue an old review for a different list (409). The offline hub is a
 separate step: `bidoc export-library`.
 
 Items run one at a time, so there is only ever one PBIX extraction. Each item moves through

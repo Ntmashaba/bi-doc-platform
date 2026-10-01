@@ -171,6 +171,12 @@ def discover(paths, *, exclude=(), max_items: int = MAX_ITEMS, max_folders: int 
 def _visit(root: Path, result: Discovery, add, skipped: list[str], budget: _Budget):
     """Search `root` and below. Returns (inputs matched, problems recorded); an input met twice still counts as matched."""
     matched = problems = 0
+
+    def blocked(path) -> bool:                    # never looked at: a link, or a folder that is left out. This also applies
+        if _is_link(path):                        # to the entries that recognise a project
+            return True
+        here = os.path.normcase(str(path))        # the walk only ever goes through real folders, so the text is canonical
+        return any(_inside(here, s) for s in skipped)
     stack = [root]
     while stack:
         folder = stack.pop()
@@ -182,7 +188,7 @@ def _visit(root: Path, result: Discovery, add, skipped: list[str], budget: _Budg
                          f"cannot read folder {folder}: {exc.strerror or exc}"))
             problems += 1
             continue
-        project = classify_folder(folder, children={e.name for e in entries}, on_list=budget.folder)
+        project = classify_folder(folder, children={e.name for e in entries}, on_list=budget.folder, blocked=blocked)
         if project is not None:                                   # a project (or a broken one) is one input
             project["label"] = folder.name if folder == root else _label(folder, root)
             if project.get("errors"):
@@ -203,7 +209,7 @@ def _visit(root: Path, result: Discovery, add, skipped: list[str], budget: _Budg
                     result.warnings.append(f"Not followed (link or junction): {child}")
                 continue
             if is_dir:
-                if entry.name.casefold() not in SKIP_FOLDER_NAMES and not any(_inside(_key(child), s) for s in skipped):
+                if entry.name.casefold() not in SKIP_FOLDER_NAMES and not blocked(child):
                     subfolders.append(child)
                 continue
             if entry.name.startswith(("._", "~$")) or child.suffix.lower() not in FILE_SUFFIXES:

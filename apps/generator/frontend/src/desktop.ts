@@ -92,7 +92,11 @@ async function startView(): Promise<void> {
   const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const bridge = host();
   // A review is a snapshot of one list of inputs: changing the list, or where the output goes, withdraws it.
-  const stale = () => { if (out.childElementCount) out.replaceChildren(h("p", { class: "muted", id: "review-stale" },
+  // A review still running when that happens is withdrawn too: its answer is dropped when it arrives (see `review`).
+  let epoch = 0;          // bumped whenever the inputs or the output folder change
+  let latest = 0;         // the newest review request
+  let reviewing = false;  // a review request is in flight
+  const stale = () => { epoch++; if (out.childElementCount || reviewing) out.replaceChildren(h("p", { class: "muted", id: "review-stale" },
     "The inputs or the output folder changed. Review the inputs again before generating.")); };
   const add = (list: string[]) => { inputs.value = [...paths(), ...list].join("\n"); save(); stale(); };
 
@@ -102,9 +106,17 @@ async function startView(): Promise<void> {
     const reviewed = paths();                              // what this review is of; Generate sends exactly this
     if (!paths().length) { out.append(notice("error", "Add at least one input.")); return; }
     if (!form.output_dir) { out.append(notice("error", "Choose an output folder.")); return; }
+    const mine = ++latest, seen = epoch;                   // this request, and the state of the inputs it was made for
+    reviewing = true;
     let r: Review;
     try { r = await api<Review>("/api/review", "POST", { inputs: reviewed, output_dir: form.output_dir }); }
-    catch (e) { out.append(notice("error", (e as Error).message)); return; }
+    catch (e) {
+      if (mine === latest) reviewing = false;
+      if (mine === latest && seen === epoch) out.append(notice("error", (e as Error).message));
+      return;
+    }
+    if (mine === latest) reviewing = false;
+    if (mine !== latest || seen !== epoch) return;         // superseded, or the inputs changed while it ran: do not show it
     const usable = r.items.filter(i => !i.errors?.length).length;
     const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
       run.disabled = true;

@@ -83,8 +83,13 @@ async function startView() {
     const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const bridge = host();
     // A review is a snapshot of one list of inputs: changing the list, or where the output goes, withdraws it.
+    // A review still running when that happens is withdrawn too: its answer is dropped when it arrives (see `review`).
+    let epoch = 0; // bumped whenever the inputs or the output folder change
+    let latest = 0; // the newest review request
+    let reviewing = false; // a review request is in flight
     const stale = () => {
-        if (out.childElementCount)
+        epoch++;
+        if (out.childElementCount || reviewing)
             out.replaceChildren(h("p", { class: "muted", id: "review-stale" }, "The inputs or the output folder changed. Review the inputs again before generating."));
     };
     const add = (list) => { inputs.value = [...paths(), ...list].join("\n"); save(); stale(); };
@@ -100,14 +105,23 @@ async function startView() {
             out.append(notice("error", "Choose an output folder."));
             return;
         }
+        const mine = ++latest, seen = epoch; // this request, and the state of the inputs it was made for
+        reviewing = true;
         let r;
         try {
             r = await api("/api/review", "POST", { inputs: reviewed, output_dir: form.output_dir });
         }
         catch (e) {
-            out.append(notice("error", e.message));
+            if (mine === latest)
+                reviewing = false;
+            if (mine === latest && seen === epoch)
+                out.append(notice("error", e.message));
             return;
         }
+        if (mine === latest)
+            reviewing = false;
+        if (mine !== latest || seen !== epoch)
+            return; // superseded, or the inputs changed while it ran: do not show it
         const usable = r.items.filter(i => !i.errors?.length).length;
         const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
                 run.disabled = true;

@@ -37,6 +37,19 @@ const step = (name) => console.log("  ok " + name);
   assert.equal(await page.getByRole("button", { name: /^Generate / }).count(), 0);
   step("changing the inputs withdraws the review");
 
+  // ...and a review that is still running when the inputs change must not come back with a Generate button for the old list.
+  await page.route("**/api/review", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
+  await page.getByLabel("Inputs").fill(process.env.FOLDER);
+  await page.getByRole("button", { name: "Review inputs" }).click();
+  await page.getByLabel("Inputs").fill(process.env.FOLDER + "-edited while the review ran");
+  await page.locator("#review-stale").waitFor();
+  await page.waitForTimeout(2600);                                          // the delayed response has now arrived
+  assert.equal(await page.getByRole("button", { name: /^Generate / }).count(), 0);
+  assert.equal(await page.locator("#scan-summary").count(), 0);
+  assert.equal(await page.locator("#review-stale").count(), 1);
+  await page.unroute("**/api/review");
+  step("a review that was still running when the inputs changed is dropped");
+
   await page.goto(URL + "/#/");
   await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
