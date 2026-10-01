@@ -112,10 +112,24 @@ class LibraryClient:
         return None if status == 404 else {**body, "etag_header": headers.get("ETag")}   # case-insensitive
 
     def publish(self, artifact: bytes, *, filename: str = "document.html", query_code: str = "withheld") -> Result:
-        from bidoc_contracts import ContractError, validate_artifact  # noqa: PLC0415
+        from dataclasses import replace  # noqa: PLC0415
+
+        from bidoc_contracts import ContractError, Limits, validate_artifact  # noqa: PLC0415
+        limits = Limits()
+        try:                                       # the target library's own limit wins over the default
+            advertised = self.capabilities().get("limits", {}).get("html_bytes")
+            if isinstance(advertised, int) and advertised > 0:
+                limits = replace(limits, html_bytes=advertised)
+        except PublishError:
+            pass                                   # the upload below reports an unreachable or rejecting library
         try:
-            manifest = validate_artifact(artifact)
+            manifest = validate_artifact(artifact, limits=limits)
         except ContractError as exc:
+            if exc.code == "ARTIFACT_TOO_LARGE":
+                raise PublishError("ARTIFACT_TOO_LARGE", f"not published: the document is {len(artifact) / 1048576:.1f} MiB "
+                                   f"and this library accepts at most {limits.html_bytes / 1048576:.1f} MiB. The generated "
+                                   "file is unchanged and usable locally; ask the library administrator to raise the "
+                                   "limit.") from None
             raise PublishError("CONTRACT_INVALID", f"this file cannot be published: {exc}") from None
         doc = self.document(manifest["document_id"])
         etag = doc["etag_header"] if doc else None

@@ -13,6 +13,8 @@ interface Batch { batch_id: string; created_at: string; output_dir: string; item
   options: { profile: string; query_code: string; pbix_backend?: PbixBackend | null }; }
 interface PbixBackend { backend: string | null; available: boolean; reason: string | null; fallback: string | null; }
 interface ReviewItem { source: string; label: string; engine?: string; kind?: string; errors?: Problem[]; warnings?: string[]; }
+interface ScanSummary { selections: number; found: number; problems: number; folders_scanned: number; warnings: string[]; }
+interface Review { review_id: string; items: ReviewItem[]; warnings: string[]; summary: ScanSummary; }
 interface Doctor { platform: string; checks: { check: string; ok: boolean; detail: string; fix: string | null }[];
   inputs: Record<string, { available: boolean; reason: string | null }>; }
 interface HostApi { pick_files(): Promise<string[]>; pick_folder(): Promise<string[]>; open_preview(id: string): Promise<boolean>; }
@@ -81,53 +83,80 @@ async function startView(): Promise<void> {
   const fields = (["environment", "business_area", "owner"] as const).map(k =>
     h("input", { type: "text", id: k, value: form[k], maxlength: "200" }) as HTMLInputElement);
   const out = h("div", { id: "review", "aria-live": "polite" });
+  inputs.addEventListener("input", () => stale());
+  output.addEventListener("input", () => stale());
   const save = () => {
     Object.assign(form, { inputs: inputs.value, output_dir: output.value.trim(), profile: profile.value,
       include_query_code: code.checked, environment: fields[0].value, business_area: fields[1].value, owner: fields[2].value });
   };
   const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const bridge = host();
-  const add = (list: string[]) => { inputs.value = [...paths(), ...list].join("\n"); save(); };
+  // A review is a snapshot of one list of inputs: changing the list, or where the output goes, withdraws it.
+  // A review still running when that happens is withdrawn too: its answer is dropped when it arrives (see `review`).
+  let epoch = 0;          // bumped whenever the inputs or the output folder change
+  let latest = 0;         // the newest review request
+  let reviewing = false;  // a review request is in flight
+  const stale = () => { epoch++; if (out.childElementCount || reviewing) out.replaceChildren(h("p", { class: "muted", id: "review-stale" },
+    "The inputs or the output folder changed. Review the inputs again before generating.")); };
+  const add = (list: string[]) => { inputs.value = [...paths(), ...list].join("\n"); save(); stale(); };
 
   const review = async () => {
     save();
     out.replaceChildren();
+    const reviewed = paths();                              // what this review is of; Generate sends exactly this
     if (!paths().length) { out.append(notice("error", "Add at least one input.")); return; }
     if (!form.output_dir) { out.append(notice("error", "Choose an output folder.")); return; }
-    let r: { items: ReviewItem[] };
-    try { r = await api<{ items: ReviewItem[] }>("/api/review", "POST", { inputs: paths() }); }
-    catch (e) { out.append(notice("error", (e as Error).message)); return; }
+    const mine = ++latest, seen = epoch;                   // this request, and the state of the inputs it was made for
+    reviewing = true;
+    let r: Review;
+    try { r = await api<Review>("/api/review", "POST", { inputs: reviewed, output_dir: form.output_dir }); }
+    catch (e) {
+      if (mine === latest) reviewing = false;
+      if (mine === latest && seen === epoch) out.append(notice("error", (e as Error).message));
+      return;
+    }
+    if (mine === latest) reviewing = false;
+    if (mine !== latest || seen !== epoch) return;         // superseded, or the inputs changed while it ran: do not show it
     const usable = r.items.filter(i => !i.errors?.length).length;
     const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
       run.disabled = true;
       try {
-        const b = await api<Batch>("/api/batches", "POST", { inputs: paths(), output_dir: form.output_dir,
+        const b = await api<Batch>("/api/batches", "POST", { inputs: reviewed, review_id: r.review_id, output_dir: form.output_dir,
           profile: form.profile, include_query_code: form.include_query_code, environment: form.environment,
           business_area: form.business_area, owner: form.owner });
         location.hash = `#/batch/${b.batch_id}`;
       } catch (e) { out.append(notice("error", (e as Error).message)); run.disabled = false; }
     } }, `Generate ${usable} of ${r.items.length}`);
-    out.append(h("h2", {}, "Review"), h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "Recognised as"), h("th", {}, "Notes"))),
+    const sum = r.summary;
+    out.append(h("h2", {}, "Review"),
+      h("p", { id: "scan-summary" }, `Found ${sum.found} input${sum.found === 1 ? "" : "s"} in ${sum.selections} selection${sum.selections === 1 ? "" : "s"}` +
+        (sum.folders_scanned ? ` (${sum.folders_scanned} folder${sum.folders_scanned === 1 ? "" : "s"} searched)` : "") +
+        (sum.problems ? `; ${sum.problems} problem${sum.problems === 1 ? "" : "s"} listed below` : "") + "."),
+      ...r.warnings.map(w => h("p", { class: "muted" }, w)),
+      h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "Recognised as"), h("th", {}, "Notes"))),
       h("tbody", {}, ...r.items.map(i => h("tr", {},
         h("td", {}, h("strong", {}, i.label), h("div", { class: "muted small" }, h("code", {}, i.source))),
         h("td", {}, i.kind ? KIND_LABEL[i.kind] || i.kind : "—"),
         h("td", {}, ...(i.errors || []).map(e => h("div", { class: "s-failed" }, e.message)),
           ...(i.warnings || []).map(w => h("div", { class: "muted" }, w))))))),
-      h("p", { class: "muted small" }, "Inputs that cannot be used are recorded as failed so you can fix and retry them."), run);
+      h("p", { class: "muted small" }, "Folders are searched, project folders count as one input, and links are not followed. " +
+        "This list is a snapshot: Generate queues exactly these inputs, not files added after the review. " +
+        "Inputs that cannot be used are recorded as failed so you can fix and retry them."), run);
   };
 
   mount(h("h1", {}, "New batch"),
     h("div", { class: "card" },
       h("label", { for: "inputs" }, "Inputs"),
       h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
-        "Data Factory Git folders, ARM exports or resource JSON. A .pbip file alone is only a pointer: choose its project folder."),
+        "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
+        ".pbix and .abf files, .bim models and project folders. A .pbip file alone is only a pointer: choose its project folder."),
       inputs,
       bridge ? h("p", { class: "actions" },
         h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"),
         h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null,
       h("label", { for: "output" }, "Output folder"), output,
       bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
-        const f = await bridge.pick_folder(); if (f[0]) { output.value = f[0]; save(); } } }, "Choose…")) : null,
+        const f = await bridge.pick_folder(); if (f[0]) { output.value = f[0]; save(); stale(); } } }, "Choose…")) : null,
       h("label", { for: "profile" }, "Output"), profile,
       h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")),
       h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +

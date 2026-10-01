@@ -12,10 +12,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bidoc_contracts import ContractError, scope_key
+from bidoc_contracts import ContractError, Limits, scope_key
 
 from . import __version__
 from .build import ADAPTERS, NotPublishable, build_artifact
+from .envelope import GENERATION_LIMITS, publication_problem, publication_warning, size_breakdown
 from .identity import IdentityDecisionRequired, environment_key, resolve
 
 ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
@@ -43,6 +44,9 @@ class GenerateRequest:
     extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
 
 
+PUBLICATION_LIMITS = Limits()      # what the library accepts by default; checked after the document is written
+
+
 @dataclass
 class GenerateResult:
     status: str                            # completed | local_only | failed | cancelled
@@ -53,6 +57,7 @@ class GenerateResult:
     errors: list = field(default_factory=list)
     timings: dict = field(default_factory=dict)
     tool_versions: dict = field(default_factory=dict)
+    publication: dict | None = None        # set when the document was written but the library would reject it
 
 
 class Cancelled(Exception):
@@ -125,11 +130,19 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
             # Local documentation still works; it just cannot be published.
             stage("rendering")
             suffix = ".shared.local.html" if request.profile == "shared" else ".local.html"
-            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}{suffix}"
+            # A document that cannot be published has no identity to tell it from another with the same title, so the name
+            # carries a short tag of the source path: two such inputs called Sales.pbix in different folders no longer share
+            # one output file, and the same input still maps to the same file when it is run again.
+            tag = hashlib.sha256(os.path.normcase(os.path.realpath(request.source_path)).encode("utf-8")).hexdigest()[:8]
+            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}--{tag}{suffix}"
             if request.profile == "shared":
                 from .projection import project
                 payload, _ = project(request.engine, payload, query_code=request.query_code)
-            _write_atomically(path, adapter.render(payload).encode("utf-8"))
+            rendered = adapter.render(payload).encode("utf-8")
+            if len(rendered) > GENERATION_LIMITS.html_bytes:
+                raise ContractError("ARTIFACT_TOO_LARGE", f"The rendered document is {len(rendered)} bytes, above the "
+                                                          f"{GENERATION_LIMITS.html_bytes}-byte generation ceiling.")
+            _write_atomically(path, rendered)
             result.status, result.artifact_path = "local_only", str(path)
             result.warnings.append("The input was not read completely, so the document has no publication "
                                    "manifest and cannot be published. See its coverage section.")
@@ -154,6 +167,14 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         _write_atomically(path, artifact)
         result.status, result.artifact_path = "completed", str(path)
         result.document_id, result.revision_id = manifest["document_id"], manifest["revision_id"]
+        problem = publication_problem(artifact, adapter.VIEW_IDS, PUBLICATION_LIMITS)
+        if problem:
+            # Written and usable locally; only publication is refused.
+            problem["operation"] = "publish"
+            problem["breakdown_bytes"] = size_breakdown(artifact, manifest)
+            result.publication = problem
+            result.status = "local_only"
+            result.warnings.append(publication_warning(problem, path.name))
         result.warnings += manifest["projection"]["coverage_warnings"]
         if manifest["projection"]["omissions"]:
             result.warnings.append(f"{len(manifest['projection']['omissions'])} field(s) withheld or cleaned "

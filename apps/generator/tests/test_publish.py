@@ -130,6 +130,22 @@ class Publish(unittest.TestCase):
         self.assertEqual(run(["disconnect"])[0], 0)
         self.assertEqual(run(["publish", str(first)])[0], 3)
 
+    def test_library_limit_is_checked_before_upload(self):
+        from bidoc_generator.publisher import LibraryClient, PublishError
+        data = self.artifact().read_bytes()
+        client = LibraryClient(self.library.url, "bidocpt_x")
+        with mock.patch.object(LibraryClient, "capabilities", return_value={"limits": {"html_bytes": len(data) - 1}}):
+            with self.assertRaises(PublishError) as ctx:
+                client.publish(data)
+        self.assertEqual(ctx.exception.code, "ARTIFACT_TOO_LARGE")
+        for part in ("MiB", "not published", "usable locally"):
+            self.assertIn(part, str(ctx.exception))
+        sentinel = RuntimeError("past validation")
+        with mock.patch.object(LibraryClient, "capabilities", return_value={"limits": {"html_bytes": len(data)}}), \
+                mock.patch.object(LibraryClient, "document", side_effect=sentinel):
+            with self.assertRaises(RuntimeError):          # exactly at the limit is accepted by validation
+                client.publish(data)
+
     def test_connect_refuses_a_bad_token_and_keeps_nothing(self):
         code, _, err = run(["connect", self.library.url, "--token-stdin"], stdin="bidocpt_" + "0" * 16 + "_" + "a" * 43)
         self.assertEqual(code, 3, err)
