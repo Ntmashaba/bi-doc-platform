@@ -1,6 +1,6 @@
 """Stand-in for pbi-tools.exe in tests: `extract SRC -extractFolder DEST -modelSerialization Raw`.
 
-FAKE_PBI_MODE: ok (write a Raw extract), fail (exit 3), hang (sleep), tree (start a
+FAKE_PBI_MODE: ok (write a Raw extract), fail (exit 3), crash (cause first, long stack trace last, exit 247), hang (sleep), tree (start a
 grandchild that sleeps and write its PID to FAKE_PBI_PIDFILE, then sleep).
 """
 import json
@@ -21,6 +21,12 @@ print(f"fake pbi-tools {mode}: {args[1]}", flush=True)
 if mode == "fail":
     print("Power BI Desktop could not open the file.", flush=True)
     sys.exit(3)
+if mode == "crash":
+    print("ERROR: Could not load file or assembly 'Microsoft.AnalysisServices.Tabular' for D:\\Reports\\Secret.pbix", flush=True)
+    print("Unhandled exception. System.IO.FileNotFoundException: Could not load file or assembly", flush=True)
+    for i in range(40):
+        print(f"   at Frame.Number{i}.Method{i}(Object sender, EventArgs e) in C:\\build\\src\\Frame{i}.cs:line {i}", flush=True)
+    sys.exit(247)
 if mode == "hang":
     time.sleep(600)
 if mode == "tree":

@@ -14,6 +14,8 @@ import sys
 import time
 from pathlib import Path
 
+from .diagnostics import failure_message
+
 POLL_SECONDS = 0.2
 
 
@@ -110,8 +112,12 @@ def extract_pbix(source, workspace, tool, *, timeout: float = 900, cancellation=
                 kill_tree(proc)
             raise
     if proc.returncode:
-        tail = log_path.read_text(encoding="utf-8", errors="replace")[-600:].strip()
-        raise ExtractionError("EXTRACTION_FAILED", f"Extraction exited with code {proc.returncode}. {tail}")
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        if tool == "pbixray":
+            raise ExtractionError("EXTRACTION_FAILED", f"Extraction exited with code {proc.returncode}. {text[-600:].strip()}")
+        # The process started, so this is an extraction failure, not a missing prerequisite. Its reason is often
+        # printed before the closing stack trace, so report the first lines that name a problem, not the tail.
+        raise ExtractionError("EXTRACTION_FAILED", failure_message(proc.returncode, text, log_path.name))
     beside = source.with_suffix("")
     if not (target.is_dir() and any(target.iterdir())) and (beside / "Model").is_dir():
         # Older PBIX files: pbi-tools ignores -extractFolder and writes beside the PBIX.
