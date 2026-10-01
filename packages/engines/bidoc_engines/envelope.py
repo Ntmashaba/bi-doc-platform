@@ -6,7 +6,7 @@ import html
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from bidoc_contracts import PLACEHOLDER, ContractError, Limits, embed_manifest, validate_artifact
+from bidoc_contracts import PLACEHOLDER, ContractError, Limits, embed_manifest, locate_manifest, validate_artifact
 
 SECTION_TEXT_LIMIT = 100_000
 
@@ -70,18 +70,41 @@ def assemble(engine_html: str, manifest: dict, view_ids) -> bytes:
     return artifact
 
 
+_CATEGORIES = {"ARTIFACT_TOO_LARGE": ("document", "html_bytes", "the library's HTML limit (MAX_HTML_BYTES)"),
+               "MANIFEST_TOO_LARGE": ("manifest", "manifest_bytes", "the library's manifest limit (MAX_MANIFEST_BYTES)")}
+
+
 def publication_problem(artifact: bytes, view_ids=None, limits: Limits | None = None) -> dict | None:
     """None when the library would accept the document at these limits, else a structured reason.
 
     Publication limits are a library policy, not a generation limit: a document above them is still a
-    valid local document. The caller decides what to do with it."""
+    valid local document. The reason names the category that was exceeded, its measured size and its limit, so
+    that the remedy matches (raising the HTML limit does not fix an oversized manifest)."""
     limits = limits or Limits()
     try:
         validate_artifact(artifact, limits=limits, view_ids=view_ids)
     except ContractError as exc:
-        return {"code": exc.code, "size_bytes": len(artifact), "limit_bytes": limits.html_bytes,
-                "message": str(exc)}
+        category, field_name, setting = _CATEGORIES.get(exc.code, ("contract", None, None))
+        size = limit = None
+        if field_name:
+            limit = getattr(limits, field_name)
+            size = len(artifact)
+            if category == "manifest":
+                size = len(locate_manifest(artifact).body)
+        return {"code": exc.code, "category": category, "size_bytes": size, "limit_bytes": limit,
+                "setting": setting, "message": str(exc)}
     return None
+
+
+def publication_warning(problem: dict, file_name: str) -> str:
+    mib = lambda n: f"{n / 1048576:.1f} MiB"
+    if problem["limit_bytes"] is None:
+        return (f"{problem['code']}: the document cannot be published ({problem['message']}) but was written and is "
+                f"usable locally: {file_name}.")
+    return (f"{problem['code']}: the {problem['category']} is {mib(problem['size_bytes'])} and {problem['setting']} is "
+            f"{mib(problem['limit_bytes'])}, so the document cannot be published. It was written and is usable "
+            f"locally: {file_name}. To publish it, ask the library administrator to raise that limit; the generator "
+            "does not shrink or drop content.")
 
 
 def size_breakdown(artifact: bytes, manifest: dict) -> dict:

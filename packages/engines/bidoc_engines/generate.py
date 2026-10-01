@@ -16,7 +16,7 @@ from bidoc_contracts import ContractError, Limits, scope_key
 
 from . import __version__
 from .build import ADAPTERS, NotPublishable, build_artifact
-from .envelope import publication_problem, size_breakdown
+from .envelope import GENERATION_LIMITS, publication_problem, publication_warning, size_breakdown
 from .identity import IdentityDecisionRequired, environment_key, resolve
 
 ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
@@ -134,7 +134,11 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
             if request.profile == "shared":
                 from .projection import project
                 payload, _ = project(request.engine, payload, query_code=request.query_code)
-            _write_atomically(path, adapter.render(payload).encode("utf-8"))
+            rendered = adapter.render(payload).encode("utf-8")
+            if len(rendered) > GENERATION_LIMITS.html_bytes:
+                raise ContractError("ARTIFACT_TOO_LARGE", f"The rendered document is {len(rendered)} bytes, above the "
+                                                          f"{GENERATION_LIMITS.html_bytes}-byte generation ceiling.")
+            _write_atomically(path, rendered)
             result.status, result.artifact_path = "local_only", str(path)
             result.warnings.append("The input was not read completely, so the document has no publication "
                                    "manifest and cannot be published. See its coverage section.")
@@ -161,18 +165,12 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         result.document_id, result.revision_id = manifest["document_id"], manifest["revision_id"]
         problem = publication_problem(artifact, adapter.VIEW_IDS, PUBLICATION_LIMITS)
         if problem:
-            # Written and usable locally; only publication is refused. Say how big, against what, and what next.
-            mib = lambda n: f"{n / 1048576:.1f} MiB"
+            # Written and usable locally; only publication is refused.
             problem["operation"] = "publish"
-            problem["next_step"] = ("open the document locally, or ask the library administrator to raise its "
-                                    "limit; the generator does not shrink or drop content")
             problem["breakdown_bytes"] = size_breakdown(artifact, manifest)
             result.publication = problem
             result.status = "local_only"
-            result.warnings.append(
-                f"{problem['code']}: the document is {mib(problem['size_bytes'])} and the publication limit is "
-                f"{mib(problem['limit_bytes'])}, so it cannot be published. It was written and is usable locally: "
-                f"{path.name}. {problem['next_step'].capitalize()}.")
+            result.warnings.append(publication_warning(problem, path.name))
         result.warnings += manifest["projection"]["coverage_warnings"]
         if manifest["projection"]["omissions"]:
             result.warnings.append(f"{len(manifest['projection']['omissions'])} field(s) withheld or cleaned "

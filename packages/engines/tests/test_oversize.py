@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fixtures import pbi_model  # noqa: E402
+from fixtures import adf_factory, pbi_model  # noqa: E402
 
 from bidoc_contracts import ContractError, Limits, validate_artifact  # noqa: E402
 from bidoc_engines import generate as gen  # noqa: E402
@@ -65,6 +65,34 @@ class Oversize(unittest.TestCase):
         self.assertEqual(publication_problem(art)["code"], "ARTIFACT_TOO_LARGE")
         with self.assertRaises(ContractError):                          # the strict default still refuses it
             validate_artifact(art)
+
+    def test_manifest_limit_is_named_with_its_own_size_limit_and_remedy(self):
+        base = self.run_gen("m0")
+        html = Path(base.artifact_path).stat().st_size
+        with mock.patch.object(gen, "PUBLICATION_LIMITS", replace(Limits(), manifest_bytes=1000)):
+            res = self.run_gen("m1")
+        self.assertEqual(res.status, "local_only")
+        pub = res.publication
+        self.assertEqual((pub["code"], pub["category"], pub["limit_bytes"]), ("MANIFEST_TOO_LARGE", "manifest", 1000))
+        self.assertLess(pub["size_bytes"], html)                          # the manifest, not the whole document
+        self.assertGreater(pub["size_bytes"], 1000)
+        self.assertIn("MAX_MANIFEST_BYTES", res.warnings[0])
+        self.assertNotIn("MAX_HTML_BYTES", res.warnings[0])
+
+    def test_incomplete_input_above_the_generation_ceiling_is_refused_not_written(self):
+        factory = adf_factory(self.tmp / "factory")
+        (factory / "pipeline" / "broken.json").write_text("{not json", encoding="utf-8")
+
+        def run_adf(out):
+            return generate(GenerateRequest(engine="adf", source_path=str(factory), source_kind="adf_git",
+                                            output_dir=str(self.tmp / out)))
+        self.assertEqual(run_adf("i0").status, "local_only")             # incomplete input: written, no manifest
+        with mock.patch.object(gen, "GENERATION_LIMITS", replace(Limits(), html_bytes=1000)):
+            res = run_adf("i1")
+        self.assertEqual(res.status, "failed")
+        self.assertEqual(res.errors[0]["code"], "CONTRACT_VIOLATION")
+        self.assertIn("generation ceiling", res.errors[0]["message"])
+        self.assertFalse(list((self.tmp / "i1").glob("*.html")) if (self.tmp / "i1").exists() else [])
 
     def test_generation_ceiling_is_deliberate(self):
         self.assertGreater(GENERATION_LIMITS.html_bytes, Limits().html_bytes)
