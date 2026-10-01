@@ -153,5 +153,6 @@ pin; the contract test confirms they agree.
   re-invoking themselves with `--portable-extract`. That path is checked on Linux with a PyInstaller build run with no
   Python on `PATH`, and on a hosted Windows runner by `packaging/windows/verify-install.ps1` (install, `doctor`, PBIX
   generation with the bundled reader, upgrade, uninstall). A hosted runner still has Python on disk, so a **clean
-  Windows machine** run of the same script (`docs/b09/VERIFICATION.md`) remains the open gate. ABF has no small fixture
-  in that script and is checked only in the Linux frozen build.
+  Windows machine** run of the same script (`docs/b09/VERIFICATION.md`) remains the open gate. That script also generates the
+  public AdventureWorks ABF backup (MIT, 2.1 MB, fetched by checksum, not committed) on the hosted Windows runner. The
+  step-by-step owner runs, including the same-file pbi-tools comparison, are in `docs/validation/windows-validation-pack.md`.

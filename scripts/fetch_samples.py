@@ -7,10 +7,12 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def fetch():
+def fetch(only=None):
     cache = ROOT / 'samples/downloads'
     cache.mkdir(parents=True, exist_ok=True)
     for item in json.loads((ROOT/'samples/manifest.json').read_text()):
+        if only and item['id'] not in only:
+            continue
         path = cache/item['file']
         if not path.exists():
             request = urllib.request.Request(item['url'], headers={'User-Agent':'bi-doc-platform-acceptance'})
@@ -28,4 +30,5 @@ def fetch():
 
 
 if __name__=='__main__':
-    fetch()
+    import sys
+    fetch(set(sys.argv[1:]) or None)   # optional manifest ids: fetch only those

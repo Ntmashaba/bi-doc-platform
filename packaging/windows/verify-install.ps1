@@ -3,7 +3,8 @@
   upgrade and uninstall, checked from a shell with no Python on PATH.
 
     pwsh packaging/windows/verify-install.ps1 -Installer dist\installer\bidoc-setup-0.2.0-unsigned.exe `
-         [-UpgradeInstaller path\to\newer-setup.exe] [-Report verify-report.json]
+         [-UpgradeInstaller path\to\newer-setup.exe] [-Report verify-report.json] `
+         [-AbfArchive samples\downloads\adventure-works-tabular-model-1200-full-database-backup.zip -AbfSha256 <manifest sha256>]
 
   Run it on a clean Windows 10/11 machine (no Python, no Docker) to complete A13. CI runs
   the same script on a GitHub-hosted runner, which does have Python on disk; there it is
@@ -13,6 +14,8 @@
 param(
   [Parameter(Mandatory)] [string] $Installer,
   [string] $UpgradeInstaller,
+  [string] $AbfArchive,
+  [string] $AbfSha256,
   [string] $Inputs = "$PSScriptRoot\verify-inputs",
   [string] $Work = (Join-Path ([System.IO.Path]::GetTempPath()) ("bidoc-verify-" + [guid]::NewGuid().ToString("N").Substring(0, 8))),
   [string] $Report = "verify-report.json"
@@ -24,6 +27,7 @@ $App = Join-Path $env:LOCALAPPDATA "Programs\BI Documentation Generator"
 $DataHome = Join-Path $env:LOCALAPPDATA "bidoc"
 $Installer = (Resolve-Path $Installer).Path
 if ($UpgradeInstaller) { $UpgradeInstaller = (Resolve-Path $UpgradeInstaller).Path }
+if ($AbfArchive) { $AbfArchive = (Resolve-Path $AbfArchive).Path }
 $Inputs = (Resolve-Path $Inputs).Path
 $checks = New-Object System.Collections.Generic.List[object]
 
@@ -84,6 +88,7 @@ Check "doctor: PBIX readiness explained" ([bool]$pbix.available -or [bool]$pbix.
 $portable = @($doctor.checks | Where-Object { $_.check -eq "pbixray" })[0]
 Check "doctor: portable PBIX reader bundled and in its supported range" ([bool]$portable.ok) "pbixray $($portable.detail)"
 Check "doctor: PBIX ready without pbi-tools" ([bool]$pbix.available) $(if ($pbix.available) { "ready" } else { $pbix.reason })
+Check "doctor: ABF ready (portable reader)" ([bool]$doctor.inputs.abf.available) $(if ($doctor.inputs.abf.available) { "ready" } else { $doctor.inputs.abf.reason })
 
 # ---- generation ----------------------------------------------------------------------
 Copy-Item -Recurse $Inputs (Join-Path $Work "inputs")
@@ -101,6 +106,35 @@ Check "local generation of a PBIP project" ($r.code -eq 0) "exit $($r.code)"
 $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "pbix", "--source", "$Work\inputs\dp500-08-composite.pbix", "--output-dir", "$Work\out-pbix", "--pbixray")
 $pbixDocs = @(Get-ChildItem "$Work\out-pbix" -Filter *.html -ErrorAction SilentlyContinue)
 Check "PBIX generation with the bundled portable reader" ($r.code -eq 0 -and $pbixDocs.Count -eq 1) "exit $($r.code); $($pbixDocs.Count) document(s)"
+# ABF: a genuine Analysis Services backup (Microsoft AdventureWorks, MIT), pinned by checksum. Only the one .abf member is
+# read from the archive and it is written to a fixed name, so no archive path is trusted.
+if ($AbfArchive) {
+  $actualHash = (Get-FileHash -Algorithm SHA256 $AbfArchive).Hash.ToLowerInvariant()
+  Check "ABF sample archive matches its pinned checksum" ($AbfSha256 -and $actualHash -eq $AbfSha256.ToLowerInvariant()) $actualHash
+  if ($AbfSha256 -and $actualHash -eq $AbfSha256.ToLowerInvariant()) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($AbfArchive)
+    try {
+      $members = @($zip.Entries | Where-Object { $_.FullName -like "*.abf" })
+      Check "ABF archive holds exactly one .abf" ($members.Count -eq 1) "$($members.Count) member(s)"
+      $abf = Join-Path $Work "AdventureWorks-Tabular.abf"
+      if ($members.Count -eq 1) { [System.IO.Compression.ZipFileExtensions]::ExtractToFile($members[0], $abf, $true) }
+    } finally { $zip.Dispose() }
+    if (Test-Path $abf) {
+      $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "abf", "--source", $abf, "--output-dir", "$Work\out-abf")
+      $abfDocs = @(Get-ChildItem "$Work\out-abf" -Filter *.html -ErrorAction SilentlyContinue)
+      Check "ABF generation with the bundled portable reader" ($r.code -eq 0 -and $abfDocs.Count -eq 1) "exit $($r.code); $($abfDocs.Count) document(s)"
+      if ($abfDocs.Count -eq 1) {
+        $html = Get-Content $abfDocs[0].FullName -Raw
+        Check "ABF document names the model's tables, measures and data source" (($html -match "Internet Sales") -and ($html -match "Total Sales") -and ($html -match "Adventure Works DB from SQL"))
+      }
+      $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "abf", "--source", $abf, "--output-dir", "$Work\out-abf-refused", "--pbi-tools", (Join-Path $Work "pbi-tools.exe"))
+      Check "ABF combined with --pbi-tools is refused" ($r.code -ne 0 -and $r.text -match "ABF")
+    }
+  }
+} else {
+  Check "ABF generation (skipped: no -AbfArchive)" $true "not verified"
+}
 $tool = Join-Path $Work "pbi-tools.exe"
 Set-Content $tool "" -Encoding ascii
 $r = Bidoc @("config", "--pbi-tools", $tool)
