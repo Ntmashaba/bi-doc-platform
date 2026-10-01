@@ -14,6 +14,9 @@ args = sys.argv[1:]
 assert args[0] == "extract" and args[2] == "-extractFolder" and args[4:] == ["-modelSerialization", "Raw"], args
 dest = Path(args[3])
 mode = os.environ.get("FAKE_PBI_MODE", "ok")
+if Path(args[1]).read_bytes()[:7] == b"CORRUPT":          # one bad file in a batch of good ones
+    print("fake pbi-tools: not a valid PBIX file", flush=True)
+    sys.exit(3)
 print(f"fake pbi-tools {mode}: {args[1]}", flush=True)
 if mode == "fail":
     print("Power BI Desktop could not open the file.", flush=True)

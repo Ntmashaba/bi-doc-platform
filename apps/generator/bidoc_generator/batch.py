@@ -64,7 +64,22 @@ def classify(path) -> dict:
         if suffix == ".json":
             return {**item, "engine": "adf", "kind": "adf_resources"}
         return {**item, "errors": [{"code": "INVALID_INPUT", "message": f"unsupported file type {suffix or '(none)'}"}]}
-    children = {c.name for c in p.iterdir()}
+    found = classify_folder(p)
+    if found is not None:
+        return found
+    return {**item, "errors": [{"code": "INVALID_INPUT", "message":
+            "not a recognised Power BI project, model, report, pbi-tools extract or Data Factory folder"}]}
+
+
+def classify_folder(path) -> dict | None:
+    """The input a folder is: a recognised project folder, or an error item when it cannot be read or is a broken project.
+    None when it is not itself an input (it may hold inputs: see `discovery.discover`)."""
+    p = Path(path)
+    item = {"source": str(p), "label": p.name or str(p)}
+    try:
+        children = {c.name for c in p.iterdir()}
+    except OSError as exc:
+        return {**item, "errors": [{"code": "INVALID_INPUT", "message": f"cannot read folder {p}: {exc.strerror or exc}"}]}
     if any(c.endswith(".SemanticModel") for c in children):
         return {**item, "engine": "power_bi", "kind": "pbip"}
     if any(c.endswith(".pbip") for c in children):
@@ -76,10 +91,18 @@ def classify(path) -> dict:
         return {**item, "engine": "power_bi", "kind": "tmdl"}
     if p.name.endswith(".Report") or (p / "definition" / "report.json").is_file():
         return {**item, "engine": "power_bi", "kind": "pbir"}
-    if children & ADF_FOLDERS:
+    if any(_holds_json(p / name) for name in children & ADF_FOLDERS):
         return {**item, "engine": "adf", "kind": "adf_git"}
-    return {**item, "errors": [{"code": "INVALID_INPUT", "message":
-            "not a recognised Power BI project, model, report, pbi-tools extract or Data Factory folder"}]}
+    return None
+
+
+def _holds_json(folder: Path) -> bool:
+    """A Data Factory Git folder's `pipeline/`, `dataset/`... hold the JSON definitions; a folder that merely has one of
+    those names (a reports folder with a `pipeline` subfolder) is not a factory."""
+    try:
+        return folder.is_dir() and any(c.suffix.lower() == ".json" for c in folder.iterdir())
+    except OSError:
+        return False
 
 
 class Runner:
@@ -101,8 +124,18 @@ class Runner:
 
     # ---- control ----------------------------------------------------------------
 
+    def discover(self, paths, output_dir=None):
+        """The inputs `paths` stand for (folders searched), as `submit` would queue them. Excludes the output folder and
+        this generator's own folder."""
+        from .discovery import discover  # noqa: PLC0415 - discovery imports classify from this module
+        return discover(paths, exclude=[output_dir, self.history.home])
+
     def submit(self, paths, options: Options) -> str:
-        items = [classify(p) for p in paths]
+        """Queue every input in `paths`; a folder that is not itself a project is searched (see discovery.py)."""
+        return self.submit_items(self.discover(paths, options.output_dir).items, options)
+
+    def submit_items(self, items, options: Options) -> str:
+        """Queue already-discovered items, e.g. the list a person reviewed."""
         if self.backend is not None and any(i.get("kind") == "pbix" for i in items):
             # Recorded once for the batch, not once per file, so the CLI, the history and the desktop app can all say
             # which extractor is used and why.
@@ -201,7 +234,14 @@ class Runner:
         try:
             from bidoc_engines.generate import GenerateRequest, generate  # noqa: PLC0415
             if not item["engine"]:                  # retry of an input that was not usable before
-                found = classify(item["source"])
+                # a folder that held nothing (or could not be read) is searched again; one that now holds several inputs
+                # cannot become one item, so say so instead of silently picking one
+                scan = self.discover([item["source"]], opts.output_dir)
+                usable = [i for i in scan.items if not i.get("errors")]
+                if len(usable) > 1:
+                    return finish("failed", errors=[{"code": "INVALID_INPUT", "message":
+                                  f"{item['source']} now holds {len(usable)} inputs; queue the folder again as a new batch"}])
+                found = usable[0] if usable else scan.items[0]
                 if found.get("errors"):
                     return finish("failed", errors=found["errors"])
                 self.history.update(item_id, engine=found["engine"], kind=found["kind"], source=found["source"])

@@ -54,12 +54,18 @@ bidoc generate --engine adf --kind adf_git --source "C:\Repos\factory" --output-
 Several at once, one after another, each succeeding or failing on its own (`bidoc batch` recognises each input by its shape):
 
 ```powershell
-# project folders (PBIP, TMDL, PBIR, pbi-tools extract, Data Factory Git folder) can be given as they are
-bidoc batch "C:\Projects\Sales" "C:\Repos\factory" --output-dir "C:\Documentation"
+# folders are searched, subfolders included, for .pbix and .abf files, .bim models and project folders
+bidoc batch ".\h3 Reports" ".\h4 Reports" --output-dir ".\Documentation"
 
-# a folder of .pbix files is not itself an input: pass the files, which PowerShell can list for you
-bidoc batch (Get-ChildItem "C:\Reports" -Filter *.pbix -Recurse | ForEach-Object FullName) --output-dir "C:\Documentation"
+# project folders (PBIP, TMDL, PBIR, pbi-tools extract, Data Factory Git folder) and single files work too
+bidoc batch "C:\Projects\Sales" "C:\Repos\factory" "C:\Reports\Budget.pbix" --output-dir "C:\Documentation"
 ```
+
+A folder that is itself a project counts as one input and is not searched inside. Other files (a stray `.json`, for example) are
+ignored. The output folder, the generator's own folder, `.git` and `.venv`, and any link or junction are skipped. A folder that
+cannot be read, or that holds nothing usable, is reported as a failed item while every readable input still runs. The command
+prints what it found before it starts, and each document is labelled with its path (`h3 Reports/Finance/Budget.pbix`) so two
+files with the same name can be told apart.
 
 Add `--profile shared` for the projected, publishable form. Every option: [`docs/generator.md`](docs/generator.md).
 

@@ -94,7 +94,7 @@ async function startView() {
         }
         let r;
         try {
-            r = await api("/api/review", "POST", { inputs: paths() });
+            r = await api("/api/review", "POST", { inputs: paths(), output_dir: form.output_dir });
         }
         catch (e) {
             out.append(notice("error", e.message));
@@ -104,7 +104,7 @@ async function startView() {
         const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
                 run.disabled = true;
                 try {
-                    const b = await api("/api/batches", "POST", { inputs: paths(), output_dir: form.output_dir,
+                    const b = await api("/api/batches", "POST", { inputs: paths(), review_id: r.review_id, output_dir: form.output_dir,
                         profile: form.profile, include_query_code: form.include_query_code, environment: form.environment,
                         business_area: form.business_area, owner: form.owner });
                     location.hash = `#/batch/${b.batch_id}`;
@@ -114,10 +114,16 @@ async function startView() {
                     run.disabled = false;
                 }
             } }, `Generate ${usable} of ${r.items.length}`);
-        out.append(h("h2", {}, "Review"), h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "Recognised as"), h("th", {}, "Notes"))), h("tbody", {}, ...r.items.map(i => h("tr", {}, h("td", {}, h("strong", {}, i.label), h("div", { class: "muted small" }, h("code", {}, i.source))), h("td", {}, i.kind ? KIND_LABEL[i.kind] || i.kind : "—"), h("td", {}, ...(i.errors || []).map(e => h("div", { class: "s-failed" }, e.message)), ...(i.warnings || []).map(w => h("div", { class: "muted" }, w))))))), h("p", { class: "muted small" }, "Inputs that cannot be used are recorded as failed so you can fix and retry them."), run);
+        const sum = r.summary;
+        out.append(h("h2", {}, "Review"), h("p", { id: "scan-summary" }, `Found ${sum.found} input${sum.found === 1 ? "" : "s"} in ${sum.selections} selection${sum.selections === 1 ? "" : "s"}` +
+            (sum.folders_scanned ? ` (${sum.folders_scanned} folder${sum.folders_scanned === 1 ? "" : "s"} searched)` : "") +
+            (sum.problems ? `; ${sum.problems} problem${sum.problems === 1 ? "" : "s"} listed below` : "") + "."), ...r.warnings.map(w => h("p", { class: "muted" }, w)), h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Input"), h("th", {}, "Recognised as"), h("th", {}, "Notes"))), h("tbody", {}, ...r.items.map(i => h("tr", {}, h("td", {}, h("strong", {}, i.label), h("div", { class: "muted small" }, h("code", {}, i.source))), h("td", {}, i.kind ? KIND_LABEL[i.kind] || i.kind : "—"), h("td", {}, ...(i.errors || []).map(e => h("div", { class: "s-failed" }, e.message)), ...(i.warnings || []).map(w => h("div", { class: "muted" }, w))))))), h("p", { class: "muted small" }, "Folders are searched, project folders count as one input, and links are not followed. " +
+            "This list is a snapshot: Generate queues exactly these inputs, not files added after the review. " +
+            "Inputs that cannot be used are recorded as failed so you can fix and retry them."), run);
     };
     mount(h("h1", {}, "New batch"), h("div", { class: "card" }, h("label", { for: "inputs" }, "Inputs"), h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
-        "Data Factory Git folders, ARM exports or resource JSON. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
+        "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
+        ".pbix and .abf files, .bim models and project folders. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
             const f = await bridge.pick_folder();
             if (f[0]) {
                 output.value = f[0];

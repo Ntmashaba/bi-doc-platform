@@ -26,7 +26,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from ..batch import Options, Runner, classify
+from ..batch import Options, Runner
 from ..backend import for_runner
 from ..doctor import diagnose, home
 from ..history import History
@@ -55,6 +55,7 @@ class BatchIn(BaseModel):
     environment: str = Field("", max_length=200)
     business_area: str = Field("", max_length=200)
     owner: str = Field("", max_length=200)
+    review_id: Optional[str] = Field(None, max_length=100)    # queue exactly the list that review showed
 
 
 class LibraryIn(BaseModel):
@@ -68,6 +69,7 @@ class PublishIn(BaseModel):
 
 class ReviewIn(BaseModel):
     inputs: list[str] = Field(min_length=1, max_length=500)
+    output_dir: Optional[str] = Field(None, max_length=4096)  # left out of the search, like `bidoc batch` does
 
 
 def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -> FastAPI:
@@ -121,17 +123,24 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
         return {"active": runner.active(), "interrupted_on_start": history.interrupted,
                 "pbix_backend": runner.backend.as_dict() if runner.backend is not None else None}
 
+    reviews: dict[str, dict] = {}              # review_id -> the list a person was shown; the last few only
+    reviews_lock = threading.Lock()
+
     @app.post("/api/review")
     def review(body: ReviewIn):
-        """Batch review: what each input is, before anything runs."""
+        """Batch review: what each input is, before anything runs. Folders are searched exactly as `bidoc batch` does,
+        and submitting with the returned `review_id` queues this very list, not a fresh scan."""
         pbix = report()["inputs"]["pbix"]
-        items = []
-        for path in body.inputs:
-            it = classify(path)
+        scan = runner.discover(body.inputs, body.output_dir)
+        for it in scan.items:
             if it.get("kind") == "pbix" and not pbix["available"]:
                 it["warnings"] = [f"PBIX generation is unavailable: {pbix['reason']}"]
-            items.append(it)
-        return {"items": items}
+        review_id = secrets.token_urlsafe(12)
+        with reviews_lock:
+            reviews[review_id] = {"items": scan.items, "output_dir": body.output_dir}
+            while len(reviews) > 8:
+                reviews.pop(next(iter(reviews)))
+        return {"review_id": review_id, "items": scan.items, "warnings": scan.warnings, "summary": scan.as_dict()}
 
     @app.get("/api/batches")
     def batches(limit: int = 20):
@@ -145,6 +154,14 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
         opts = Options(output_dir=str(out), profile=body.profile,
                        query_code="included" if body.include_query_code else "withheld",
                        environment=body.environment, business_area=body.business_area, owner=body.owner)
+        if body.review_id:
+            with reviews_lock:
+                reviewed = reviews.get(body.review_id)
+            if reviewed is None:
+                raise ApiError(409, "REVIEW_EXPIRED", "That review is no longer available; review the inputs again.")
+            if reviewed["output_dir"] != body.output_dir:
+                raise ApiError(409, "REVIEW_CHANGED", "The output folder changed since the review; review the inputs again.")
+            return history.batch(runner.submit_items(reviewed["items"], opts))
         return history.batch(runner.submit(body.inputs, opts))
 
     @app.get("/api/batches/{batch_id}")

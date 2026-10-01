@@ -45,8 +45,13 @@ def main():
                 time.sleep(0.1)
         pbix = tmp / "Sales.pbix"
         pbix.write_bytes(b"PK")
+        folder = tmp / "Report Folder"                       # a container: two PBIX files, one nested, and a factory
+        for name in ("Sub/Alpha.pbix", "Sub/Deeper/Beta.pbix"):
+            (folder / name).parent.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_bytes(b"PK")
+        adf_factory(folder / "Factory")
         env = dict(os.environ, APP_URL=f"http://127.0.0.1:{port}", FACTORY=str(adf_factory(tmp / "factory")),
-                   MISSING=str(tmp / "missing-factory"), PBIX=str(pbix), OUT_DIR=str(tmp / "out"),
+                   MISSING=str(tmp / "missing-factory"), PBIX=str(pbix), FOLDER=str(folder), OUT_DIR=str(tmp / "out"),
                    NODE_PATH=str(ROOT / "apps" / "library" / "frontend" / "node_modules"))
         if Path("/opt/pw-browsers/chromium").exists() and "CHROMIUM_PATH" not in env:
             env["CHROMIUM_PATH"] = "/opt/pw-browsers/chromium"

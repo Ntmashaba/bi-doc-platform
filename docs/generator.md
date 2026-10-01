@@ -9,7 +9,7 @@ bidoc doctor                             # what this machine can generate, with 
 bidoc generate --engine adf --kind adf_git --source path/to/factory --output-dir docs
 bidoc generate --engine power_bi --kind pbip --source Sales.pbip --output-dir docs --profile shared
 bidoc generate --engine power_bi --kind pbix --source Sales.pbix --output-dir docs    # pbi-tools if configured, else portable
-bidoc batch Finance/*.pbix Sales-project/ adf-repo/ --output-dir docs                  # one at a time
+bidoc batch "h3 Reports" Sales-project/ adf-repo/ --output-dir docs                   # folders are searched; one at a time
 bidoc history                                                                          # recent batches
 bidoc retry ITEM_ID                                                                    # failed, cancelled or interrupted
 bidoc desktop                                                                          # the desktop app
@@ -65,6 +65,28 @@ and Data Factory inputs never depend on it (A07).
 - TMDL and PBIR folders, and `model.bim`;
 - pbi-tools extracts;
 - Data Factory Git folders, and ARM or resource JSON.
+
+**Any other folder is searched** (`bidoc_generator/discovery.py`, used by the command line, the desktop review and the desktop
+submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` models and project folders:
+
+- a recognised project folder (PBIP, TMDL, PBIR, pbi-tools extract, Data Factory Git folder) is one input and is not searched
+  inside, so a model's own files or a factory's individual JSON files are never queued separately. A Data Factory Git folder
+  needs JSON in at least one of its `pipeline`, `dataset`, `linkedService`, `dataflow`, `trigger` or `factory` folders, so a
+  reports folder that merely has a subfolder with one of those names is still a container;
+- other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export);
+- the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar, and any symbolic link or
+  Windows junction are skipped (links are reported, not followed). A scan stops, with a message, after 1000 inputs or 20000
+  folders;
+- a folder that cannot be read, an empty scan and a scan that hit a bound are *failed items* with a message, so they appear in
+  the history and the exit code while every readable input still runs. Retrying one searches that folder again; if it now holds
+  several inputs the retry says so, and the folder should be queued again as a new batch;
+- selections keep the order given; a folder's finds are sorted by path; the same file reached twice is queued once; documents
+  are labelled with the path below the selected folder's parent. Several inputs with the same file name get a note, because a
+  document that cannot be published is named after the file and one may overwrite another.
+
+`bidoc batch` prints what it found before it starts. The desktop review lists the same inputs and **Generate queues exactly that
+reviewed list** (a snapshot: files added after the review are not included; review again to pick them up). The offline hub is a
+separate step: `bidoc export-library`.
 
 Items run one at a time, so there is only ever one PBIX extraction. Each item moves through
 `queued → validating → (extracting) → analysing → rendering → completed | failed | cancelled`.
