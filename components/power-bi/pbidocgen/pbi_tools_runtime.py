@@ -19,10 +19,11 @@ import os
 import platform
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 PROBE_TIMEOUT_SECONDS = 15.0
-CLEANUP_SECONDS = 10.0          # upper bound on ending a probe's process tree
+CLEANUP_SECONDS = 10.0          # total budget for ending a probe's process tree, shared by all its steps
 _SCRIPT_SUFFIXES = {".bat", ".cmd", ".ps1", ".sh"}
 _launch_cache: dict[tuple, str | None] = {}
 
@@ -74,14 +75,20 @@ def _spawn_probe(path):
 
 
 def stop_process_tree(proc, grace: float = CLEANUP_SECONDS) -> None:
-    """End `proc` and everything it started, bounded by `grace` seconds; never raises for an already-gone process.
+    """End `proc` and everything it started within `grace` seconds in total (one deadline shared by every step, so the
+    worst case is `grace`, not a multiple of it); never raises for an already-gone process.
 
     `proc` must lead its own group (see `_spawn_probe`). POSIX: SIGKILL to the group. Windows: `taskkill /T /F`, which
     follows the parent-child links of a running process."""
+    deadline = time.monotonic() + grace
+
+    def left() -> float:
+        return max(0.0, deadline - time.monotonic())
+
     try:
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, shell=False,
-                           timeout=grace)
+                           timeout=left())
         else:
             os.killpg(proc.pid, signal.SIGKILL)
     except (OSError, subprocess.SubprocessError):     # already gone, not permitted, or taskkill hung: fall through
@@ -91,7 +98,7 @@ def stop_process_tree(proc, grace: float = CLEANUP_SECONDS) -> None:
     except OSError:
         pass
     try:
-        proc.wait(timeout=grace)
+        proc.wait(timeout=left())
     except subprocess.TimeoutExpired:
         pass
 
