@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from collections import deque
 from pathlib import Path
+from .model_parser import CROSS_FILTER_BOTH, CROSS_FILTER_ONE, cross_filter_label
 from .page_references import page_label
 
 DAX_CHARS = 1200          # per-measure DAX budget in the agent doc
@@ -75,18 +76,21 @@ def estimate_tokens(text: str) -> int:
 def _reachability(model: dict) -> tuple[dict, dict]:
     """Filter propagation over ACTIVE relationships.
 
-    Filters flow from the one side to the many side; both ways when the
-    cross-filter is bidirectional. Returns (filters_downstream, sliceable_by):
+    Filters flow from the one side to the many side (`oneDirection`); both ways
+    when the cross-filter is `bothDirections`. A relationship whose direction is
+    `automatic` or not recognised adds no edge: the engine (or an unknown value)
+    decides, so no reach is asserted for it (see `_unasserted_relationships`).
+    Returns (filters_downstream, sliceable_by):
     filters_downstream[T] = tables T's columns can filter;
     sliceable_by[T]       = tables with an active filter path to T.
     This does not infer the filter behaviour of measures homed on T.
     """
     graph: dict[str, set[str]] = {}
     for rel in model["relationships"]:
-        if not rel["isActive"]:
+        if not rel["isActive"] or rel["crossFilteringBehavior"] not in (CROSS_FILTER_ONE, CROSS_FILTER_BOTH):
             continue
         graph.setdefault(rel["toTable"], set()).add(rel["fromTable"])
-        if rel["crossFilteringBehavior"] == "bothDirections":
+        if rel["crossFilteringBehavior"] == CROSS_FILTER_BOTH:
             graph.setdefault(rel["fromTable"], set()).add(rel["toTable"])
 
     downstream: dict[str, list[str]] = {}
@@ -108,6 +112,13 @@ def _reachability(model: dict) -> tuple[dict, dict]:
         for t in targets:
             sliceable.setdefault(t, []).append(src)
     return downstream, {k: sorted(v) for k, v in sliceable.items()}
+
+
+def _unasserted_relationships(model: dict) -> list[str]:
+    """Active relationships left out of the reachability map because their cross-filter direction is automatic or unrecognised."""
+    return [f"{r['fromTable']}[{r['fromColumn']}] ↔ {r['toTable']}[{r['toColumn']}] ({r['crossFilteringBehavior']})"
+            for r in model["relationships"]
+            if r["isActive"] and r["crossFilteringBehavior"] not in (CROSS_FILTER_ONE, CROSS_FILTER_BOTH)]
 
 
 def _partition_summary(tbl: dict) -> tuple[str, str]:
@@ -234,7 +245,7 @@ def build_agent_md(payload: dict) -> str:
                [[f"{r['fromTable']}[{r['fromColumn']}]",
                  f"{r['toTable']}[{r['toColumn']}]",
                  f"{r['fromCardinality']}:{r['toCardinality']}",
-                 "both" if r["crossFilteringBehavior"] == "bothDirections" else "single",
+                 cross_filter_label(r["crossFilteringBehavior"]),
                  "yes" if r["isActive"] else "**NO**"]
                 for r in model["relationships"]]))
 
@@ -264,6 +275,14 @@ def build_agent_md(payload: dict) -> str:
                  _join(sliceable.get(t["name"], []), empty="— nothing —"),
                  _join(downstream.get(t["name"], []), empty="— nothing —")]
                 for t in model["tables"]]))
+        unasserted = _unasserted_relationships(model)
+        if unasserted:
+            w("")
+            w("Limitation: filter reach is **not asserted** for the active relationships below, because their "
+              "cross-filter direction is `automatic` (the engine chooses it) or not recognised. Tables connected "
+              "only through them may be reachable in the real model; this map does not include them. "
+              + "; ".join(unasserted) + ".")
+            w("")
 
         w("## Columns")
         w("")

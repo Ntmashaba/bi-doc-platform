@@ -819,7 +819,7 @@ function relationshipRows(){
     <td class="mut">${esc(r.fromCardinality)} → ${esc(r.toCardinality)}</td>
     <td>${tblLink(r.toTable)} <span class="ref">[${esc(r.toColumn)}]</span></td>
     <td>${r.isActive?'<span class="badge b-direct">active</span>':'<span class="badge b-hidden">inactive</span>'}</td>
-    <td>${r.crossFilteringBehavior==="bothDirections"?'<span class="badge b-warn">both</span>':"single"}</td></tr>`).join("")||'<tr><td colspan="5">No relationships for this selection.</td></tr>';
+    <td>${r.crossFilteringBehavior==="bothDirections"?'<span class="badge b-warn">both</span>':(!r.crossFilteringBehavior||r.crossFilteringBehavior==="oneDirection"||r.crossFilteringBehavior==="singleDirection")?"single":esc(r.crossFilteringBehavior)}</td></tr>`).join("")||'<tr><td colspan="5">No relationships for this selection.</td></tr>';
 }
 function rRels(){
  return `${coupler()}<h1>Relationships</h1>

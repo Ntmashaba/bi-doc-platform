@@ -82,6 +82,12 @@ assert.match(node('erd').innerHTML,/stroke="var\(--warn\)"/);assert.match(node('
 assert.ok(!node('erd').innerHTML.includes('NaN'));
 run('M.relationships=[];drawERD()');assert.match(node('erd').innerHTML,/No relationships in this model/);
 run('M.relationships=savedRels;M.tables=savedTables;resetERD()');
+// Equivalent single-direction spellings render the same; both and automatic stay distinct.
+run("savedRels=M.relationships;savedTables=M.tables;M.tables=[{name:'A',tableType:'fact'},{name:'B',tableType:'fact'}];M.relationships=['singleDirection','oneDirection',undefined,'bothDirections','automatic'].map(b=>({fromTable:'A',fromColumn:'k',toTable:'B',toColumn:'k',isActive:true,crossFilteringBehavior:b}))");
+{const rows=run('relationshipRows()').split('</tr>').filter(r=>r.includes('<tr>')),cell=r=>r.split('</td>').slice(-2)[0].replace(/<[^>]*>/g,'').trim();
+ same(rows.map(cell),['single','single','single','both','automatic']);
+ assert.equal((run('relationshipRows()').match(/b-warn/g)||[]).length,1);}
+run('M.relationships=savedRels;M.tables=savedTables;resetERD()');
 run("switchTab('columns')");node('column-search').value='Amount';run('filterColumns()');
 run("setPageScope('p2');switchTab('tables')");assert.equal(node('global-page').value,'p2');
 assert.equal(run("sourceRows('Orders').length"),1);

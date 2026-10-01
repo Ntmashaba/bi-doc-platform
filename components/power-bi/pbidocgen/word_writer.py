@@ -19,6 +19,7 @@ import re
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
+from .model_parser import cross_filter_label
 from .page_references import page_label
 
 # --------------------------------------------------------------------------
@@ -521,6 +522,8 @@ def build_docx_body(payload: dict) -> str:
                 flags.append("inactive")
             if r["crossFilteringBehavior"] == "bothDirections":
                 flags.append("bidirectional")
+            elif r["crossFilteringBehavior"] != "oneDirection":
+                flags.append(cross_filter_label(r["crossFilteringBehavior"]))
             rel_rows.append([
                 f"{r['fromTable']}[{r['fromColumn']}]",
                 f"{r['toTable']}[{r['toColumn']}]",
