@@ -12,7 +12,7 @@ import zipfile
 from pathlib import Path
 
 from test_column_usage import raw_model
-from pbidocgen.agent_writer import build_agent_md
+from pbidocgen.agent_writer import _reachability, build_agent_md
 from pbidocgen.model_parser import CROSS_FILTER_AUTOMATIC, CROSS_FILTER_BOTH, CROSS_FILTER_ONE, cross_filter_label, \
     normalize_cross_filtering, parse_model
 from pbidocgen.renderer import build_payload
@@ -135,12 +135,66 @@ class CrossFilterTests(unittest.TestCase):
         self.assertNotIn("single", auto)
         self.assertIn("automatic", auto)
 
-    def test_agent_document_keeps_the_bidirectional_warning_and_filter_reach(self):
+    def test_agent_document_keeps_the_bidirectional_warning(self):
         md = build_agent_md(self.payload("bothDirections"))
         self.assertIn("Bidirectional filter", md)
-        self.assertNotIn("Bidirectional filter", build_agent_md(self.payload("singleDirection")))
-        self.assertNotIn("Bidirectional filter", build_agent_md(self.payload("oneDirection")))
-        self.assertNotIn("Bidirectional filter", build_agent_md(self.payload("automatic")))
+        for single in ("singleDirection", "oneDirection", "automatic"):
+            self.assertNotIn("Bidirectional filter", build_agent_md(self.payload(single)), single)
+
+    # ---- filter reach: the actual results, not warning text --------------------------------------------------------
+
+    def reach(self, *behaviors, active=True, extra=()):
+        raw = raw_model()
+        raw["model"]["relationships"] = [rel(f"r{i}", b, isActive=active) for i, b in enumerate(behaviors)] + list(extra)
+        path = self.root / "reach.bim"
+        path.write_text(json.dumps(raw))
+        return _reachability(parse_model(path))          # Sales[Key] (many) -> Dim[ID] (one)
+
+    def test_one_direction_adds_one_edge_from_the_one_side_to_the_many_side(self):
+        for spelling in ("oneDirection", "singleDirection", "__omit__"):
+            downstream, sliceable = self.reach(spelling)
+            self.assertEqual(downstream["Dim"], ["Sales"], spelling)
+            self.assertEqual(downstream["Sales"], [], spelling)
+            self.assertEqual(sliceable["Sales"], ["Dim"], spelling)
+            self.assertEqual(sliceable["Dim"], [], spelling)
+
+    def test_both_directions_adds_both_edges(self):
+        downstream, sliceable = self.reach("bothDirections")
+        self.assertEqual(downstream["Dim"], ["Sales"])
+        self.assertEqual(downstream["Sales"], ["Dim"])
+        self.assertEqual(sliceable["Sales"], ["Dim"])
+        self.assertEqual(sliceable["Dim"], ["Sales"])
+
+    def test_automatic_and_unrecognised_directions_assert_no_reach(self):
+        for behavior in ("automatic", "sideways"):
+            downstream, sliceable = self.reach(behavior)
+            self.assertEqual(downstream["Dim"], [], behavior)
+            self.assertEqual(downstream["Sales"], [], behavior)
+            self.assertEqual(sliceable["Sales"], [], behavior)
+            self.assertEqual(sliceable["Dim"], [], behavior)
+
+    def test_an_inactive_relationship_adds_no_reach_whatever_its_direction(self):
+        for behavior in ("oneDirection", "bothDirections"):
+            downstream, _ = self.reach(behavior, active=False)
+            self.assertEqual(downstream["Dim"], [], behavior)
+            self.assertEqual(downstream["Sales"], [], behavior)
+
+    def test_an_unasserted_relationship_does_not_hide_the_asserted_ones(self):
+        # Sales -> Dim (one direction, asserted) plus a second link through an automatic relationship that adds nothing.
+        extra = [rel("auto", "automatic", toTable="Sales", toColumn="Key", fromTable="Dim", fromColumn="ID")]
+        downstream, _ = self.reach("oneDirection", extra=extra)
+        self.assertEqual(downstream["Dim"], ["Sales"])
+        self.assertEqual(downstream["Sales"], [])
+
+    def test_agent_document_states_the_limitation_only_when_reach_is_not_asserted(self):
+        md = build_agent_md(self.payload("automatic"))
+        self.assertIn("not asserted", md)
+        self.assertIn("Sales[Key] ↔ Dim[ID] (automatic)", md)
+        sideways = build_agent_md(self.payload("sideways"))
+        self.assertIn("not asserted", sideways)
+        self.assertIn("(sideways)", sideways)
+        for fine in ("oneDirection", "singleDirection", "bothDirections"):
+            self.assertNotIn("not asserted", build_agent_md(self.payload(fine)), fine)
 
     def word_text(self, *behaviors):
         out = render_docx(self.payload(*behaviors), self.root / "m.docx")
