@@ -130,7 +130,11 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
             # Local documentation still works; it just cannot be published.
             stage("rendering")
             suffix = ".shared.local.html" if request.profile == "shared" else ".local.html"
-            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}{suffix}"
+            # A document that cannot be published has no identity to tell it from another with the same title, so the name
+            # carries a short tag of the source path: two such inputs called Sales.pbix in different folders no longer share
+            # one output file, and the same input still maps to the same file when it is run again.
+            tag = hashlib.sha256(os.path.normcase(os.path.realpath(request.source_path)).encode("utf-8")).hexdigest()[:8]
+            path = out_dir / f"{_safe_name(payload.get('title', 'document'))}--{tag}{suffix}"
             if request.profile == "shared":
                 from .projection import project
                 payload, _ = project(request.engine, payload, query_code=request.query_code)

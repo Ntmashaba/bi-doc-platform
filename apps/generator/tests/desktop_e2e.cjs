@@ -18,6 +18,38 @@ const step = (name) => console.log("  ok " + name);
   await page.getByText("never need Power BI Desktop or pbi-tools").waitFor();
   step("prerequisites per input type");
 
+  // A folder that is not itself a project is searched; the review lists what it holds, with paths that tell files apart.
+  await page.goto(URL + "/#/");
+  await page.getByLabel("Inputs").fill(process.env.FOLDER);
+  await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
+  await page.getByRole("button", { name: "Review inputs" }).click();
+  await page.locator("#scan-summary").waitFor();
+  assert.match(await page.locator("#scan-summary").textContent(), /^Found 3 inputs in 1 selection \(\d+ folders searched\)\.$/);
+  await page.getByText("Report Folder/Sub/Alpha.pbix", { exact: true }).waitFor();
+  await page.getByText("Report Folder/Sub/Deeper/Beta.pbix", { exact: true }).waitFor();
+  await page.getByText("Report Folder/Factory", { exact: true }).waitFor();
+  await page.getByText("Generate queues exactly these inputs").waitFor();
+  step("a folder is searched and its inputs are listed before anything runs");
+
+  // The review belongs to the list it was made from: editing the inputs withdraws it, so an old Generate cannot queue it.
+  await page.getByLabel("Inputs").fill(process.env.FOLDER + "-edited");
+  await page.locator("#review-stale").waitFor();
+  assert.equal(await page.getByRole("button", { name: /^Generate / }).count(), 0);
+  step("changing the inputs withdraws the review");
+
+  // ...and a review that is still running when the inputs change must not come back with a Generate button for the old list.
+  await page.route("**/api/review", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
+  await page.getByLabel("Inputs").fill(process.env.FOLDER);
+  await page.getByRole("button", { name: "Review inputs" }).click();
+  await page.getByLabel("Inputs").fill(process.env.FOLDER + "-edited while the review ran");
+  await page.locator("#review-stale").waitFor();
+  await page.waitForTimeout(2600);                                          // the delayed response has now arrived
+  assert.equal(await page.getByRole("button", { name: /^Generate / }).count(), 0);
+  assert.equal(await page.locator("#scan-summary").count(), 0);
+  assert.equal(await page.locator("#review-stale").count(), 1);
+  await page.unroute("**/api/review");
+  step("a review that was still running when the inputs changed is dropped");
+
   await page.goto(URL + "/#/");
   await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);

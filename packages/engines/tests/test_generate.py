@@ -113,6 +113,22 @@ class AdfGeneration(Base):
             locate_manifest(Path(local.artifact_path).read_bytes())
         self.assertEqual(self.run_adf(self.factory, profile="shared").status, "local_only")
 
+    def test_incomplete_documents_with_the_same_title_do_not_share_an_output_file(self):
+        copy = self.factory.parent / "elsewhere" / self.factory.name                    # same name, different folder
+        shutil.copytree(self.factory, copy)
+        for folder in (self.factory, copy):
+            (folder / "pipeline" / "broken.json").write_text("{not json", encoding="utf-8")
+        first, second = self.run_adf(self.factory), self.run_adf(copy)
+        self.assertEqual((first.status, second.status), ("local_only", "local_only"))
+        self.assertNotEqual(first.artifact_path, second.artifact_path)                 # neither overwrote the other
+        self.assertTrue(Path(first.artifact_path).is_file() and Path(second.artifact_path).is_file())
+        self.assertTrue(first.artifact_path.endswith(".local.html"))
+        again = self.run_adf(self.factory)                                              # a rerun refreshes its own file
+        self.assertEqual(again.artifact_path, first.artifact_path)
+        shared = self.run_adf(self.factory, profile="shared")
+        self.assertTrue(shared.artifact_path.endswith(".shared.local.html"))
+        self.assertNotEqual(shared.artifact_path, first.artifact_path)
+
     def test_cancellation(self):
         cancel = threading.Event()
         cancel.set()
