@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from collections import deque
 from pathlib import Path
+from .model_parser import cross_filter_label
 from .page_references import page_label
 
 DAX_CHARS = 1200          # per-measure DAX budget in the agent doc
@@ -86,7 +87,7 @@ def _reachability(model: dict) -> tuple[dict, dict]:
         if not rel["isActive"]:
             continue
         graph.setdefault(rel["toTable"], set()).add(rel["fromTable"])
-        if rel["crossFilteringBehavior"] == "bothDirections":
+        if rel["crossFilteringBehavior"] == "bothDirections":      # automatic is not assumed to filter both ways
             graph.setdefault(rel["fromTable"], set()).add(rel["toTable"])
 
     downstream: dict[str, list[str]] = {}
@@ -234,7 +235,7 @@ def build_agent_md(payload: dict) -> str:
                [[f"{r['fromTable']}[{r['fromColumn']}]",
                  f"{r['toTable']}[{r['toColumn']}]",
                  f"{r['fromCardinality']}:{r['toCardinality']}",
-                 "both" if r["crossFilteringBehavior"] == "bothDirections" else "single",
+                 cross_filter_label(r["crossFilteringBehavior"]),
                  "yes" if r["isActive"] else "**NO**"]
                 for r in model["relationships"]]))
 

@@ -91,9 +91,11 @@ Prerequisites: Windows, Power BI Desktop installed, pbi-tools **Desktop** (not `
 ```powershell
 $tools = "C:\path\to\pbi-tools.exe"
 bidoc config --pbi-tools $tools
-bidoc doctor --json > doctor.json
-bidoc doctor
+bidoc doctor --json | Out-File -Encoding utf8 doctor.json     # not `>`: Windows PowerShell 5.1 would write UTF-16
+bidoc doctor | Out-File -Encoding utf8 doctor.txt
 ```
+Use `Out-File -Encoding utf8` (or `Tee-Object` into a file you then re-save as UTF-8) for every captured output below: in Windows
+PowerShell 5.1 a plain `>` writes UTF-16, and a console that reads UTF-8 as ANSI turns arrows such as `↔` into `â†”`.
 Expected: `doctor.json` -> `pbix_backend.backend = "pbi-tools"`, `fallback = null`, `inputs.pbix.available = true`, and the
 `pbi-tools` check `ok`. If it says `fallback` or names a `pbi_tools_problem`, capture it: that is the launch probe finding a
 problem, and the finding is the result.
@@ -107,8 +109,12 @@ Expected: each exits 0, writes one `.html`, and the progress line on stderr read
 `--pbi-tools` is never replaced by the portable reader; the `PBIX extractor:` summary line belongs to `bidoc batch`, not `generate`). A per-file extraction failure is reported as a failure and is **not** retried with pbixray; record it with
 `pbi-tools.log` from the workspace.
 
-Also try: `--backend pbi-tools` with a wrong path (expect a `PREREQUISITE_MISSING` error naming the fix, exit non-zero), and a
-rename of `pbi-tools.exe` to `pbi-tools.bat` (expect "configure the pbi-tools executable, not a script wrapper").
+Also try two negative cases. Both exit with code **3**. The internal error code `PREREQUISITE_MISSING` is not printed; the output is:
+- `--backend pbi-tools --pbi-tools C:\nope\pbi-tools.exe`:
+  `error: pbi-tools cannot be used: pbi-tools was not found at C:\nope\pbi-tools.exe. PBIP, model and ADF inputs still work.`
+  (it states the problem and does not name a fix);
+- a copy of `pbi-tools.exe` renamed to `pbi-tools.bat`:
+  `error: pbi-tools cannot be used: configure the pbi-tools executable, not a script wrapper. ...`
 
 Evidence: `doctor.json`, each command's stdout/stderr and exit code, the `.html` files, `pbi-tools.log`, tool and Desktop
 versions.
@@ -129,7 +135,9 @@ foreach ($id in "DP500 04 DirectQuery SQL Server","DP500 08 Composite model","DP
 Exit codes: 0 no differences, 1 differences (see the report), 2 one side could not run or the report cannot be written (the
 report's folder is created if missing; say which).
 
-Expected: possibly non-zero. Differences worth recording, not assuming away:
+Expected: possibly non-zero. The baseline run (`docs/validation/results/2026-10-01-windows-baseline/`) found 29 differences, all
+`crossFilteringBehavior` spelling; after the cross-filter normalisation they are expected to be gone, but that is a prediction until
+the five comparisons are rerun on the Windows machine and reported separately. Differences worth recording, not assuming away:
 - expressions that differ only in whitespace (`whitespace_only: true`);
 - connection strings: pbi-tools reads them from the Mashup, pbixray may redact or omit them, so `sources` can differ;
 - objects present in one extract only.
@@ -138,6 +146,13 @@ Each difference must be classified in the write-up as a reader defect, an expect
 Evidence: every `compare\*.json`, the console summary lines, tool versions, and for each non-empty difference the raw
 extract folders from both readers (run `pbi-tools.exe extract FILE -extractFolder DIR -modelSerialization Raw` and
 `python -m pbidocgen.portable FILE DIR2` by hand) so the difference can be reproduced.
+
+## Results so far
+
+- 2026-10-01 baseline (`docs/validation/results/2026-10-01-windows-baseline/REPORT.md`, kept unmodified): V2 passed on one
+  machine; V3 found 29 differences, all one enum spelling; V1 not run.
+- Not covered by any run: **row-level-security parity** (all five samples have zero roles), clean-machine installation, live SSAS
+  scanning, a genuine matched thin-report/ABF pair.
 
 ## What a full pass would and would not establish
 

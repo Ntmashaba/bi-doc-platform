@@ -469,7 +469,7 @@ def _relationship_to_tmsl(node: Node) -> dict:
         "toTable": to_table, "toColumn": to_column,
         "fromCardinality": node.prop("fromCardinality", "many"),
         "toCardinality": node.prop("toCardinality", "one"),
-        "crossFilteringBehavior": node.prop("crossFilteringBehavior", "singleDirection"),
+        "crossFilteringBehavior": node.prop("crossFilteringBehavior", "oneDirection"),
     }
     if "isActive" in node.properties:
         rel["isActive"] = _as_bool(node.prop("isActive"))

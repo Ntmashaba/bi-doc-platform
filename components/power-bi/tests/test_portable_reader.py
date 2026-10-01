@@ -117,5 +117,20 @@ class EmptyMetadata(unittest.TestCase):
             document(table(1, 'A'))                                    # no row in Model
 
 
+class CrossFilterDirection(unittest.TestCase):
+    """The reader emits the canonical spellings, so a portable extract matches a pbi-tools one downstream."""
+    RELATIONSHIP = SCHEMA + "CREATE TABLE Relationship (ID, Name, FromTableID, FromColumnID, ToTableID, ToColumnID, IsActive, FromCardinality, ToCardinality, CrossFilteringBehavior);"
+
+    def directions(self, *codes):
+        statements = [MODEL, table(1, 'A'), table(2, 'B'), column(10, 1, 'k'), column(11, 2, 'k')]
+        for i, code in enumerate(codes):
+            statements.append(f"INSERT INTO Relationship VALUES ({i}, 'r{i}', 1, 10, 2, 11, 1, 2, 1, {code})")
+        model = document(*statements, schema=self.RELATIONSHIP)
+        return [r['crossFilteringBehavior'] for r in model['relationships']]
+
+    def test_values_map_to_the_canonical_spellings_and_unknown_is_not_called_automatic(self):
+        self.assertEqual(self.directions(1, 2, 3, 9), ['oneDirection', 'bothDirections', 'automatic', '9'])
+
+
 if __name__ == '__main__':
     unittest.main()

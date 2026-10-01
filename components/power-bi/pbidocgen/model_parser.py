@@ -238,6 +238,37 @@ def inline_legacy_mashups(model: dict) -> None:
         model["expressions"] = list(model.get("expressions") or []) + extra
 
 
+CROSS_FILTER_ONE = "oneDirection"
+CROSS_FILTER_BOTH = "bothDirections"
+CROSS_FILTER_AUTOMATIC = "automatic"
+_CROSS_FILTER_NAMES = {
+    "onedirection": CROSS_FILTER_ONE,
+    "singledirection": CROSS_FILTER_ONE,      # spelling used by some readers and older defaults; same meaning
+    "bothdirections": CROSS_FILTER_BOTH,
+    "automatic": CROSS_FILTER_AUTOMATIC,
+}
+_CROSS_FILTER_NUMBERS = {1: CROSS_FILTER_ONE, 2: CROSS_FILTER_BOTH, 3: CROSS_FILTER_AUTOMATIC}   # TOM enum values
+
+
+def normalize_cross_filtering(value) -> str:
+    """One canonical spelling of a relationship's cross-filter direction, whichever reader produced it.
+
+    `oneDirection` (also spelled `singleDirection`, and what an absent property means), `bothDirections`, and `automatic`
+    (the engine chooses the direction, so it is neither asserted single nor both) are the canonical values. Anything
+    else is kept as written rather than guessed at, and is reported as unrecognised."""
+    if value is None or value == "":
+        return CROSS_FILTER_ONE
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _CROSS_FILTER_NUMBERS.get(value, str(value))
+    return _CROSS_FILTER_NAMES.get(str(value).strip().lower(), str(value))
+
+
+def cross_filter_label(value) -> str:
+    """The short word a document shows for a canonical cross-filter value."""
+    value = normalize_cross_filtering(value)
+    return {CROSS_FILTER_ONE: "single", CROSS_FILTER_BOTH: "both", CROSS_FILTER_AUTOMATIC: "automatic"}.get(value, value)
+
+
 def parse_model(model_path: str | Path) -> dict:
     bim_path = Path(model_path)
     doc, source_format, bim_path = load_model_document(bim_path)
@@ -376,7 +407,7 @@ def parse_model(model_path: str | Path) -> dict:
             "toTable": rel.get("toTable", ""),
             "toColumn": rel.get("toColumn", ""),
             "isActive": rel.get("isActive", True),
-            "crossFilteringBehavior": rel.get("crossFilteringBehavior", "singleDirection"),
+            "crossFilteringBehavior": normalize_cross_filtering(rel.get("crossFilteringBehavior")),
             "fromCardinality": rel.get("fromCardinality", "many"),
             "toCardinality": rel.get("toCardinality", "one"),
         })
@@ -538,11 +569,23 @@ def parse_model(model_path: str | Path) -> dict:
                 "category": "Inactive relationship",
                 "message": f"{rel['fromTable']}[{rel['fromColumn']}] → {rel['toTable']}[{rel['toColumn']}] is inactive; it only applies inside USERELATIONSHIP().",
             })
-        if rel["crossFilteringBehavior"] == "bothDirections":
+        if rel["crossFilteringBehavior"] == CROSS_FILTER_BOTH:
             warnings.append({
                 "severity": "warning",
                 "category": "Bidirectional filter",
                 "message": f"{rel['fromTable']} ↔ {rel['toTable']} filters in both directions; check for ambiguity and performance impact.",
+            })
+        elif rel["crossFilteringBehavior"] == CROSS_FILTER_AUTOMATIC:
+            warnings.append({
+                "severity": "info",
+                "category": "Automatic cross-filter",
+                "message": f"{rel['fromTable']} ↔ {rel['toTable']} uses an automatic cross-filter direction; the engine chooses it, so this document does not state it as single or both.",
+            })
+        elif rel["crossFilteringBehavior"] != CROSS_FILTER_ONE:
+            warnings.append({
+                "severity": "info",
+                "category": "Unrecognised cross-filter",
+                "message": f"{rel['fromTable']} ↔ {rel['toTable']} has the cross-filter value '{rel['crossFilteringBehavior']}', which is not recognised; it is shown as written.",
             })
         if rel["fromCardinality"] == "many" and rel["toCardinality"] == "many":
             warnings.append({

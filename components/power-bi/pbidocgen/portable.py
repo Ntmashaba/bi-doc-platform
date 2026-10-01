@@ -243,7 +243,7 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                 'toColumn':cname(cols[r['ToColumnID']]), 'isActive':bool(r['IsActive']),
                 'fromCardinality':{1:'one',2:'many'}.get(r['FromCardinality'],'many'),
                 'toCardinality':{1:'one',2:'many'}.get(r['ToCardinality'],'one'),
-                'crossFilteringBehavior':{1:'oneDirection',2:'bothDirections',3:'automatic'}.get(r['CrossFilteringBehavior'],'automatic')})
+                'crossFilteringBehavior':{1:'oneDirection',2:'bothDirections',3:'automatic'}.get(r['CrossFilteringBehavior'],str(r['CrossFilteringBehavior']))})
         permissions = rows('TablePermission')
         permissions_by_role = group(permissions, 'RoleID')
         raw_roles = rows('Role')
