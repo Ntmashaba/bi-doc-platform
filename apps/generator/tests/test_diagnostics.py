@@ -2,14 +2,18 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bidoc_generator.diagnostics import cause_lines, exit_code_info, failure_message, redact  # noqa: E402
+from test_backend_consistency import pid_alive  # noqa: E402
 from bidoc_generator.extract import ExtractionError, extract_pbix, python_tool  # noqa: E402
 
 FAKE = str(Path(__file__).resolve().parent / "fake_pbi_tools.py")
@@ -71,30 +75,78 @@ class Integration(unittest.TestCase):
             extract_pbix(self.pbix, self.tmp / "ws2", str(self.tmp / "missing.exe"), timeout=5)
         self.assertEqual(ctx.exception.code, "PREREQUISITE_MISSING")
 
-    def test_diagnose_script_report_has_no_names(self):
+    def diag(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
         import diagnose_extractors as d
+        return d
+
+    def test_diagnose_script_report_has_no_names(self):
+        d = self.diag()
         os.environ["FAKE_PBI_MODE"] = "crash"
-        launcher = self.tmp / "tool.py"
-        launcher.write_text(f'import sys, runpy\nsys.argv = ["{FAKE.replace(chr(92), "/")}"] + sys.argv[1:]\n'
-                            f'runpy.run_path("{FAKE.replace(chr(92), "/")}", run_name="__main__")\n')
-        if os.name == "nt":
-            self.skipTest("the launcher shim is POSIX only")
-        wrapper = self.tmp / "pbi-tools"
-        wrapper.write_text(f"#!/bin/sh\nexec {sys.executable} {launcher} \"$@\"\n")
-        wrapper.chmod(0o755)
         report = self.tmp / "out" / "r.json"
-        code = d.main([str(self.pbix), "--pbi-tools", str(wrapper), "--report", str(report), "--redact-also", "Secret"])
+        code = d.main([str(self.pbix), "--pbi-tools", "unused.exe", "--launcher", FAKE, "--report", str(report),
+                       "--redact-also", "Secret"])
         self.assertEqual(code, 1)
         text = report.read_text()
         for leak in ("Secret", str(self.tmp), "D:\\\\Reports"):
             self.assertNotIn(leak, text)
         data = json.loads(text)
-        names = {r["name"]: r for r in data["runs"]}
-        self.assertEqual(set(names), {"platform", "standalone", "short-path", "pbixray"})
-        self.assertEqual(names["platform"]["phase"], "extraction")
-        self.assertTrue(any("Could not load file or assembly" in x for x in names["platform"]["first_problems"]))
+        runs = {r["name"]: r for r in data["runs"]}
+        self.assertEqual(set(runs), {"platform", "standalone", "pbixray"} | ({"short-path"} if "short-path" in runs
+                                                                              else {"renamed-copy"}))
+        self.assertEqual(runs["platform"]["phase"], "extraction")
+        self.assertTrue(any("Could not load file or assembly" in x for x in runs["platform"]["first_problems"]))
         self.assertEqual(data["pbix"]["size"], "<1 MiB")
+        self.assertIn("best-effort", data["purpose"])
+        copy = runs.get("short-path") or runs.get("renamed-copy")
+        self.assertEqual(set(copy["path_chars"]), {"original", "copy"})
+
+    def hanging_tree(self):
+        os.environ["FAKE_PBI_MODE"] = "tree"
+        pidfile = self.tmp / "grandchild.pid"
+        os.environ["FAKE_PBI_PIDFILE"] = str(pidfile)
+        self.addCleanup(os.environ.pop, "FAKE_PBI_PIDFILE", None)
+        return pidfile
+
+    def grandchild(self, pidfile):
+        for _ in range(200):
+            if pidfile.exists() and pidfile.read_text():
+                return int(pidfile.read_text())
+            time.sleep(0.05)
+        self.fail("the fake tool never started its child")
+
+    def gone(self, pid):
+        for _ in range(100):
+            if not pid_alive(pid):
+                return True
+            time.sleep(0.05)
+        return False
+
+    def build(self, p, target):
+        return [sys.executable, FAKE, "extract", str(p), "-extractFolder", str(target), "-modelSerialization", "Raw"]
+
+    def test_timeout_ends_the_whole_process_tree(self):
+        d = self.diag()
+        pidfile = self.hanging_tree()
+        result = d.run_variant("platform", self.build, self.pbix, [], 3, inherit_stdin=False, new_group=True)
+        self.assertEqual(result["phase"], "timeout")
+        self.assertTrue(self.gone(self.grandchild(pidfile)), "the grandchild survived the timeout")
+
+    def test_interruption_ends_the_whole_process_tree_and_propagates(self):
+        d = self.diag()
+        pidfile = self.hanging_tree()
+        real, calls = subprocess.Popen.wait, []
+
+        def interrupted(proc, timeout=None):
+            calls.append(1)
+            if len(calls) == 1:                    # the first wait is the one inside _run: the user pressed Ctrl+C
+                self.grandchild(pidfile)
+                raise KeyboardInterrupt
+            return real(proc, timeout=timeout)
+        with mock.patch.object(subprocess.Popen, "wait", interrupted):
+            with self.assertRaises(KeyboardInterrupt):
+                d.run_variant("platform", self.build, self.pbix, [], 60, inherit_stdin=False, new_group=True)
+        self.assertTrue(self.gone(self.grandchild(pidfile)), "the grandchild survived the interruption")
 
 
 if __name__ == "__main__":

@@ -68,10 +68,12 @@ To compare the extractors on one file without sharing it, run on the Windows mac
     python scripts/diagnose_extractors.py "C:\path\file.pbix" --pbi-tools "C:\path\pbi-tools.exe" --report diagnose.json
 
 It runs pbi-tools as the platform starts it, as the old standalone tool started it (stdin and process group differ), on a copy
-at a short path, and the portable reader. The report holds exit codes, durations, the first problems pbi-tools reported and its
-last lines, and the PBIX's size bucket and standard part names; paths, URLs, e-mail addresses, GUIDs, connection-string values,
-the file's name, its folders and the user name are removed. Add `--redact-also NAME` for server or report names. Read it before
-sending it; redaction is best effort.
+in a shorter folder (the report gives both path lengths; `renamed-copy` if no shorter folder was available), and the portable
+reader. A timeout or Ctrl+C ends each extractor's whole process tree. The report holds exit codes, durations, the first problems
+pbi-tools reported and its last lines, and the PBIX's size bucket and standard part names. Redaction is best effort, and
+free-text names are not guaranteed to be removed: paths, URLs, e-mail addresses, GUIDs and connection-string values are replaced,
+and so are the file's name, its folders, the user name and any `--redact-also NAME` (use it for server, database or report names).
+Inspect the report before sharing it. The script shows how the extractors differ; it does not by itself establish why a file fails.
 
 ## Batches and history
 

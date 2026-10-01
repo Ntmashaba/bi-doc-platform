@@ -1,16 +1,17 @@
-"""Why does pbi-tools fail on a PBIX that another extractor reads? A local check whose report is safe to share.
+"""Why does pbi-tools fail on a PBIX that another extractor reads? A local check with a best-effort redacted report.
 
     python scripts/diagnose_extractors.py SAMPLE.pbix --pbi-tools C:\\path\\to\\pbi-tools.exe --report diagnose.json
 
-The PBIX never leaves the machine. The report holds no file name, folder, report, server or database name and no
-connection string: paths, URLs, e-mail addresses, GUIDs and connection-string values are removed from every captured
-line, and the file's own name, its folders and the user name are removed wherever they appear. Read the report before
-sending it; redaction is best effort. `--redact-also NAME` (repeatable) removes further names such as a server.
+The PBIX never leaves the machine. Redaction is best effort and free-text names are NOT guaranteed to be removed:
+paths, URLs, e-mail addresses, GUIDs and connection-string values are replaced in every captured line, and the file's own
+name, its folders, the user name and any `--redact-also NAME` (repeatable; use it for server, database or report names)
+are replaced wherever they appear. Inspect the report before sharing it.
 
 What it runs, each in its own fresh temporary folder:
   platform    pbi-tools exactly as the platform starts it (stdin closed, own process group, same arguments)
   standalone  pbi-tools as the old standalone tool started it (stdin inherited, same process group)
-  short-path  the platform's invocation on a copy of the PBIX at a short path (rules out path-length problems)
+  short-path  the platform's invocation on a copy of the PBIX in a shorter folder (the report gives both path lengths);
+              named renamed-copy when no shorter folder was available, which then tests only the copy
   pbixray     the portable reader, when it is installed
 Comparing the first three says whether the way the platform starts the process matters; comparing with pbixray says
 whether the file itself reads. Exit 0 = every run succeeded, 1 = at least one failed, 2 = could not run.
@@ -34,6 +35,7 @@ for sub in ("components/power-bi", "components/adf", "packages/contracts", "pack
     sys.path.insert(0, str(ROOT / sub))
 
 from bidoc_generator.diagnostics import cause_lines, exit_code_info, redact  # noqa: E402
+from pbidocgen.pbi_tools_runtime import stop_process_tree  # noqa: E402   # the project's bounded process-tree cleanup
 
 
 def _size_bucket(n: int) -> str:
@@ -57,6 +59,11 @@ def pbix_shape(path: Path) -> dict:
 
 
 def _run(argv, *, inherit_stdin, new_group, timeout, log):
+    """Start one extraction. Timeout and interruption end the whole process tree (bounded), not only the parent.
+
+    The tree is only reachable by group when the child leads its own (new_group). For the standalone variant on Windows
+    taskkill /T follows parent-child links; on POSIX (test use only, pbi-tools is Windows-only) descendants of a
+    non-leader are not reachable, so that variant is not used for hanging tools there."""
     kwargs = dict(stdout=log, stderr=subprocess.STDOUT, shell=False)
     if not inherit_stdin:
         kwargs["stdin"] = subprocess.DEVNULL
@@ -73,8 +80,11 @@ def _run(argv, *, inherit_stdin, new_group, timeout, log):
     try:
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        stop_process_tree(proc)
         return {"phase": "timeout", "seconds": timeout}
+    except BaseException:                      # Ctrl+C or termination: clean up, then propagate
+        stop_process_tree(proc)
+        raise
     return {"phase": "extraction", "exit": exit_code_info(code), "seconds": round(time.monotonic() - started, 1)}
 
 
@@ -94,12 +104,50 @@ def run_variant(name, argv_for, pbix, names, timeout, **how):
         return {"name": name, **result}
 
 
+def short_path_variant(build, pbix, names, timeout):
+    """The platform's invocation on a copy in the shortest writable folder; renamed-copy if that is not shorter."""
+    candidates = ([Path(os.environ.get("SystemDrive", "C:") + "\\")] if os.name == "nt" else []) + [Path(tempfile.gettempdir())]
+    for base in candidates:
+        try:
+            folder = Path(tempfile.mkdtemp(prefix="d", dir=base))
+        except OSError:
+            continue
+        try:
+            copy = folder / "a.pbix"
+            shutil.copyfile(pbix, copy)
+            shorter = len(str(copy)) < len(str(pbix))
+            run = run_variant("short-path" if shorter else "renamed-copy", build, copy, names, timeout,
+                              inherit_stdin=False, new_group=True)
+            run["path_chars"] = {"original": len(str(pbix)), "copy": len(str(copy))}
+            return run
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+    return {"name": "short-path", "phase": "not run", "reason": "no writable folder for a copy", "ok": None}
+
+
 def tool_version(tool: str, names) -> str:
+    """`tool --version`, bounded and cleaned up like the extractions."""
     try:
-        out = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
-        return redact((out.stdout or out.stderr).strip().splitlines()[0] if (out.stdout or out.stderr).strip() else "", names)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return f"could not run: {type(exc).__name__}"
+        with tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace") as out:
+            kwargs = dict(stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, shell=False)
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                kwargs["start_new_session"] = True
+            proc = subprocess.Popen([tool, "--version"], **kwargs)
+            try:
+                proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                stop_process_tree(proc)
+                return "did not answer within 60 s"
+            except BaseException:
+                stop_process_tree(proc)
+                raise
+            out.seek(0)
+            lines = out.read().strip().splitlines()
+            return redact(lines[0], names)[:120] if lines else ""
+    except OSError as exc:
+        return f"could not run: {exc.strerror or type(exc).__name__}"
 
 
 def main(argv=None) -> int:
@@ -109,6 +157,7 @@ def main(argv=None) -> int:
     ap.add_argument("--report", type=Path, default=Path("diagnose-report.json"))
     ap.add_argument("--timeout", type=float, default=600)
     ap.add_argument("--redact-also", action="append", default=[], metavar="NAME")
+    ap.add_argument("--launcher", help=argparse.SUPPRESS)       # tests: run this Python script instead of pbi-tools
     args = ap.parse_args(argv)
     pbix = args.pbix.resolve()
     if not pbix.is_file():
@@ -117,17 +166,12 @@ def main(argv=None) -> int:
     names = [pbix.stem, pbix.name, *pbix.parts[1:], getpass.getuser(), platform.node(), *args.redact_also]
 
     def pbi(p, target):
-        return [args.pbi_tools, "extract", str(p), "-extractFolder", str(target), "-modelSerialization", "Raw"]
+        prefix = [sys.executable, args.launcher] if args.launcher else [args.pbi_tools]
+        return prefix + ["extract", str(p), "-extractFolder", str(target), "-modelSerialization", "Raw"]
 
     runs = [run_variant("platform", pbi, pbix, names, args.timeout, inherit_stdin=False, new_group=True),
             run_variant("standalone", pbi, pbix, names, args.timeout, inherit_stdin=True, new_group=False)]
-    short_dir = Path(tempfile.mkdtemp(prefix="d"))
-    try:
-        short = short_dir / "a.pbix"
-        shutil.copyfile(pbix, short)
-        runs.append(run_variant("short-path", pbi, short, names, args.timeout, inherit_stdin=False, new_group=True))
-    finally:
-        shutil.rmtree(short_dir, ignore_errors=True)
+    runs.append(short_path_variant(pbi, pbix, names, args.timeout))
     try:
         from pbidocgen.portable import status
         state = status()
@@ -138,8 +182,8 @@ def main(argv=None) -> int:
                                 pbix, names, args.timeout, inherit_stdin=False, new_group=True))
     else:
         runs.append({"name": "pbixray", "phase": "not run", "reason": redact(state.get("reason", ""), names), "ok": None})
-    report = {"purpose": "extractor comparison; redacted, no file or folder names", "python": platform.python_version(),
-              "os": platform.platform(), "pbi_tools_version": tool_version(args.pbi_tools, names),
+    report = {"purpose": "extractor comparison; best-effort redaction, inspect before sharing", "python": platform.python_version(),
+              "os": platform.platform(), "pbi_tools_version": "test launcher" if args.launcher else tool_version(args.pbi_tools, names),
               "pbix": pbix_shape(pbix), "runs": runs}
     try:
         args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -155,4 +199,8 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("interrupted; the extractor processes were stopped", file=sys.stderr)
+        sys.exit(130)
