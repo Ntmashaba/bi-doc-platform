@@ -286,11 +286,27 @@ class SameInputsEverywhere(Base):
         _, client = self.desktop()
         reviewed = client.post("/api/review", json={"inputs": self.sources, "output_dir": str(self.out)}, headers=MUTATE).json()
         _, batch = self.cli_items()
-        key = lambda items: [(i["label"], i["source"], i.get("kind")) for i in items]          # noqa: E731
+        # The CLI resolves the paths it is given (on Windows that expands 8.3 short names such as RUNNER~1), the desktop
+        # keeps them as typed; they must still be the same files, so compare locations, not spellings.
+        key = lambda items: [(i["label"], os.path.normcase(os.path.realpath(i["source"])), i.get("kind")) for i in items]  # noqa: E731
         self.assertEqual(key(reviewed["items"]), key(batch["items"]))
         self.assertEqual(len(batch["items"]), 3)
         self.assertEqual(batch["discovery"]["found"], 3)
         self.assertEqual(reviewed["summary"]["found"], 3)
+
+    def test_a_differently_spelled_path_finds_the_same_files(self):
+        link = self.tmp / "alias"
+        try:
+            os.symlink(self.tmp, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return                                                                      # no symlinks here; the Windows short-name case covers it
+        _, client = self.desktop()
+        via_alias = client.post("/api/review", json={"inputs": [str(link / "h3 Reports")], "output_dir": str(self.out)},
+                                headers=MUTATE).json()
+        direct = client.post("/api/review", json={"inputs": [str(self.h3)], "output_dir": str(self.out)}, headers=MUTATE).json()
+        locations = lambda r: [(i["label"], os.path.realpath(i["source"])) for i in r["items"]]    # noqa: E731
+        self.assertEqual(locations(via_alias), locations(direct))
+        self.assertEqual(via_alias["summary"]["found"], 1)
 
     def test_the_cli_reports_an_empty_folder_as_a_failure(self):
         (self.tmp / "nothing").mkdir()
