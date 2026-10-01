@@ -37,21 +37,38 @@ synthetic and labelled so. This pack does not attempt to close that gap.
 
 ## V1. Clean-machine installation
 
-Machine: Windows 10/11, no Python, no Docker, no Power BI Desktop needed. Use a fresh VM snapshot or a new user account on a
-machine without Python. Get the installer from the `bidoc-windows-installer` artifact of the latest green `main` CI run
-(`bidoc-setup-0.2.0-unsigned.exe`, `bidoc-setup-0.2.1-unsigned.exe`, `SHA256SUMS.txt`), and a checkout of this repository
-at the same commit (for the script and its inputs).
+Preparation is kept apart from execution, so that nothing on the target machine needs Python.
+
+**Prepare (any machine with PowerShell; Python is not used).** Copy the results to the target machine.
+
+1. Get a checkout of this repository at the commit under test (for the script, its inputs and `samples\manifest.json`).
+2. Get both installers and `SHA256SUMS.txt` from the `bidoc-windows-installer` artifact of a CI run on that commit
+   (`bidoc-setup-0.2.0-unsigned.exe`, the version that is installed first, and `bidoc-setup-0.2.1-unsigned.exe`, the
+   upgrade). A CI run publishes both only from the commit that carries the "Publish both installers" step.
+3. Download the ABF sample and check it against the pinned checksum, with PowerShell only:
 
 ```powershell
-# 1. verify the installers against SHA256SUMS.txt
-Get-FileHash .\bidoc-setup-0.2.0-unsigned.exe -Algorithm SHA256
-# 2. fetch the ABF sample on any machine with Python and copy it over (or download the zip and check its hash by hand)
-python scripts\fetch_samples.py adventure-works-tabular-model-1200-full-database-backup
-# 3. run the acceptance script from a normal (non-elevated) PowerShell
+$item = (Get-Content samples\manifest.json -Raw | ConvertFrom-Json) | Where-Object { $_.id -eq "adventure-works-tabular-model-1200-full-database-backup" }
+New-Item -ItemType Directory -Force samples\downloads | Out-Null
+Invoke-WebRequest $item.url -OutFile "samples\downloads\$($item.file)"
+if ((Get-FileHash "samples\downloads\$($item.file)" -Algorithm SHA256).Hash.ToLower() -ne $item.sha256) { throw "checksum mismatch" }
+$item.sha256        # keep this value; it is passed to the script below
+```
+
+**Execute (the clean target machine).** Windows 10/11 with no Python, no Docker, no Power BI Desktop needed. Use a fresh VM
+snapshot or a new user account on a machine without Python. The script is run with PowerShell 7 (`pwsh`), which CI uses;
+if it is not installed, installing it (`winget install Microsoft.PowerShell`) is the one tool added to the machine, and it
+should be written down in the evidence.
+
+```powershell
+# verify the installers against SHA256SUMS.txt (compare each hash with its line in the file)
+Get-FileHash .\bidoc-setup-0.2.0-unsigned.exe, .\bidoc-setup-0.2.1-unsigned.exe -Algorithm SHA256
+Get-Content .\SHA256SUMS.txt
+# run the acceptance script from a normal (non-elevated) pwsh; the checksum is read with PowerShell, not Python
+$abfSha = ((Get-Content samples\manifest.json -Raw | ConvertFrom-Json) | Where-Object { $_.id -like "*full-database-backup" }).sha256
 pwsh packaging\windows\verify-install.ps1 `
   -Installer .\bidoc-setup-0.2.0-unsigned.exe -UpgradeInstaller .\bidoc-setup-0.2.1-unsigned.exe `
-  -AbfArchive samples\downloads\adventure-works-tabular-model-1200-full-database-backup.zip `
-  -AbfSha256 (python -c "import json;print([i for i in json.load(open('samples/manifest.json')) if i['id'].endswith('full-database-backup')][0]['sha256'])") `
+  -AbfArchive samples\downloads\adventure-works-tabular-model-1200-full-database-backup.zip -AbfSha256 $abfSha `
   -Report verify-report.json
 ```
 
@@ -86,8 +103,8 @@ foreach ($id in "DP500 04 DirectQuery SQL Server","DP500 08 Composite model","DP
   bidoc generate --engine power_bi --kind pbix --source "samples\downloads\$id.pbix" --pbi-tools $tools --output-dir "out\pbi-tools\$id"
 }
 ```
-Expected: each exits 0, writes one `.html`, and the printed `PBIX extractor:` line says pbi-tools (explicit, so never a
-fallback). A per-file extraction failure is reported as a failure and is **not** retried with pbixray; record it with
+Expected: each exits 0, writes one `.html`, and the progress line on stderr reads `extracting (pbi-tools)` (an explicit
+`--pbi-tools` is never replaced by the portable reader; the `PBIX extractor:` summary line belongs to `bidoc batch`, not `generate`). A per-file extraction failure is reported as a failure and is **not** retried with pbixray; record it with
 `pbi-tools.log` from the workspace.
 
 Also try: `--backend pbi-tools` with a wrong path (expect a `PREREQUISITE_MISSING` error naming the fix, exit non-zero), and a
@@ -100,7 +117,8 @@ versions.
 
 `scripts/compare_extractors.py` extracts the same file with both readers, loads both through the platform loader and
 compares tables, columns (type, hidden, expression, sort-by, format), measures (DAX, format, folder), relationships,
-roles, shared expressions and per-partition sources. It needs the platform requirements installed (`pip install -r
+roles, shared expressions, per-partition storage mode (import / directQuery / dual) and definitions, and per-partition
+sources. It needs the platform requirements installed (`pip install -r
 requirements.txt` in a checkout) and works from a checkout, not from the installed app.
 
 ```powershell
@@ -108,7 +126,8 @@ foreach ($id in "DP500 04 DirectQuery SQL Server","DP500 08 Composite model","DP
   python scripts\compare_extractors.py "samples\downloads\$id.pbix" --pbi-tools $tools --report "compare\$id.json"
 }
 ```
-Exit codes: 0 no differences, 1 differences (see the report), 2 one side could not run (say which).
+Exit codes: 0 no differences, 1 differences (see the report), 2 one side could not run or the report cannot be written (the
+report's folder is created if missing; say which).
 
 Expected: possibly non-zero. Differences worth recording, not assuming away:
 - expressions that differ only in whitespace (`whitespace_only: true`);

@@ -11,7 +11,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import compare_extractors as ce  # noqa: E402
 
 PAYLOAD = {"model": {
-    "tables": [{"name": "Sales", "isHidden": False, "columns": [{"name": "Amount", "dataType": "double", "isHidden": False}]}],
+    "tables": [{"name": "Sales", "isHidden": False, "columns": [{"name": "Amount", "dataType": "double", "isHidden": False}],
+                "partitions": [{"name": "Sales-1", "mode": "import", "type": "m", "expression": "let Source = Sql.Database(\"s\", \"d\") in Source"}]}],
     "measures": [{"table": "Sales", "name": "Total", "expression": "SUM ( Sales[Amount] )", "formatString": "0"}],
     "relationships": [{"fromTable": "Sales", "fromColumn": "K", "toTable": "Date", "toColumn": "K", "isActive": True}],
     "roles": [{"name": "Reader"}], "expressions": []}}
@@ -35,6 +36,44 @@ class CompareExtractors(unittest.TestCase):
         spaced["model"]["measures"][0]["expression"] = "SUM (  Sales[Amount] )"
         self.assertTrue(ce.compare(ce.facts(PAYLOAD), ce.facts(spaced))["measures"]["changed"]["Sales[Total]"]["whitespace_only"])
         self.assertEqual(ce.differences(report), 3)
+
+    def test_partition_storage_mode_missing_partitions_and_definitions_are_compared(self):
+        mode = copy.deepcopy(PAYLOAD)
+        mode["model"]["tables"][0]["partitions"][0]["mode"] = "directQuery"           # Import vs DirectQuery
+        report = ce.compare(ce.facts(PAYLOAD), ce.facts(mode))
+        changed = report["partitions"]["changed"]["Sales/Sales-1"]
+        self.assertEqual((changed["pbi_tools"]["mode"], changed["pbixray"]["mode"]), ("import", "directQuery"))
+        self.assertEqual(ce.differences(report), 1)
+
+        definition = copy.deepcopy(PAYLOAD)
+        definition["model"]["tables"][0]["partitions"][0]["expression"] = "let Source = Excel.Workbook() in Source"
+        self.assertEqual(list(ce.compare(ce.facts(PAYLOAD), ce.facts(definition))["partitions"]["changed"]), ["Sales/Sales-1"])
+
+        missing = copy.deepcopy(PAYLOAD)
+        missing["model"]["tables"][0]["partitions"] = []
+        report = ce.compare(ce.facts(PAYLOAD), ce.facts(missing))
+        self.assertEqual(report["partitions"]["only_in_pbi_tools"], ["Sales/Sales-1"])
+        self.assertEqual(ce.compare(ce.facts(missing), ce.facts(PAYLOAD))["partitions"]["only_in_pbixray"], ["Sales/Sales-1"])
+
+    def run_main(self, report_path):
+        from unittest import mock
+        fake = mock.Mock(available=True, reason=None)
+        with mock.patch("bidoc_generator.backend.select_backend", return_value=fake), \
+                mock.patch.object(ce, "extract_and_load", return_value=PAYLOAD):
+            return ce.main(["x.pbix", "--pbi-tools", "t.exe", "--report", str(report_path)])
+
+    def test_report_parent_directory_is_created(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "compare" / "nested" / "r.json"
+            self.assertEqual(self.run_main(path), 0)
+            self.assertTrue(path.is_file())
+
+    def test_a_report_that_cannot_be_written_exits_2(self):
+        with tempfile.TemporaryDirectory() as d:
+            blocker = Path(d) / "file"
+            blocker.write_text("not a directory")
+            self.assertEqual(self.run_main(blocker / "r.json"), 2)         # parent is a file
+            self.assertEqual(self.run_main(Path(d)), 2)                    # the report path is a directory
 
     def test_unusable_pbi_tools_is_reported_as_could_not_run(self):
         with tempfile.TemporaryDirectory() as d:

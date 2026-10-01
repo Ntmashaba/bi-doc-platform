@@ -236,6 +236,19 @@ jobs:
           -UpgradeInstaller dist/installer/bidoc-setup-0.2.1-unsigned.exe
           -AbfArchive "$env:ABF_ARCHIVE" -AbfSha256 "$env:ABF_SHA256"
           -Report dist/verify-report.json
+      - name: Publish both installers with their checksums
+        # The 0.2.1 build deletes dist/, so the 0.2.0 installer (the one that was installed, then upgraded) lives only in
+        # RUNNER_TEMP. Copy it next to the upgrade installer and list both in SHA256SUMS.txt so a reviewer can fetch the
+        # exact pair the verification used.
+        if: always()
+        shell: pwsh
+        run: |
+          $old = Get-ChildItem "$env:RUNNER_TEMP/old/*.exe" -ErrorAction SilentlyContinue
+          if ($old) { Copy-Item $old dist/installer/ }
+          Get-ChildItem dist/installer/*.exe | Sort-Object Name | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

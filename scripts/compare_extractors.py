@@ -3,7 +3,7 @@
     python scripts/compare_extractors.py SAMPLE.pbix --pbi-tools C:\\path\\to\\pbi-tools.exe --report compare.json
 
 Each extractor reads the same file; both extracts go through the same platform loader, and the resulting model facts are
-compared category by category. Exit 0 = no differences, 1 = differences (listed in the report), 2 = could not run.
+compared category by category. Exit 0 = no differences, 1 = differences (listed in the report), 2 = could not run (an extractor failed, or the report cannot be written).
 Differences are evidence to read, not an automatic verdict: `whitespace_only` marks expressions that differ only in
 spacing. This shows parity for the files you compare, nothing more.
 """
@@ -19,7 +19,7 @@ for sub in ("components/power-bi", "components/adf", "packages/contracts", "pack
             "apps/generator"):
     sys.path.insert(0, str(ROOT / sub))
 
-CATEGORIES = ("tables", "columns", "measures", "relationships", "roles", "expressions", "sources")
+CATEGORIES = ("tables", "columns", "partitions", "measures", "relationships", "roles", "expressions", "sources")
 
 
 def _squash(value):
@@ -32,6 +32,9 @@ def facts(payload: dict) -> dict:
     out = {c: {} for c in CATEGORIES}
     for t in model["tables"]:
         out["tables"][t["name"]] = {"isHidden": t.get("isHidden"), "dataCategory": t.get("dataCategory")}
+        for p in t.get("partitions", []):       # storage mode (import / directQuery / dual) and the partition definition
+            out["partitions"][f'{t["name"]}/{p.get("name")}'] = {k: p.get(k) for k in (
+                "mode", "type", "expression", "query", "source")}
         for c in t.get("columns", []):
             out["columns"][f'{t["name"]}[{c["name"]}]'] = {k: c.get(k) for k in (
                 "dataType", "isHidden", "isCalculated", "expression", "sortByColumn", "formatString", "displayFolder")}
@@ -88,6 +91,13 @@ def main(argv=None) -> int:
     ap.add_argument("--report", type=Path, default=Path("compare-report.json"))
     ap.add_argument("--timeout", type=float, default=600)
     args = ap.parse_args(argv)
+    try:                                # fail before the slow extractions, not after, when the report cannot be written
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        with args.report.open("a", encoding="utf-8"):
+            pass
+    except OSError as exc:
+        print(f"cannot write the report {args.report}: {exc}", file=sys.stderr)
+        return 2
     try:
         from bidoc_generator import backend
         problem = backend.select_backend("pbi-tools", args.pbi_tools)
@@ -102,8 +112,12 @@ def main(argv=None) -> int:
         return 2
     report = compare(side_a, side_b)
     total = differences(report)
-    args.report.write_text(json.dumps({"file": args.pbix.name, "differences": total, "categories": report}, indent=2,
-                                      default=str), encoding="utf-8")
+    try:
+        args.report.write_text(json.dumps({"file": args.pbix.name, "differences": total, "categories": report}, indent=2,
+                                          default=str), encoding="utf-8")
+    except OSError as exc:
+        print(f"cannot write the report {args.report}: {exc}", file=sys.stderr)
+        return 2
     for cat, v in report.items():
         print(f'{cat:14} pbi-tools {v["count_pbi_tools"]:4}  pbixray {v["count_pbixray"]:4}  '
               f'only-pbi-tools {len(v["only_in_pbi_tools"])}  only-pbixray {len(v["only_in_pbixray"])}  changed {len(v["changed"])}')
