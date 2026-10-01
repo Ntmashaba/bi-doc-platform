@@ -19,7 +19,7 @@ Status: **frozen for B03 (pre-release)**, 28 September 2026. No artifact has bee
 
 ## Validation order and error codes
 
-1. Size: `ARTIFACT_TOO_LARGE` (25 MiB default).
+1. Size: `ARTIFACT_TOO_LARGE` (25 MiB default). This is a *publication* limit: the generator keeps a document above it (hard generation ceiling 256 MiB) and reports it as local-only with the size and the limit; `publish` compares against the target library's advertised limit instead of the default.
 2. Location: `MANIFEST_MISSING`, `MANIFEST_DUPLICATE`, `MANIFEST_UNTERMINATED`, `MANIFEST_NOT_INERT` (type must be `application/json`), `MANIFEST_TOO_LARGE` (16 MiB).
 3. JSON: `MANIFEST_INVALID_JSON` (also duplicate keys and NaN/Infinity).
 4. `UNSUPPORTED_SCHEMA_VERSION`, then `SCHEMA_VIOLATION` (field shapes, unknown fields).
