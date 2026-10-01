@@ -245,6 +245,9 @@ def _generate(args) -> int:
             print(f"  warning: {w}", file=sys.stderr)
         for e in result.errors:
             print(f"error: {e['message']}", file=sys.stderr)
+        if result.publication and args.profile == "shared":
+            print("error: the document was generated and kept, but it cannot be published (see the warning above).",
+                  file=sys.stderr)
     if result.status == "cancelled":
         return EXIT_CANCELLED
     if result.status == "completed" or (result.status == "local_only" and args.profile == "local"):

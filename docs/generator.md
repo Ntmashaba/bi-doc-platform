@@ -100,6 +100,10 @@ Security follows the library's local mode:
 
 The existing `pbi-doc-gen` and `adf-doc-gen` command lines are unchanged.
 
+## Documents above the publication limit
+
+The library's 25 MiB limit applies to publication, not to generation. A document above it is still written and works locally; the item finishes as local-only with a warning giving the size, the limit and the next step (`ARTIFACT_TOO_LARGE`), and `bidoc generate --profile shared` exits non-zero because the result cannot be published. `bidoc publish` checks the target library's advertised limit before uploading and says the file is unchanged. The hub export is a local folder and is not subject to the publication limit. Above a 256 MiB generation ceiling generation fails (`CONTRACT_VIOLATION`). The model payload is embedded twice (viewer and manifest), so documents are about twice the payload size.
+
 ## Portable offline export
 
 `bidoc export-library OUTPUT INPUT...` writes a folder that works without a network or a

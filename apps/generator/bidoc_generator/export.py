@@ -48,6 +48,7 @@ def _bundle() -> str:
 
 def _collect(inputs, warnings):
     from bidoc_contracts import ContractError, validate_artifact  # noqa: PLC0415
+    from bidoc_engines.envelope import GENERATION_LIMITS  # noqa: PLC0415
     found = {}
     for raw in inputs:
         path = Path(raw)
@@ -56,7 +57,7 @@ def _collect(inputs, warnings):
             if f.name == "index.html" and (f.parent / MARKER).exists():
                 continue                                     # a previous export's own page
             try:
-                manifest = validate_artifact(f.read_bytes())
+                manifest = validate_artifact(f.read_bytes(), limits=GENERATION_LIMITS)   # a local hub is not publication
             except OSError as exc:
                 raise ExportError(f"cannot read {f}: {exc}") from None
             except ContractError as exc:
@@ -71,6 +72,7 @@ def _collect(inputs, warnings):
 def export_library(inputs, out_dir, *, only=None, title="BI documentation") -> dict:
     from bidoc_contracts import validate_artifact  # noqa: PLC0415
     from bidoc_engines.convert import UnsupportedProjection, rerender  # noqa: PLC0415
+    from bidoc_engines.envelope import GENERATION_LIMITS  # noqa: PLC0415
     from bidoc_relationships import RULE_VERSION, Document, detect  # noqa: PLC0415
 
     out = Path(out_dir)
@@ -91,7 +93,7 @@ def export_library(inputs, out_dir, *, only=None, title="BI documentation") -> d
             html, stored = rerender(m)
         except UnsupportedProjection as exc:
             raise ExportError(f"{m['title']}: {exc}") from None
-        validate_artifact(html)
+        validate_artifact(html, limits=GENERATION_LIMITS)
         rendered[doc_id] = (html, stored)
 
     docs = [Document(d, s["revision_id"], s["document_type"], s["publication"]["environment_key"],
