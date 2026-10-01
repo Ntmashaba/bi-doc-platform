@@ -83,27 +83,33 @@ async function startView(): Promise<void> {
   const fields = (["environment", "business_area", "owner"] as const).map(k =>
     h("input", { type: "text", id: k, value: form[k], maxlength: "200" }) as HTMLInputElement);
   const out = h("div", { id: "review", "aria-live": "polite" });
+  inputs.addEventListener("input", () => stale());
+  output.addEventListener("input", () => stale());
   const save = () => {
     Object.assign(form, { inputs: inputs.value, output_dir: output.value.trim(), profile: profile.value,
       include_query_code: code.checked, environment: fields[0].value, business_area: fields[1].value, owner: fields[2].value });
   };
   const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const bridge = host();
-  const add = (list: string[]) => { inputs.value = [...paths(), ...list].join("\n"); save(); };
+  // A review is a snapshot of one list of inputs: changing the list, or where the output goes, withdraws it.
+  const stale = () => { if (out.childElementCount) out.replaceChildren(h("p", { class: "muted", id: "review-stale" },
+    "The inputs or the output folder changed. Review the inputs again before generating.")); };
+  const add = (list: string[]) => { inputs.value = [...paths(), ...list].join("\n"); save(); stale(); };
 
   const review = async () => {
     save();
     out.replaceChildren();
+    const reviewed = paths();                              // what this review is of; Generate sends exactly this
     if (!paths().length) { out.append(notice("error", "Add at least one input.")); return; }
     if (!form.output_dir) { out.append(notice("error", "Choose an output folder.")); return; }
     let r: Review;
-    try { r = await api<Review>("/api/review", "POST", { inputs: paths(), output_dir: form.output_dir }); }
+    try { r = await api<Review>("/api/review", "POST", { inputs: reviewed, output_dir: form.output_dir }); }
     catch (e) { out.append(notice("error", (e as Error).message)); return; }
     const usable = r.items.filter(i => !i.errors?.length).length;
     const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
       run.disabled = true;
       try {
-        const b = await api<Batch>("/api/batches", "POST", { inputs: paths(), review_id: r.review_id, output_dir: form.output_dir,
+        const b = await api<Batch>("/api/batches", "POST", { inputs: reviewed, review_id: r.review_id, output_dir: form.output_dir,
           profile: form.profile, include_query_code: form.include_query_code, environment: form.environment,
           business_area: form.business_area, owner: form.owner });
         location.hash = `#/batch/${b.batch_id}`;
@@ -138,7 +144,7 @@ async function startView(): Promise<void> {
         h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null,
       h("label", { for: "output" }, "Output folder"), output,
       bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
-        const f = await bridge.pick_folder(); if (f[0]) { output.value = f[0]; save(); } } }, "Choose…")) : null,
+        const f = await bridge.pick_folder(); if (f[0]) { output.value = f[0]; save(); stale(); } } }, "Choose…")) : null,
       h("label", { for: "profile" }, "Output"), profile,
       h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")),
       h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +

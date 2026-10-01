@@ -312,7 +312,7 @@ def _batch(args) -> int:
                    query_code="included" if args.include_query_code else "withheld",
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
                    extract_timeout=args.extract_timeout)
-    scan = runner.discover([str(Path(p).resolve()) for p in args.inputs], opts.output_dir)
+    scan = runner.discover(list(args.inputs), opts.output_dir)       # as given: discovery normalises them, and sees links
     if not args.json:
         print(_scan_line(scan), file=sys.stderr)
     for note in scan.warnings:

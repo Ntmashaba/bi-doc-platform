@@ -132,6 +132,17 @@ class Discovering(Base):
         scan = self.discover(self.h3, exclude=[self.h3 / "Documentation"])
         self.assertEqual(self.labels(scan), ["h3 Reports/Keep.pbix"])
 
+    def test_selected_roots_in_the_output_or_generator_folder_are_left_out_too(self):
+        home = self.tmp / "gen-home"
+        pbix(self.out / "Generated.pbix")
+        pbix(home / "workspaces" / "x" / "Extract.pbix")
+        pbix(self.h3 / "Keep.pbix")
+        scan = self.discover(self.out, self.out / "Generated.pbix", home, self.h3, exclude=[self.out, home])
+        self.assertEqual(self.labels(scan), ["Documentation", "Generated.pbix", "gen-home", "h3 Reports/Keep.pbix"])
+        refused = [i for i in scan.items if i.get("errors")]
+        self.assertEqual(len(refused), 3)
+        self.assertTrue(all("left out" in i["errors"][0]["message"] for i in refused))
+
     def test_the_generators_own_folder_is_left_out(self):
         runner = self.runner()
         pbix(self.h3 / "Keep.pbix")
@@ -141,23 +152,72 @@ class Discovering(Base):
                          [Path(self.tmp.name, "h3 Reports", "Keep.pbix").as_posix(),
                           Path(self.tmp.name, "model", "model.bim").as_posix()])
 
-    def test_links_and_junctions_are_not_followed(self):
+    def flag_links(self, *names):
+        """Make entries with these names look like links to discovery, wherever the platform cannot create real ones."""
+        real = discovery._is_link
+        return mock.patch.object(discovery, "_is_link", side_effect=lambda p: Path(p).name in names or real(p))
+
+    def test_links_and_junctions_are_not_followed_folders_or_files(self):
         elsewhere = self.tmp / "elsewhere"
         pbix(elsewhere / "Outside.pbix")
         pbix(self.h3 / "Inside.pbix")
+        pbix(self.h3 / "Linked.pbix")                                # a linked FILE: not classified either
         (self.h3 / "linked").mkdir()
-        real = discovery._is_link
-        with mock.patch.object(discovery, "_is_link", side_effect=lambda e: e.name == "linked" or real(e)):
+        pbix(self.h3 / "linked" / "Behind.pbix")
+        with self.flag_links("linked", "Linked.pbix"):
             scan = self.discover(self.h3)
         self.assertEqual(self.labels(scan), ["h3 Reports/Inside.pbix"])
         self.assertTrue(any("Not followed" in w and "linked" in w for w in scan.warnings))
-        try:                                                    # and a real symbolic link, where this platform allows one
-            os.symlink(elsewhere, self.h3 / "symlinked", target_is_directory=True)
+        self.assertTrue(any("Not followed" in w and "Linked.pbix" in w for w in scan.warnings))
+
+    def test_real_symbolic_links_are_not_followed_where_the_platform_allows_them(self):
+        elsewhere = self.tmp / "elsewhere"
+        outside = pbix(elsewhere / "Outside.pbix")
+        pbix(self.h3 / "Inside.pbix")
+        try:
+            os.symlink(elsewhere, self.h3 / "dirlink", target_is_directory=True)
+            os.symlink(outside, self.h3 / "filelink.pbix")
         except (OSError, NotImplementedError):
-            return
+            return                                                   # no symlinks here; the mocked test above covers the rule
         scan = self.discover(self.h3)
         self.assertEqual(self.labels(scan), ["h3 Reports/Inside.pbix"])
-        self.assertTrue(any("symlinked" in w for w in scan.warnings))
+        self.assertTrue(any("dirlink" in w for w in scan.warnings) and any("filelink" in w for w in scan.warnings))
+
+    def test_a_selected_link_is_refused_not_followed(self):
+        pbix(self.tmp / "selected-link" / "Behind.pbix")
+        pbix(self.tmp / "selected-file.pbix")
+        with self.flag_links("selected-link", "selected-file.pbix"):
+            scan = self.discover(self.tmp / "selected-link", self.tmp / "selected-file.pbix")
+        self.assertEqual(scan.usable, 0)
+        self.assertEqual(len(scan.items), 2)
+        for item in scan.items:
+            self.assertIn("is a link or junction", item["errors"][0]["message"])
+
+    def test_the_cli_does_not_hide_a_selected_link_by_resolving_it_first(self):
+        real_folder = self.tmp / "real"
+        pbix(real_folder / "Hidden.pbix")
+        link = self.tmp / "link"
+        try:
+            os.symlink(real_folder, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, {"BIDOC_HOME": str(self.tmp / "cli-home")}), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["batch", str(link), "--output-dir", str(self.out), "--json"])
+        batch = json.loads(out.getvalue())
+        self.assertNotEqual(code, 0)
+        self.assertEqual(batch["discovery"]["found"], 0)
+        self.assertIn("is a link or junction", batch["items"][0]["errors"][0]["message"])
+
+    def test_only_symbolic_links_and_junctions_count_as_links_not_cloud_placeholders(self):
+        import stat as st
+        fake = lambda mode=st.S_IFREG, tag=0: type("S", (), {"st_mode": mode, "st_reparse_tag": tag})()   # noqa: E731
+        self.assertTrue(discovery.reparse_is_link(fake(mode=st.S_IFLNK)))
+        self.assertTrue(discovery.reparse_is_link(fake(tag=0xA000000C)))      # symbolic link
+        self.assertTrue(discovery.reparse_is_link(fake(mode=st.S_IFDIR, tag=0xA0000003)))  # junction
+        self.assertFalse(discovery.reparse_is_link(fake(tag=0x9000701A)))     # OneDrive Files On-Demand placeholder
+        self.assertFalse(discovery.reparse_is_link(fake()))
 
     def test_an_unreadable_subfolder_does_not_stop_the_readable_ones(self):
         pbix(self.h3 / "A" / "Good.pbix")
@@ -185,6 +245,44 @@ class Discovering(Base):
         self.assertEqual((scan.usable, len(scan.items)), (0, 1))
         self.assertIn("no supported inputs found", scan.items[0]["errors"][0]["message"])
 
+    def test_the_item_limit_is_shared_by_every_selection(self):
+        for i in range(3):
+            pbix(self.h3 / f"A{i}.pbix")
+            pbix(self.h4 / f"B{i}.pbix")
+        scan = self.discover(self.h3, self.h4, max_items=4)
+        self.assertEqual(scan.usable, 4)                              # 4 in all, not 4 per folder
+        self.assertTrue(scan.stopped)
+        stopped = [i for i in scan.items if i.get("errors")]
+        self.assertEqual(len(stopped), 1)
+        self.assertIn("scan stopped after 4 inputs", stopped[0]["errors"][0]["message"])
+
+    def test_explicit_selections_count_toward_the_limit_too(self):
+        files = [pbix(self.tmp / f"F{i}.pbix") for i in range(4)]
+        scan = self.discover(*files, max_items=3)
+        self.assertEqual((scan.usable, scan.stopped), (3, True))
+
+    def test_recognised_projects_count_toward_the_item_limit(self):
+        for i in range(5):
+            (self.h3 / f"P{i}" / f"P{i}.SemanticModel").mkdir(parents=True)
+        scan = self.discover(self.h3, max_items=3)
+        self.assertEqual(scan.usable, 3)
+        self.assertTrue(scan.stopped)
+
+    def test_folder_listings_are_counted_across_selections_and_include_project_recognition(self):
+        for i in range(4):
+            pbix(self.h3 / f"D{i}" / "R.pbix")
+            pbix(self.h4 / f"D{i}" / "R.pbix")
+        scan = self.discover(self.h3, self.h4, max_folders=6)
+        self.assertTrue(scan.stopped)
+        self.assertLessEqual(scan.folders_scanned, 6)                 # in total, not 6 per selection
+        self.assertTrue(any("folder listings" in i["errors"][0]["message"] for i in scan.items if i.get("errors")))
+        # recognising a Data Factory folder lists it and then looks for JSON in its parts: both listings are counted
+        adf_factory(self.tmp / "container" / "Factory")
+        counted = self.discover(self.tmp / "container")
+        self.assertGreaterEqual(counted.folders_scanned, 3)           # container, the factory, and at least one part
+        tight = self.discover(self.tmp / "container", max_folders=2)
+        self.assertTrue(tight.stopped)
+
     def test_scan_bounds_are_reported(self):
         for i in range(5):
             pbix(self.h3 / f"R{i}.pbix")
@@ -192,12 +290,11 @@ class Discovering(Base):
         self.assertEqual(scan.usable, 3)
         self.assertTrue(any("scan stopped" in i["errors"][0]["message"] for i in scan.items if i.get("errors")))
 
-    def test_same_file_names_in_different_folders_are_told_apart_and_flagged(self):
+    def test_same_file_names_in_different_folders_are_told_apart(self):
         pbix(self.h3 / "A" / "Sales.pbix")
         pbix(self.h3 / "B" / "Sales.pbix")
         scan = self.discover(self.h3)
         self.assertEqual(self.labels(scan), ["h3 Reports/A/Sales.pbix", "h3 Reports/B/Sales.pbix"])
-        self.assertTrue(any("share a file name" in w for w in scan.warnings))
 
     def test_selections_keep_their_order_and_a_folders_finds_are_sorted(self):
         a, b = pbix(self.tmp / "Zed.pbix"), pbix(self.tmp / "Alpha.pbix")
@@ -233,6 +330,24 @@ class RunningAndRetrying(Base):
         r.retry(next(i["item_id"] for i in items if i["state"] == "failed"))
         self.assertTrue(r.wait(60))
         self.assertEqual({i["label"]: i["state"] for i in r.history.batch(batch)["items"]}["h3 Reports/Bad.pbix"], "completed")
+
+    def test_two_incomplete_inputs_with_the_same_name_get_two_output_files(self):
+        for parent in ("A", "B"):
+            factory = adf_factory(self.h3 / parent / "Factory")                  # same folder name, so the same title
+            (factory / "pipeline" / "broken.json").write_text("{not json", encoding="utf-8")
+        r = self.runner()
+        batch = r.submit([str(self.h3)], Options(output_dir=str(self.out)))
+        self.assertTrue(r.wait(60))
+        items = r.history.batch(batch)["items"]
+        self.assertEqual([(i["label"], i["state"]) for i in items],
+                         [("h3 Reports/A/Factory", "local_only"), ("h3 Reports/B/Factory", "local_only")])
+        paths = [i["artifact_path"] for i in items]
+        self.assertEqual(len(set(paths)), 2)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), sorted(Path(p).name for p in paths))
+        again = r.submit([str(self.h3)], Options(output_dir=str(self.out)))      # a second run refreshes, it does not add
+        self.assertTrue(r.wait(60))
+        self.assertEqual(len(list(self.out.iterdir())), 2)
+        self.assertEqual([i["artifact_path"] for i in r.history.batch(again)["items"]], paths)
 
     def test_an_empty_folder_item_is_searched_again_on_retry(self):
         self.h3.mkdir()
@@ -286,9 +401,9 @@ class SameInputsEverywhere(Base):
         _, client = self.desktop()
         reviewed = client.post("/api/review", json={"inputs": self.sources, "output_dir": str(self.out)}, headers=MUTATE).json()
         _, batch = self.cli_items()
-        # The CLI resolves the paths it is given (on Windows that expands 8.3 short names such as RUNNER~1), the desktop
-        # keeps them as typed; they must still be the same files, so compare locations, not spellings.
-        key = lambda items: [(i["label"], os.path.normcase(os.path.realpath(i["source"])), i.get("kind")) for i in items]  # noqa: E731
+        # Discovery normalises paths itself (Windows short names such as RUNNER~1 included), so both entry points must name
+        # every input with exactly the same string, not merely the same file.
+        key = lambda items: [(i["label"], i["source"], i.get("kind")) for i in items]          # noqa: E731
         self.assertEqual(key(reviewed["items"]), key(batch["items"]))
         self.assertEqual(len(batch["items"]), 3)
         self.assertEqual(batch["discovery"]["found"], 3)
@@ -304,9 +419,23 @@ class SameInputsEverywhere(Base):
         via_alias = client.post("/api/review", json={"inputs": [str(link / "h3 Reports")], "output_dir": str(self.out)},
                                 headers=MUTATE).json()
         direct = client.post("/api/review", json={"inputs": [str(self.h3)], "output_dir": str(self.out)}, headers=MUTATE).json()
-        locations = lambda r: [(i["label"], os.path.realpath(i["source"])) for i in r["items"]]    # noqa: E731
-        self.assertEqual(locations(via_alias), locations(direct))
+        spelled = lambda r: [(i["label"], i["source"]) for i in r["items"]]    # noqa: E731
+        self.assertEqual(spelled(via_alias), spelled(direct))                  # identical strings, not just the same file
         self.assertEqual(via_alias["summary"]["found"], 1)
+
+    def test_a_relative_path_is_discovered_like_the_absolute_one(self):
+        _, client = self.desktop()
+        absolute = client.post("/api/review", json={"inputs": [str(self.h3)], "output_dir": str(self.out)}, headers=MUTATE).json()
+        before = os.getcwd()
+        os.chdir(self.tmp)
+        self.addCleanup(os.chdir, before)
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, {"BIDOC_HOME": str(self.tmp / "cli-home")}), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            cli.main(["batch", "h3 Reports", "--output-dir", "Documentation", "--json"])
+        batch = json.loads(out.getvalue())
+        self.assertEqual([(i["label"], i["source"]) for i in batch["items"]],
+                         [(i["label"], i["source"]) for i in absolute["items"]])
 
     def test_the_cli_reports_an_empty_folder_as_a_failure(self):
         (self.tmp / "nothing").mkdir()
@@ -346,6 +475,18 @@ class SameInputsEverywhere(Base):
         self.assertEqual(client.post("/api/batches", json=body, headers=MUTATE).status_code, 409)
         body = {"inputs": self.sources, "output_dir": str(self.out), "review_id": "unknown"}
         self.assertEqual(client.post("/api/batches", json=body, headers=MUTATE).status_code, 409)
+
+    def test_changed_inputs_are_not_queued_from_an_old_review(self):
+        runner, client = self.desktop()
+        review = client.post("/api/review", json={"inputs": self.sources, "output_dir": str(self.out)}, headers=MUTATE).json()
+        for edited in (self.sources[:1], self.sources + [str(self.tmp / "extra")], list(reversed(self.sources))):
+            body = {"inputs": edited, "output_dir": str(self.out), "review_id": review["review_id"]}
+            reply = client.post("/api/batches", json=body, headers=MUTATE)
+            self.assertEqual(reply.status_code, 409, edited)
+            self.assertIn("inputs changed", reply.json()["error"]["message"] if "error" in reply.json() else reply.text)
+        self.assertEqual(client.get("/api/batches").json(), [])          # nothing was queued
+        ok = {"inputs": self.sources, "output_dir": str(self.out), "review_id": review["review_id"]}
+        self.assertEqual(client.post("/api/batches", json=ok, headers=MUTATE).status_code, 201)
 
     def test_the_review_leaves_the_output_folder_out(self):
         pbix(self.out / "Generated.pbix")

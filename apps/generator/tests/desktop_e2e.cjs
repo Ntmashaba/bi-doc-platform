@@ -31,6 +31,12 @@ const step = (name) => console.log("  ok " + name);
   await page.getByText("Generate queues exactly these inputs").waitFor();
   step("a folder is searched and its inputs are listed before anything runs");
 
+  // The review belongs to the list it was made from: editing the inputs withdraws it, so an old Generate cannot queue it.
+  await page.getByLabel("Inputs").fill(process.env.FOLDER + "-edited");
+  await page.locator("#review-stale").waitFor();
+  assert.equal(await page.getByRole("button", { name: /^Generate / }).count(), 0);
+  step("changing the inputs withdraws the review");
+
   await page.goto(URL + "/#/");
   await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);

@@ -74,18 +74,28 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
   needs JSON in at least one of its `pipeline`, `dataset`, `linkedService`, `dataflow`, `trigger` or `factory` folders, so a
   reports folder that merely has a subfolder with one of those names is still a container;
 - other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export);
-- the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar, and any symbolic link or
-  Windows junction are skipped (links are reported, not followed). A scan stops, with a message, after 1000 inputs or 20000
-  folders;
+- the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar are left out, as a
+  search target and as a selection (selecting one is a failed item that says why);
+- **links are never followed**: a symbolic link or Windows junction is reported and skipped whether it is a selection, a folder
+  or a file; a selected one is a failed item. (`bidoc batch` passes paths as given, so a selected link is seen, not hidden.)
+  OneDrive-style cloud placeholders are ordinary files, not links;
+- paths are normalised in the shared discovery, once, so the command line and the desktop name every input with the same string
+  (relative paths and Windows short names such as `RUNNER~1` included);
+- the limits cover the whole call, not each selection: at most 1000 inputs and 20000 folder listings in total, counting the
+  listing made to recognise a project and the look inside a Data Factory folder's parts. At the limit discovery stops, keeps what
+  it found and adds one failed item saying so;
 - a folder that cannot be read, an empty scan and a scan that hit a bound are *failed items* with a message, so they appear in
   the history and the exit code while every readable input still runs. Retrying one searches that folder again; if it now holds
   several inputs the retry says so, and the folder should be queued again as a new batch;
 - selections keep the order given; a folder's finds are sorted by path; the same file reached twice is queued once; documents
-  are labelled with the path below the selected folder's parent. Several inputs with the same file name get a note, because a
-  document that cannot be published is named after the file and one may overwrite another.
+  are labelled with the path below the selected folder's parent. A document that cannot be published is named
+  `<title>--<tag of the source path>.local.html`, so two such inputs with the same file name never share an output file and
+  rerunning one input refreshes its own file.
 
 `bidoc batch` prints what it found before it starts. The desktop review lists the same inputs and **Generate queues exactly that
-reviewed list** (a snapshot: files added after the review are not included; review again to pick them up). The offline hub is a
+reviewed list** (a snapshot: files added after the review are not included; review again to pick them up). The review remembers
+the inputs and the output folder it was made from: changing either in the window withdraws the review, and the server refuses to
+queue an old review for a different list (409). The offline hub is a
 separate step: `bidoc export-library`.
 
 Items run one at a time, so there is only ever one PBIX extraction. Each item moves through

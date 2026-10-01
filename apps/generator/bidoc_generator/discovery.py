@@ -10,15 +10,27 @@ A selection is one of:
 * any **other folder**: a container, searched recursively for `.pbix` and `.abf` files, `.bim` models and recognised project
   folders. Other files are ignored (a stray `.json` is not assumed to be a Data Factory export).
 
-Searching does not enter the output folder or the generator's own folder, development folders (`.git`, `.venv`, ...), or any
-symbolic link or Windows junction, and it is bounded. A folder that cannot be read, an empty scan and a scan that hit a bound
-each become a *failed* item with a message, so they show up in the history and the exit code, while every readable input still
-runs. Results are sorted, de-duplicated (selecting a folder and a file inside it queues the file once) and labelled with the
-path below the selected folder's parent, so two `Sales.pbix` files in different folders can be told apart.
+Rules that apply to every path, selected or found:
+
+* **Links are never followed.** A symbolic link or Windows junction, as a selection, a folder or a file, is reported and left
+  out (a selected one is a failed item that says so). Cloud-sync placeholders (OneDrive and the like) are not links.
+* **The output folder and the generator's own folder are left out**, as a selection and inside a search; so are development
+  folders (`.git`, `.venv`, ...).
+* **Paths are normalised here**, once, so the command line, the desktop review and the desktop submission name the same file the
+  same way (Windows short names such as `RUNNER~1` and relative paths included). Callers pass paths as given.
+* **The limits cover the whole call**: at most `MAX_ITEMS` inputs and `MAX_FOLDERS` folder listings in total across every
+  selection, counting each listing made to recognise a project. At the limit discovery stops, keeps what it found and records one
+  failed item saying so.
+
+A folder that cannot be read, an empty scan and a stopped scan are *failed* items with a message, so they show up in the history
+and the exit code while every readable input still runs. Results keep the order of the selections; a folder's finds are sorted;
+the same file reached twice is queued once; labels are the path below the selected folder's parent, so two `Sales.pbix` files
+in different folders can be told apart.
 """
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,17 +39,18 @@ from .batch import classify, classify_folder
 FILE_SUFFIXES = {".pbix", ".abf", ".bim"}
 SKIP_FOLDER_NAMES = {".git", ".hg", ".svn", ".venv", "venv", "node_modules", "__pycache__", ".idea", ".vscode",
                      "$recycle.bin", "system volume information"}
-MAX_ITEMS = 1000            # discovered inputs per scan
-MAX_FOLDERS = 20000         # folders visited per scan
-_REPARSE_POINT = 0x400      # Windows: junctions and other reparse points
+MAX_ITEMS = 1000            # inputs and problems recorded, in total
+MAX_FOLDERS = 20000         # folder listings, in total
+_LINK_TAGS = {0xA000000C, 0xA0000003}   # Windows reparse tags: symbolic link and mount point (junction). Cloud files are others.
 
 
 @dataclass
 class Discovery:
     items: list[dict] = field(default_factory=list)       # classify()-shaped; failed ones carry "errors"
-    warnings: list[str] = field(default_factory=list)     # worth showing, not a failure (links skipped, same file names)
+    warnings: list[str] = field(default_factory=list)     # worth showing, not a failure (links skipped)
     selections: int = 0
-    folders_scanned: int = 0
+    folders_scanned: int = 0                              # folder listings made, including those that recognise projects
+    stopped: bool = False                                 # a limit was reached
 
     @property
     def usable(self) -> int:
@@ -45,26 +58,44 @@ class Discovery:
 
     def as_dict(self) -> dict:
         return {"selections": self.selections, "found": self.usable, "problems": len(self.items) - self.usable,
-                "folders_scanned": self.folders_scanned, "warnings": list(self.warnings)}
+                "folders_scanned": self.folders_scanned, "stopped": self.stopped, "warnings": list(self.warnings)}
+
+
+class _Limit(Exception):
+    pass
+
+
+class _Budget:
+    def __init__(self, max_items: int, max_folders: int):
+        self.max_items, self.max_folders = max_items, max_folders
+        self.items = self.folders = 0
+
+    def item(self) -> None:
+        if self.items >= self.max_items:
+            raise _Limit(f"scan stopped after {self.max_items} inputs; select a smaller folder")
+        self.items += 1
+
+    def folder(self) -> None:
+        if self.folders >= self.max_folders:
+            raise _Limit(f"scan stopped after {self.max_folders} folder listings; select a smaller folder")
+        self.folders += 1
 
 
 def _key(path) -> str:
     return os.path.normcase(os.path.realpath(path))
 
 
-def _is_link(entry: os.DirEntry) -> bool:
-    """A symbolic link, or on Windows a junction / reparse point: never followed."""
+def reparse_is_link(st) -> bool:
+    """Whether an `lstat` result is a symbolic link, or on Windows a junction or symbolic-link reparse point. Other reparse
+    points (OneDrive Files On-Demand placeholders, for example) are ordinary files and folders to us."""
+    return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) in _LINK_TAGS
+
+
+def _is_link(path) -> bool:
     try:
-        if entry.is_symlink():
-            return True
-        junction = getattr(entry, "is_junction", None)          # Python 3.12+
-        if junction is not None and junction():
-            return True
-        if os.name == "nt":
-            return bool(entry.stat(follow_symlinks=False).st_file_attributes & _REPARSE_POINT)
+        return reparse_is_link(os.lstat(path))
     except OSError:
         return True                                             # cannot tell: do not follow
-    return False
 
 
 def _inside(path: str, parent: str) -> bool:
@@ -79,7 +110,7 @@ def _label(path: Path, root: Path) -> str:
         return path.name
 
 
-def _problem(path: Path, label: str, message: str) -> dict:
+def _problem(path, label: str, message: str) -> dict:
     return {"source": str(path), "label": label, "errors": [{"code": "INVALID_INPUT", "message": message}]}
 
 
@@ -88,97 +119,98 @@ def discover(paths, *, exclude=(), max_items: int = MAX_ITEMS, max_folders: int 
     result = Discovery()
     skipped = [_key(p) for p in exclude if p]
     seen: set[str] = set()
-    stems: dict[str, list[str]] = {}
+    budget = _Budget(max_items, max_folders)
     bucket = result.items                  # selections keep the order they were given; a folder's finds are sorted
+    current = Path(".")
 
     def add(item: dict) -> bool:
         key = _key(item["source"])
         if key in seen:
             return False
+        budget.item()
         seen.add(key)
         bucket.append(item)
-        if not item.get("errors"):
-            stems.setdefault(Path(item["source"]).stem.casefold(), []).append(item["label"])
         return True
 
-    for raw in paths:
-        result.selections += 1
-        path = Path(raw)
-        if not path.is_dir():
-            add(classify(path))                                   # a file, or a path that is not there: as before
-            continue
-        project = classify_folder(path)
-        if project is not None:                                   # a project (or a broken one) is one input
-            add(project)
-            continue
-        bucket = []
-        matched, problems = _scan(path, result, add, skipped, max_items, max_folders)
-        if matched == 0 and problems == 0:
-            add(_problem(path, path.name, f"no supported inputs found in {path} (looked for .pbix, .abf and .bim files "
-                                          "and project folders, in this folder and below)"))
-        bucket.sort(key=lambda i: i["label"].casefold())
-        result.items.extend(bucket)
-        bucket = result.items
-
-    duplicates = sorted(s for s, labels in stems.items() if len(labels) > 1)
-    if duplicates:
-        result.warnings.append(
-            "Several inputs share a file name (" + ", ".join(duplicates) + "). Their documents are told apart by identity, "
-            "but a document that cannot be published is named after the file, so one may overwrite another.")
+    try:
+        for raw in paths:
+            result.selections += 1
+            current = selected = Path(os.path.abspath(raw))
+            if not os.path.lexists(selected):
+                add(classify(selected))                           # "not found", as before
+                continue
+            if _is_link(selected):
+                add(_problem(selected, selected.name, f"{selected} is a link or junction, and links are not followed; "
+                                                      "select the real folder or file"))
+                continue
+            path = Path(os.path.realpath(selected))
+            if any(_inside(_key(path), s) for s in skipped):
+                add(_problem(path, path.name, f"{path} is the output folder or the generator's own folder (or inside one), "
+                                              "so it is left out"))
+                continue
+            if not path.is_dir():
+                add(classify(path))                               # a file: as before
+                continue
+            bucket = []
+            try:
+                matched, problems = _visit(path, result, add, skipped, budget)
+                if matched == 0 and problems == 0:
+                    add(_problem(path, path.name, f"no supported inputs found in {path} (looked for .pbix, .abf and .bim "
+                                                  "files and project folders, in this folder and below)"))
+            finally:
+                bucket.sort(key=lambda i: i["label"].casefold())
+                result.items.extend(bucket)
+                bucket = result.items
+    except _Limit as limit:
+        result.stopped = True
+        result.items.append(_problem(current, current.name, str(limit)))
+    result.folders_scanned = budget.folders
     return result
 
 
-def _scan(root: Path, result: Discovery, add, skipped: list[str], max_items: int, max_folders: int) -> tuple[int, int]:
-    """Search `root`, a container folder. Returns (inputs matched, problems recorded); a re-met input still counts as matched."""
+def _visit(root: Path, result: Discovery, add, skipped: list[str], budget: _Budget):
+    """Search `root` and below. Returns (inputs matched, problems recorded); an input met twice still counts as matched."""
     matched = problems = 0
     stack = [root]
     while stack:
         folder = stack.pop()
-        if result.folders_scanned >= max_folders:
-            add(_problem(folder, _label(folder, root), f"scan stopped after {max_folders} folders; select a smaller folder"))
-            return matched, problems + 1
-        if matched >= max_items:
-            add(_problem(folder, _label(folder, root), f"scan stopped after {max_items} inputs; select a smaller folder"))
-            return matched, problems + 1
-        result.folders_scanned += 1
+        budget.folder()
         try:
             entries = sorted(os.scandir(folder), key=lambda e: e.name.casefold())
         except OSError as exc:
-            add(_problem(folder, _label(folder, root), f"cannot read folder {folder}: {exc.strerror or exc}"))
+            add(_problem(folder, folder.name if folder == root else _label(folder, root),
+                         f"cannot read folder {folder}: {exc.strerror or exc}"))
             problems += 1
             continue
-        subfolders = []
-        for entry in entries:
-            child = folder / entry.name
-            link = _is_link(entry)
-            try:
-                is_dir = entry.is_dir()                           # follows links, so a link to a folder is seen as a folder
-            except OSError:
-                is_dir = False
-            if is_dir:
-                if link:
-                    result.warnings.append(f"Not followed (link or junction): {child}")
-                elif entry.name.casefold() not in SKIP_FOLDER_NAMES and not any(_inside(_key(child), s) for s in skipped):
-                    subfolders.append(child)
-                continue
-            if entry.name.startswith(("._", "~$")) or child.suffix.lower() not in FILE_SUFFIXES:
-                continue
-            if matched >= max_items:
-                add(_problem(folder, _label(folder, root), f"scan stopped after {max_items} inputs; select a smaller folder"))
-                return matched, problems + 1
-            item = classify(child)
-            item["label"] = _label(child, root)
-            matched += 1
-            add(item)
-        for child in reversed(subfolders):                        # depth first, in name order
-            project = classify_folder(child)
-            if project is None:
-                stack.append(child)
-                continue
-            project["label"] = _label(child, root)
+        project = classify_folder(folder, children={e.name for e in entries}, on_list=budget.folder)
+        if project is not None:                                   # a project (or a broken one) is one input
+            project["label"] = folder.name if folder == root else _label(folder, root)
             if project.get("errors"):
                 problems += 1
             else:
                 matched += 1
             add(project)
+            continue
+        subfolders = []
+        for entry in entries:
+            child = folder / entry.name
+            try:
+                is_dir = entry.is_dir()                           # follows links, so a link to a folder is seen as a folder
+            except OSError:
+                is_dir = False
+            if _is_link(child):                                   # files and folders alike: never followed
+                if is_dir or child.suffix.lower() in FILE_SUFFIXES:
+                    result.warnings.append(f"Not followed (link or junction): {child}")
+                continue
+            if is_dir:
+                if entry.name.casefold() not in SKIP_FOLDER_NAMES and not any(_inside(_key(child), s) for s in skipped):
+                    subfolders.append(child)
+                continue
+            if entry.name.startswith(("._", "~$")) or child.suffix.lower() not in FILE_SUFFIXES:
+                continue
+            item = classify(child)
+            item["label"] = _label(child, root)
+            matched += 1
+            add(item)
+        stack.extend(reversed(subfolders))                        # depth first, in name order
     return matched, problems

@@ -74,16 +74,24 @@ async function startView() {
     code.checked = form.include_query_code;
     const fields = ["environment", "business_area", "owner"].map(k => h("input", { type: "text", id: k, value: form[k], maxlength: "200" }));
     const out = h("div", { id: "review", "aria-live": "polite" });
+    inputs.addEventListener("input", () => stale());
+    output.addEventListener("input", () => stale());
     const save = () => {
         Object.assign(form, { inputs: inputs.value, output_dir: output.value.trim(), profile: profile.value,
             include_query_code: code.checked, environment: fields[0].value, business_area: fields[1].value, owner: fields[2].value });
     };
     const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const bridge = host();
-    const add = (list) => { inputs.value = [...paths(), ...list].join("\n"); save(); };
+    // A review is a snapshot of one list of inputs: changing the list, or where the output goes, withdraws it.
+    const stale = () => {
+        if (out.childElementCount)
+            out.replaceChildren(h("p", { class: "muted", id: "review-stale" }, "The inputs or the output folder changed. Review the inputs again before generating."));
+    };
+    const add = (list) => { inputs.value = [...paths(), ...list].join("\n"); save(); stale(); };
     const review = async () => {
         save();
         out.replaceChildren();
+        const reviewed = paths(); // what this review is of; Generate sends exactly this
         if (!paths().length) {
             out.append(notice("error", "Add at least one input."));
             return;
@@ -94,7 +102,7 @@ async function startView() {
         }
         let r;
         try {
-            r = await api("/api/review", "POST", { inputs: paths(), output_dir: form.output_dir });
+            r = await api("/api/review", "POST", { inputs: reviewed, output_dir: form.output_dir });
         }
         catch (e) {
             out.append(notice("error", e.message));
@@ -104,7 +112,7 @@ async function startView() {
         const run = h("button", { class: "primary", disabled: usable === 0, onclick: async () => {
                 run.disabled = true;
                 try {
-                    const b = await api("/api/batches", "POST", { inputs: paths(), review_id: r.review_id, output_dir: form.output_dir,
+                    const b = await api("/api/batches", "POST", { inputs: reviewed, review_id: r.review_id, output_dir: form.output_dir,
                         profile: form.profile, include_query_code: form.include_query_code, environment: form.environment,
                         business_area: form.business_area, owner: form.owner });
                     location.hash = `#/batch/${b.batch_id}`;
@@ -128,6 +136,7 @@ async function startView() {
             if (f[0]) {
                 output.value = f[0];
                 save();
+                stale();
             }
         } }, "Choose…")) : null, h("label", { for: "profile" }, "Output"), profile, h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")), h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +
         "When on, it is shared as written; obvious credentials are cleaned, but that is not a guarantee."), h("div", { class: "row" }, h("div", {}, h("label", { for: "environment" }, "Environment"), fields[0]), h("div", {}, h("label", { for: "business_area" }, "Business area"), fields[1]), h("div", {}, h("label", { for: "owner" }, "Owner"), fields[2])), h("p", {}, h("button", { class: "primary", type: "button", onclick: review }, "Review inputs"))), out);

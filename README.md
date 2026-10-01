@@ -62,7 +62,8 @@ bidoc batch "C:\Projects\Sales" "C:\Repos\factory" "C:\Reports\Budget.pbix" --ou
 ```
 
 A folder that is itself a project counts as one input and is not searched inside. Other files (a stray `.json`, for example) are
-ignored. The output folder, the generator's own folder, `.git` and `.venv`, and any link or junction are skipped. A folder that
+ignored. The output folder, the generator's own folder, `.git` and `.venv` are left out, and links and junctions are never followed
+(a selected link is reported as a failed item). A folder that
 cannot be read, or that holds nothing usable, is reported as a failed item while every readable input still runs. The command
 prints what it found before it starts, and each document is labelled with its path (`h3 Reports/Finance/Budget.pbix`) so two
 files with the same name can be told apart.

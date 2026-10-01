@@ -8,6 +8,7 @@ one at a time (the runner is sequential), in the item's own workspace.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 import dataclasses
@@ -71,15 +72,21 @@ def classify(path) -> dict:
             "not a recognised Power BI project, model, report, pbi-tools extract or Data Factory folder"}]}
 
 
-def classify_folder(path) -> dict | None:
+def classify_folder(path, children=None, on_list=None) -> dict | None:
     """The input a folder is: a recognised project folder, or an error item when it cannot be read or is a broken project.
-    None when it is not itself an input (it may hold inputs: see `discovery.discover`)."""
+    None when it is not itself an input (it may hold inputs: see `discovery.discover`).
+
+    `children` is the folder's listing when the caller already has it. `on_list` is called before every further folder listing
+    this makes (checking a Data Factory part for JSON), so a caller can count them."""
     p = Path(path)
     item = {"source": str(p), "label": p.name or str(p)}
-    try:
-        children = {c.name for c in p.iterdir()}
-    except OSError as exc:
-        return {**item, "errors": [{"code": "INVALID_INPUT", "message": f"cannot read folder {p}: {exc.strerror or exc}"}]}
+    if children is None:
+        try:
+            if on_list:
+                on_list()
+            children = {c.name for c in p.iterdir()}
+        except OSError as exc:
+            return {**item, "errors": [{"code": "INVALID_INPUT", "message": f"cannot read folder {p}: {exc.strerror or exc}"}]}
     if any(c.endswith(".SemanticModel") for c in children):
         return {**item, "engine": "power_bi", "kind": "pbip"}
     if any(c.endswith(".pbip") for c in children):
@@ -91,16 +98,21 @@ def classify_folder(path) -> dict | None:
         return {**item, "engine": "power_bi", "kind": "tmdl"}
     if p.name.endswith(".Report") or (p / "definition" / "report.json").is_file():
         return {**item, "engine": "power_bi", "kind": "pbir"}
-    if any(_holds_json(p / name) for name in children & ADF_FOLDERS):
+    if any(_holds_json(p / name, on_list) for name in sorted(children & ADF_FOLDERS)):
         return {**item, "engine": "adf", "kind": "adf_git"}
     return None
 
 
-def _holds_json(folder: Path) -> bool:
+def _holds_json(folder: Path, on_list=None) -> bool:
     """A Data Factory Git folder's `pipeline/`, `dataset/`... hold the JSON definitions; a folder that merely has one of
     those names (a reports folder with a `pipeline` subfolder) is not a factory."""
+    if not folder.is_dir():
+        return False
+    if on_list:
+        on_list()
     try:
-        return folder.is_dir() and any(c.suffix.lower() == ".json" for c in folder.iterdir())
+        with os.scandir(folder) as entries:                      # stops at the first JSON file, however large the folder
+            return any(e.name.lower().endswith(".json") for e in entries)
     except OSError:
         return False
 

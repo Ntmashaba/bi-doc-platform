@@ -137,7 +137,7 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
                 it["warnings"] = [f"PBIX generation is unavailable: {pbix['reason']}"]
         review_id = secrets.token_urlsafe(12)
         with reviews_lock:
-            reviews[review_id] = {"items": scan.items, "output_dir": body.output_dir}
+            reviews[review_id] = {"items": scan.items, "output_dir": body.output_dir, "inputs": list(body.inputs)}
             while len(reviews) > 8:
                 reviews.pop(next(iter(reviews)))
         return {"review_id": review_id, "items": scan.items, "warnings": scan.warnings, "summary": scan.as_dict()}
@@ -161,6 +161,8 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
                 raise ApiError(409, "REVIEW_EXPIRED", "That review is no longer available; review the inputs again.")
             if reviewed["output_dir"] != body.output_dir:
                 raise ApiError(409, "REVIEW_CHANGED", "The output folder changed since the review; review the inputs again.")
+            if reviewed["inputs"] != list(body.inputs):
+                raise ApiError(409, "REVIEW_CHANGED", "The inputs changed since the review; review them again.")
             return history.batch(runner.submit_items(reviewed["items"], opts))
         return history.batch(runner.submit(body.inputs, opts))
 
