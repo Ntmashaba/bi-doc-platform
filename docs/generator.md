@@ -55,6 +55,24 @@ and Data Factory inputs never depend on it (A07).
   it as a zip).
 - Extraction never refreshes source data.
 
+### When pbi-tools fails on a file
+
+An error such as `pbi-tools started but the extraction failed (exit code -9 (0xFFFFFFF7))` means pbi-tools launched and then
+failed on that file; a missing or unusable pbi-tools is reported separately as `PREREQUISITE_MISSING`. The message quotes the
+first lines pbi-tools printed that name a problem (its stack trace comes last and is not the cause); the whole output stays in
+`pbi-tools.log` in the item's workspace. The platform never retries with another extractor after a failure: choose
+`--pbix-backend pbixray` yourself if you want the portable reader.
+
+To compare the extractors on one file without sharing it, run on the Windows machine that has the file:
+
+    python scripts/diagnose_extractors.py "C:\path\file.pbix" --pbi-tools "C:\path\pbi-tools.exe" --report diagnose.json
+
+It runs pbi-tools as the platform starts it, as the old standalone tool started it (stdin and process group differ), on a copy
+at a short path, and the portable reader. The report holds exit codes, durations, the first problems pbi-tools reported and its
+last lines, and the PBIX's size bucket and standard part names; paths, URLs, e-mail addresses, GUIDs, connection-string values,
+the file's name, its folders and the user name are removed. Add `--redact-also NAME` for server or report names. Read it before
+sending it; redaction is best effort.
+
 ## Batches and history
 
 `bidoc batch` and the desktop app recognise inputs by shape:
