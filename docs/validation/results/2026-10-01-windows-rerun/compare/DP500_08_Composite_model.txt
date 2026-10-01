@@ -1,0 +1,10 @@
+tables         pbi-tools    6  pbixray    6  only-pbi-tools 0  only-pbixray 0  changed 0
+columns        pbi-tools   42  pbixray   42  only-pbi-tools 0  only-pbixray 0  changed 0
+partitions     pbi-tools    6  pbixray    6  only-pbi-tools 0  only-pbixray 0  changed 0
+measures       pbi-tools    2  pbixray    2  only-pbi-tools 0  only-pbixray 0  changed 0
+relationships  pbi-tools    5  pbixray    5  only-pbi-tools 0  only-pbixray 0  changed 0
+roles          pbi-tools    0  pbixray    0  only-pbi-tools 0  only-pbixray 0  changed 0
+expressions    pbi-tools    3  pbixray    3  only-pbi-tools 0  only-pbixray 0  changed 0
+sources        pbi-tools    6  pbixray    6  only-pbi-tools 0  only-pbixray 0  changed 0
+0 difference(s). Report: C:\validation-results\rerun-20261001-141200\compare\DP500_08_Composite_model.json
+exit=0

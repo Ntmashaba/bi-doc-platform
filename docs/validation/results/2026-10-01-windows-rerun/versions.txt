@@ -1,0 +1,59 @@
+﻿commit: a7421d4ef1beafeb1ee7ab84d396b80736099fe8
+fix e7150a9 contained: yes
+uncommitted entries: ?? pbi-tools/
+pbi-tools zip sha256 BCA88ABB...3876B7 (github release 1.2.0)
+pbi-tools | Copyright (C) Mathias Thierbach 2018-2025
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+See <https://goto.pbi.tools/license> for full license details.
+
+
+{
+  "version": "1.2.0",
+  "edition": "Desktop",
+  "build": "1.2.25006.2036",
+  "pbixProjVersion": "1.0",
+  "pbiBuildVersion": "2.138.782.0",
+  "longPathsEnabled": true,
+  "amoVersion": "19.87.7.0",
+  "toolPath": "D:\\GIT\\bi-doc-platform\\pbi-tools\\pbi-tools.exe",
+  "locale": {
+    "system": "en-ZA (7177)",
+    "ui": "en-US (1033)"
+  },
+  "settings": {
+    "PBITOOLS_LogLevel": null,
+    "PBITOOLS_PbiInstallDir": null,
+    "PBITOOLS_AppDataDir": null,
+    "PBITOOLS_Debug": null,
+    "PBITOOLS_UICulture": null,
+    "PBITOOLS_EffectiveDate": null,
+    "PBITOOLS_DefaultModelSerialization": null,
+    "PBITOOLS_ExternalAmoPath": null
+  },
+  "runtime": {
+    "platform": "Microsoft Windows 10.0.26220 ",
+    "architecture": "X64",
+    "framework": ".NET Framework 4.8.9345.0"
+  },
+  "pbiInstalls": [
+    {
+      "ProductVersion": "2.158.1177.0 (26.09)+a10b99dd55051d4b25e9e28c4a1747d23f7a4f1f",
+      "Is64Bit": true,
+      "InstallDir": "C:\\Program Files\\WindowsApps\\Microsoft.MicrosoftPowerBIDesktop_2.158.1177.0_x64__8wekyb3d8bbwe\\bin",
+      "SettingsDir": "C:\\Users\\<user>\\Microsoft\\Power BI Desktop Store App",
+      "Location": "WindowsStore"
+    }
+  ],
+  "effectivePbiInstallDir": "C:\\Program Files\\WindowsApps\\Microsoft.MicrosoftPowerBIDesktop_2.158.1177.0_x64__8wekyb3d8bbwe\\bin",
+  "pbiSessions": []
+}
+

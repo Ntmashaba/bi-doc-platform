@@ -1,0 +1,62 @@
+{
+  "file": "DP500 11 Dual storage mode.pbix",
+  "differences": 0,
+  "categories": {
+    "tables": {
+      "count_pbi_tools": 6,
+      "count_pbixray": 6,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "columns": {
+      "count_pbi_tools": 42,
+      "count_pbixray": 42,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "partitions": {
+      "count_pbi_tools": 6,
+      "count_pbixray": 6,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "measures": {
+      "count_pbi_tools": 2,
+      "count_pbixray": 2,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "relationships": {
+      "count_pbi_tools": 5,
+      "count_pbixray": 5,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "roles": {
+      "count_pbi_tools": 0,
+      "count_pbixray": 0,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "expressions": {
+      "count_pbi_tools": 3,
+      "count_pbixray": 3,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    },
+    "sources": {
+      "count_pbi_tools": 6,
+      "count_pbixray": 6,
+      "only_in_pbi_tools": [],
+      "only_in_pbixray": [],
+      "changed": {}
+    }
+  }
+}

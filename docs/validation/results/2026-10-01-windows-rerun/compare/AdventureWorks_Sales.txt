@@ -1,0 +1,10 @@
+tables         pbi-tools   10  pbixray   10  only-pbi-tools 0  only-pbixray 0  changed 0
+columns        pbi-tools   62  pbixray   62  only-pbi-tools 0  only-pbixray 0  changed 0
+partitions     pbi-tools   10  pbixray   10  only-pbi-tools 0  only-pbixray 0  changed 0
+measures       pbi-tools   20  pbixray   20  only-pbi-tools 0  only-pbixray 0  changed 0
+relationships  pbi-tools    9  pbixray    9  only-pbi-tools 0  only-pbixray 0  changed 0
+roles          pbi-tools    0  pbixray    0  only-pbi-tools 0  only-pbixray 0  changed 0
+expressions    pbi-tools    0  pbixray    0  only-pbi-tools 0  only-pbixray 0  changed 0
+sources        pbi-tools   10  pbixray   10  only-pbi-tools 0  only-pbixray 0  changed 0
+0 difference(s). Report: C:\validation-results\rerun-20261001-141200\compare\AdventureWorks_Sales.json
+exit=0

@@ -136,8 +136,9 @@ Exit codes: 0 no differences, 1 differences (see the report), 2 one side could n
 report's folder is created if missing; say which).
 
 Expected: possibly non-zero. The baseline run (`docs/validation/results/2026-10-01-windows-baseline/`) found 29 differences, all
-`crossFilteringBehavior` spelling; after the cross-filter normalisation they are expected to be gone, but that is a prediction until
-the five comparisons are rerun on the Windows machine and reported separately. Differences worth recording, not assuming away:
+`crossFilteringBehavior` spelling. After the cross-filter normalisation the rerun
+(`docs/validation/results/2026-10-01-windows-rerun/`) found none, so zero differences is now the expected result for those five
+files. Differences worth recording, not assuming away:
 - expressions that differ only in whitespace (`whitespace_only: true`);
 - connection strings: pbi-tools reads them from the Mashup, pbixray may redact or omit them, so `sources` can differ;
 - objects present in one extract only.
@@ -151,6 +152,9 @@ extract folders from both readers (run `pbi-tools.exe extract FILE -extractFolde
 
 - 2026-10-01 baseline (`docs/validation/results/2026-10-01-windows-baseline/REPORT.md`, kept unmodified): V2 passed on one
   machine; V3 found 29 differences, all one enum spelling; V1 not run.
+- 2026-10-01 rerun after the cross-filter normalisation (`docs/validation/results/2026-10-01-windows-rerun/`): all five comparisons
+  found **0 differences** (baseline: 4, 5, 5, 8 and 7). The two readers agree on every compared fact for those five files; that is
+  not a claim of general parity.
 - Not covered by any run: **row-level-security parity** (all five samples have zero roles), clean-machine installation, live SSAS
   scanning, a genuine matched thin-report/ABF pair.
 
