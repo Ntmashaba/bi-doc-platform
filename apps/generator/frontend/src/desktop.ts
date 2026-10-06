@@ -149,7 +149,7 @@ async function startView(): Promise<void> {
       h("label", { for: "inputs" }, "Inputs"),
       h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
-        ".pbix and .abf files, .bim models and project folders. A .pbip file alone is only a pointer: choose its project folder."),
+        ".pbix and .abf files, .bim models and project folders. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."),
       inputs,
       bridge ? h("p", { class: "actions" },
         h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"),
