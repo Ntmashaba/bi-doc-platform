@@ -31,8 +31,9 @@ def _parser():
                                    "URL tokens cleaned (best effort), and query code withheld unless "
                                    "--include-query-code is given.")
     g.add_argument("--engine", required=True, choices=("power_bi", "adf"))
-    g.add_argument("--source", required=True, help="PBIX or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, PBIR folder, pbi-tools extract folder, "
-                                                   "or ADF Git folder / ARM export / resource JSON")
+    g.add_argument("--source", required=True, help="PBIX or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, "
+                                                   "an SSMS CREATE script of a tabular database (.xmla, with --kind bim), PBIR folder, "
+                                                   "pbi-tools extract folder, or ADF Git folder / ARM export / resource JSON")
     g.add_argument("--kind", required=True, choices=KINDS, help="input kind")
     g.add_argument("--output-dir", required=True)
     g.add_argument("--profile", choices=("local", "shared"), default="local")
@@ -60,11 +61,12 @@ def _parser():
 
     b = sub.add_parser("batch", help="document several inputs; each item succeeds or fails on its own",
                        description="Inputs are recognised by their shape: .pbix and .abf files, PBIP project folders, "
-                                   "TMDL/PBIR folders, model.bim, pbi-tools extracts, ADF Git folders and "
+                                   "TMDL/PBIR folders, model.bim, an SSMS CREATE script of a tabular database "
+                                   "(.xmla, only when named itself), pbi-tools extracts, ADF Git folders and "
                                    "ARM or resource JSON. Any other folder is searched recursively for .pbix and "
                                    ".abf files, .bim models and project folders (a project folder is one input and is "
-                                   "not searched inside; other files are ignored; links, the output folder and "
-                                   ".git/.venv are skipped). Items run one at a time. Exit code 5 means some "
+                                   "not searched inside; other files, .xmla included, are ignored; links, the output "
+                                   "folder and .git/.venv are skipped). Items run one at a time. Exit code 5 means some "
                                    "items failed; retry them with 'bidoc retry ITEM_ID'.")
     b.add_argument("inputs", nargs="+", metavar="INPUT", help="files, project folders, or folders to search")
     b.add_argument("--output-dir", required=True)

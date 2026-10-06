@@ -117,6 +117,17 @@ class StructuredDataSources(Case):
         self.assertEqual(part["sourceType"], "Excel workbook")
         self.assertEqual(part["label"], "Excel workbook · Targets.xlsx")
 
+    def test_a_url_keeps_its_address_but_not_the_account_written_into_it(self):
+        source = {"type": "structured", "name": "Web/rates",
+                  "connectionDetails": {"protocol": "http", "address": {"url": "https://bob:pw123@example.com/api/rates"}}}
+        described = data_sources.describe(source)
+        self.assertEqual(described["location"], "https://example.com/api/rates")
+        self.assertIn('Web.Contents("https://example.com/api/rates")', described["expression"])
+        model = self.load(database([m_table("Rates", "let", '    Source = Json.Document(#"Web/rates")', "in", "    Source")], [source]))
+        text = json.dumps(model)
+        for secret in ("bob", "pw123"):
+            self.assertNotIn(secret, text)
+
     def test_unused_date_parameters_are_not_listed_as_an_unknown_source(self):
         # Microsoft's "AW Internet Sales" sample declares RangeStart and RangeEnd without using them.
         from pbidocgen.primary_sources import build_primary_sources
@@ -177,6 +188,14 @@ class ProviderDataSources(Case):
         self.assertEqual(rows["Tariff"][:5], ("Oracle", "ORAPRD", "", "BILLING", "TARIFF"))
         self.assertEqual(rows["Other"], ("SQL query source", "srv", "db", "dbo", "Other", "Resolved"))
 
+    def test_a_legacy_power_bi_placeholder_query_is_not_shown_as_sql(self):
+        # Pre-2019 Power BI: SELECT * FROM [Age] stands for Power Query packed in the data source. When that
+        # package cannot be read the source is unknown; the placeholder was never run against a database.
+        mashup = {"name": "ds", "connectionString": 'Provider=Microsoft.PowerBI.OleDb;Global Pipe=x;Mashup="not a package";Location=Age'}
+        model = self.load(database([query_table("Age", "ds", "SELECT * FROM [Age]")], [mashup], level=1465))
+        part = model["tables"][0]["partitions"][0]
+        self.assertEqual((part["type"], part["source"]["sourceType"], part["source"]["query"]), ("m", "Unknown", ""))
+
     def test_an_explicit_query_type_still_works(self):
         table = {"name": "T", "columns": [column()], "partitions": [
             {"name": "T", "source": {"type": "query", "dataSource": PROVIDER["name"], "query": "SELECT * FROM dbo.T"}}]}
@@ -232,7 +251,7 @@ class SsmsScripts(Case):
 
     def test_a_script_of_one_table_says_to_script_the_database(self):
         script = {"createOrReplace": {"object": {"database": "Finance", "table": "GL"}, "table": self.tables()[0]}}
-        with self.assertRaisesRegex(ValueError, "does not define a whole database.*Script Database as"):
+        with self.assertRaisesRegex(ValueError, "'createOrReplace' script does not define a whole database.*Script Database as"):
             self.load(script, "table.xmla")
 
     def test_a_processing_script_is_not_mistaken_for_an_empty_model(self):
@@ -240,6 +259,13 @@ class SsmsScripts(Case):
             self.load({"refresh": {"type": "full", "objects": [{"database": "Finance"}]}}, "process.xmla")
         with self.assertRaisesRegex(ValueError, "sequence does not define a database"):
             self.load({"sequence": {"operations": [{"refresh": {"type": "full", "objects": []}}]}}, "seq.xmla")
+
+    def test_json_that_is_not_a_model_is_not_documented_as_an_empty_one(self):
+        for name in ("settings.xmla", "settings.bim"):
+            with self.assertRaisesRegex(ValueError, f"{name} is JSON but not a model definition"):
+                self.load({"version": "1.0", "settings": {"theme": "dark"}}, name)
+        self.assertEqual(self.load({"tables": [{"name": "T", "columns": []}]}, "bare.bim")["tables"][0]["name"], "T")
+        self.assertEqual(self.load({"name": "Empty", "model": {}}, "empty.bim")["tables"], [])
 
     def test_a_file_that_is_neither_json_nor_xml_keeps_the_json_error(self):
         with self.assertRaisesRegex(ValueError, "Could not parse"):

@@ -55,7 +55,7 @@ def load_json_lenient(path: Path) -> dict:
 
 
 # TMSL commands that carry a whole object definition, and the rest (which never do).
-_TMSL_DEFINING = ("create", "createorreplace", "alter")
+_TMSL_DEFINING = {"create": "create", "createorreplace": "createOrReplace", "alter": "alter"}   # as TMSL spells them
 _TMSL_OTHER = ("refresh", "delete", "backup", "restore", "attach", "detach", "synchronize", "mergepartitions")
 
 
@@ -93,9 +93,9 @@ def unwrap_tmsl_script(doc):
     database = _scripted_database(doc)
     if database is not None:
         return database
-    for name in _TMSL_DEFINING:
+    for name, spelled in _TMSL_DEFINING.items():
         if isinstance(commands.get(name), dict):
-            raise ValueError(f"This TMSL '{name}' script does not define a whole database (it scripts a single "
+            raise ValueError(f"This TMSL '{spelled}' script does not define a whole database (it scripts a single "
                              "object). " + how)
     for name in _TMSL_OTHER:
         if name in commands and len(commands) == 1:
@@ -109,7 +109,12 @@ def load_model_file(path: Path) -> tuple[dict, str]:
     from .assl_reader import looks_like_xml, read_assl_model
     if looks_like_xml(path):
         return read_assl_model(path), "ASSL"
-    return unwrap_tmsl_script(load_json_lenient(path)), "TMSL"
+    doc = unwrap_tmsl_script(load_json_lenient(path))
+    if isinstance(doc, dict) and "model" not in doc and "tables" not in doc:
+        # Any other JSON object used to load as a model with no tables, and a document was written for it.
+        raise ValueError(f"{path.name} is JSON but not a model definition: it has no \"model\" object. Expected a "
+                         "model.bim, or a TMSL script that creates a database.")
+    return doc, "TMSL"
 
 
 def expr_text(value) -> str:
@@ -387,9 +392,14 @@ def parse_model(model_path: str | Path) -> dict:
         partitions = []
         for part in tbl.get("partitions", []):
             src = part.get("source", {}) or {}
+            data_source = next((d for d in model.get("dataSources", [])
+                                if d.get("name") == src.get("dataSource")), None)
             # A provider data source's partition is {"query": ..., "dataSource": ...}; Analysis Services
-            # writes no "type" for it.
-            p_mode = src.get("type") or ("query" if "query" in src and "expression" not in src else "m")
+            # writes no "type" for it. Not for a pre-2019 Power BI mashup source: its query is a placeholder
+            # (SELECT * FROM [Age]) for Power Query that `inline_legacy_mashups` could not find, so the source
+            # stays unknown rather than being shown as SQL that was never run.
+            untyped_sql = "query" in src and "expression" not in src and not is_mashup_source(data_source)
+            p_mode = src.get("type") or ("query" if untyped_sql else "m")
             expression = expr_text(src.get("query", src.get("expression")) if p_mode == "query" else src.get("expression"))
             if p_mode == "entity":
                 # Direct Lake / Fabric: the upstream object is named outright
@@ -413,8 +423,6 @@ def parse_model(model_path: str | Path) -> dict:
                 }
             else:
                 source = extract_m_source(expression, p_mode)
-            data_source = next((d for d in model.get("dataSources", [])
-                                if d.get("name") == src.get("dataSource")), None)
             source = enrich_source(source, expression, p_mode, data_source)
             source["label"] = source_label(source)
             partitions.append({

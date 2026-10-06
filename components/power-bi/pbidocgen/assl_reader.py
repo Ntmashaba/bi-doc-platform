@@ -15,8 +15,10 @@ after the reader is unchanged:
     role          Role, with DatabasePermission and DimensionPermission AllowedRowsExpression
 
 Static text only: nothing is executed and no connection is made. A document type declaration is refused, so
-entity expansion cannot be used against the parser. Role members, impersonation accounts and annotations are not
-read. Multidimensional cubes use the same XML but are not tabular models, and are refused by name.
+entity expansion cannot be used against the parser: the file is decoded here (UTF-16 with or without a byte order
+mark, UTF-8, else Windows-1252), text that still holds a NUL character is refused, and the parser is given that
+same text, so it cannot read the file in another encoding than the check did. Role members, impersonation
+accounts and annotations are not read. Multidimensional cubes use the same XML but are not tabular models, and are refused by name.
 
 The table, column, partition, data source, measure, relationship and role shapes are checked against Microsoft's
 1103 scripts (microsoft/Analysis-Services, AlmToolkit test data). Calculated columns, hierarchies and DirectQuery
@@ -28,12 +30,14 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-_ENCODINGS = ("utf-8-sig", "utf-16", "utf-8")
+_BOMS = ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16"))
 _DATA_TYPES = {
     "wchar": "string", "char": "string", "bigint": "int64", "integer": "int64", "smallint": "int64",
     "tinyint": "int64", "unsignedbigint": "int64", "unsignedint": "int64", "unsignedsmallint": "int64",
     "unsignedtinyint": "int64", "double": "double", "single": "double", "currency": "decimal",
     "numeric": "decimal", "date": "dateTime", "boolean": "boolean", "binary": "binary",
+    # A calculated column's key column is typed Empty: the type comes from its DAX and is not written down.
+    "empty": "",
 }
 # 'Table'[Measure]= at the start of a statement; '' and ]] escape the quote and the bracket.
 _MEASURE = re.compile(r"^[ \t]*CREATE\s+MEASURE\s+'((?:[^']|'')*)'\s*\[((?:[^\]]|\]\])*)\]\s*=", re.I | re.M)
@@ -71,24 +75,37 @@ def _type(node) -> str:
 
 
 def looks_like_xml(path: Path) -> bool:
-    head = Path(path).read_bytes()[:4096]
-    for encoding in _ENCODINGS:
-        try:
-            return head.decode(encoding).lstrip("﻿ \t\r\n").startswith("<")
-        except UnicodeDecodeError:
-            continue
-    return False
+    """Whether the file's first character is "<". Decided on the bytes, so it does not depend on where a read of
+    the head cuts a character or on which 8-bit code page the file is in."""
+    with Path(path).open("rb") as handle:
+        head = handle.read(4096)
+    for bom, _ in _BOMS:
+        if head.startswith(bom):
+            head = head[len(bom):]
+            break
+    return head.replace(b"\x00", b"").lstrip(b" \t\r\n").startswith(b"<")     # NULs: the other half of UTF-16
+
+
+def _decode(raw: bytes) -> str | None:
+    """The file's text, or None when it cannot be read as text.
+
+    The encoding is decided from the bytes, not by trying decoders until one does not fail: UTF-16 without a byte
+    order mark also decodes as UTF-8, to text with a NUL after every character, and that text hid a document type
+    declaration from the check in `_parse` while the parser still read it as UTF-16."""
+    encoding = next((name for bom, name in _BOMS if raw.startswith(bom)), None)
+    if encoding is None and b"\x00" in raw[:64]:
+        encoding = "utf-16-le" if raw[1:2] == b"\x00" else "utf-16-be"
+    try:
+        text = raw.decode(encoding or "utf-8")
+    except UnicodeDecodeError:
+        if encoding:
+            return None
+        text = raw.decode("cp1252", errors="replace")     # an 8-bit file saved by an older editor
+    return None if "\x00" in text else text
 
 
 def _parse(path: Path):
-    raw = path.read_bytes()
-    text = None
-    for encoding in _ENCODINGS:
-        try:
-            text = raw.decode(encoding)
-            break
-        except UnicodeDecodeError:
-            continue
+    text = _decode(path.read_bytes())
     if text is None:
         raise ValueError(f"Could not read {path.name} as XML text in any known encoding.")
     if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", text, re.I):
@@ -96,7 +113,7 @@ def _parse(path: Path):
                          "does, so the file is not read.")
     try:
         # The declared encoding is the one the file was saved in, which the text no longer is.
-        return ET.fromstring(re.sub(r"^\s*<\?xml[^>]*\?>", "", text.lstrip("﻿")))
+        return ET.fromstring(re.sub(r"^\s*<\?xml[^>]*\?>", "", text.lstrip("\ufeff")))
     except ET.ParseError as exc:
         raise ValueError(f"{path.name} is not well-formed XML: {exc}") from None
 

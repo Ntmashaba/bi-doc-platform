@@ -95,8 +95,9 @@ def equivalent_m(ds: dict) -> str | None:
             call = f'{server_only}({_m_string(server)})'
     elif protocol in _LOCATIONS:
         _, function, key = _LOCATIONS[protocol]
-        if _text(address.get(key)):
-            call = f'{function}({_m_string(_text(address.get(key)))})'
+        location = cs.strip_userinfo(_text(address.get(key)))      # no user:password@, as in `describe`
+        if location:
+            call = f'{function}({_m_string(location)})'
     elif protocol == 'odbc':
         options = address.get('options') if isinstance(address.get('options'), dict) else {}
         named = {str(k).lower(): _text(v) for k, v in options.items()}

@@ -66,8 +66,13 @@ _URL_SECRET = re.compile(r"(?i)([?&](?:sig|token|access_token|code|key|apikey|ap
 # runs to the first file extension followed by a boundary (so "Budget 2024.xlsx" keeps its
 # space); without an extension it ends at the first whitespace after the last separator.
 # UNC shares (\\server\share) and URLs are shared locations and are not matched.
+# A drive letter straight after "/" is normally part of a URL or a longer path and is left alone, with one
+# exception: a single word and a slash in front of it, which is how Analysis Services names a structured data
+# source after its address (File/C:\Users\..., Folder/C:\Users\...). There the path starts after the slash
+# (group "named"), so the kind stays readable and the reference is the same as for the bare path.
 _PATH_START = re.compile(r"file:/{2,3}(?=[A-Za-z]:[\\/]|/?(?:home|Users|root)/)|\\\\\?\\[A-Za-z]:(?=[\\/])|(?<![\w\\/.])[A-Za-z]:(?=[\\/])"
-                         r"|(?<![\w.:/\\])/(?:home|Users|root)(?=/)")
+                         r"|(?<![\w.:/\\])/(?:home|Users|root)(?=/)"
+                         r"|(?<![\w\\/.:])[A-Za-z]\w*/(?P<named>[A-Za-z]:(?=[\\/]))")
 _PATH_RUN = re.compile(r"""[^"'<>|\r\n\t*?`]*""")
 _EXTENSION = re.compile(r"""\.[A-Za-z0-9]{1,8}(?=$|[\s"',;)\]}])""")
 WITHHELD_PATH = re.compile(r"personal location withheld \[ref ([0-9a-f]{64})\]")
@@ -221,14 +226,15 @@ def withhold_personal_paths(text: str) -> str:
         return text
     out, pos = [], 0
     for m in _PATH_START.finditer(text):
-        if m.start() < pos:
+        start = m.start("named") if m.group("named") else m.start()
+        if start < pos:
             continue
-        end = _path_end(text, m.start())
-        path = text[m.start():end]
+        end = _path_end(text, start)
+        path = text[start:end]
         norm = re.sub(r"^(?:file:/+|\\\\\?\\)", "", path).replace("\\", "/").rstrip("/")
         name = norm.rsplit("/", 1)[-1] or "folder"
         ref = hashlib.sha256(norm.lower().encode("utf-8")).hexdigest()
-        out.append(text[pos:m.start()] + f"{name} — personal location withheld [ref {ref}]")
+        out.append(text[pos:start] + f"{name} — personal location withheld [ref {ref}]")
         pos = end
     return "".join(out) + text[pos:]
 

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pbidocgen.assl_reader import read_assl_model
+from pbidocgen.assl_reader import looks_like_xml, read_assl_model
 from pbidocgen.model_parser import parse_model
 from pbidocgen.source_objects import build_source_objects
 
@@ -83,7 +83,8 @@ def database(level="1103", engine="<StorageEngineUsed>InMemory</StorageEngineUse
         attribute("RegionKey"), attribute("OldRegionKey", "Old Region Key"),
         attribute("Amount", data_type="Currency", extra="<AttributeHierarchyVisible>false</AttributeHierarchyVisible>"),
         attribute("OrderDate", "Order Date", data_type="Date"),
-        attribute("Margin", data_type="Double", binding='<Source xsi:type="ddl200_200:ExpressionBinding">'
+        # A calculated column's key column is typed Empty (AMO writes OleDbType.Empty); its type comes from the DAX.
+        attribute("Margin", data_type="Empty", binding='<Source xsi:type="ddl200_200:ExpressionBinding">'
                   "<Expression>'Sales'[Amount] * 0.2</Expression></Source>"),
     ], extra='<DimensionPermissions><DimensionPermission><ID>P</ID><RoleID>Role</RoleID><Read>Allowed</Read>'
              "<AllowedRowsExpression>'Sales'[RegionKey] = 1</AllowedRowsExpression></DimensionPermission></DimensionPermissions>"
@@ -200,6 +201,7 @@ class Model(Case):
         self.assertEqual((sales["Amount"]["dataType"], sales["Amount"]["isHidden"]), ("decimal", True))
         self.assertEqual(sales["Order Date"]["dataType"], "dateTime")
         self.assertEqual((sales["Margin"]["isCalculated"], sales["Margin"]["expression"]), (True, "'Sales'[Amount] * 0.2"))
+        self.assertEqual(sales["Margin"]["dataType"], "")              # not written in the file, so not "Empty"
         region = {c["name"]: c for c in tables["Bob's Region"]["columns"]}
         self.assertEqual(region["Region Name"]["sortByColumn"], "Sort Order")
         self.assertEqual(tables["Bob's Region"]["hierarchies"][0]["levels"], ["Region Name"])
@@ -263,6 +265,47 @@ class Files(Case):
         bomb = '<!DOCTYPE x [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;">]>\n' + create()
         with self.assertRaisesRegex(ValueError, "declares a document type or entities"):
             self.load(bomb, "bomb.xmla")
+
+    def test_a_document_type_declaration_is_refused_whatever_the_encoding(self):
+        # UTF-16 without a byte order mark also decodes as UTF-8, to text with a NUL after every character. The
+        # check has to read the same text the parser does, or the declaration passes and its entities expand.
+        bomb = ('<!DOCTYPE x [<!ENTITY e "expanded">]>'
+                + create().replace("<Name>Finance</Name>", "<Name>&e;</Name>", 1))
+        for encoding in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+            path = self.tmp / f"bomb-{encoding}.xmla"
+            path.write_bytes(bomb.encode(encoding))
+            with self.assertRaisesRegex(ValueError, "declares a document type or entities", msg=encoding):
+                parse_model(path)
+
+    def test_utf16_without_a_byte_order_mark_reads_the_same(self):
+        expected = self.sources(self.load())
+        for encoding in ("utf-16-le", "utf-16-be"):
+            path = self.tmp / f"{encoding}.xmla"
+            path.write_bytes(create().encode(encoding))
+            self.assertEqual(self.sources(parse_model(path)), expected, encoding)
+
+    def test_text_that_is_not_in_a_known_encoding_is_refused(self):
+        path = self.tmp / "utf32.xmla"
+        path.write_bytes(create().encode("utf-32"))
+        with self.assertRaisesRegex(ValueError, "Could not read utf32.xmla as XML text"):
+            parse_model(path)
+
+    def test_a_character_cut_by_the_first_read_does_not_turn_the_file_into_json(self):
+        # Whether a file is XML is decided on its first 4096 bytes; a two-byte character across that boundary
+        # used to fail the decoding, and the file was then reported as JSON that does not parse.
+        expected = self.sources(self.load())
+        text = "<!-- " + "x" * 6000 + " -->" + create()
+        for offset in (4094, 4095, 4096):
+            raw = text.encode("utf-8")
+            path = self.tmp / f"cut-{offset}.xmla"
+            path.write_bytes(raw[:offset] + "é".encode("utf-8") + raw[offset:])
+            self.assertTrue(looks_like_xml(path), offset)
+            self.assertEqual(self.sources(parse_model(path)), expected, offset)
+
+    def test_a_windows_1252_file_is_read(self):
+        path = self.tmp / "ansi.xmla"
+        path.write_bytes(create().replace("<Name>Tariff</Name>", "<Name>Tarifé</Name>", 1).encode("cp1252"))
+        self.assertIn("Tarifé", [t["name"] for t in parse_model(path)["tables"]])
 
     def test_broken_xml_is_reported_as_such(self):
         with self.assertRaisesRegex(ValueError, "not well-formed XML"):
