@@ -145,7 +145,7 @@ async function startView() {
     };
     mount(h("h1", {}, "New batch"), h("div", { class: "card" }, h("label", { for: "inputs" }, "Inputs"), h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
-        ".pbix and .abf files, .bim models and project folders. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
+        ".pbix and .abf files, .bim models and project folders. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
             const f = await bridge.pick_folder();
             if (f[0]) {
                 output.value = f[0];

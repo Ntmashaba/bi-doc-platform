@@ -25,6 +25,7 @@ These rules are a safety net over every string in the payload, including when `q
 |---|---|
 | The PBIX/PBIP being documented (`sourcePath`, `pbixSource`, report location) | withheld; local output and history keep it |
 | A personal file data source, e.g. `C:\Users\Alice\Data\Budget.xlsx` | withheld; the file name and a stable reference are kept |
+| An Analysis Services data source named after such a path, e.g. `File/C:\Users\Alice\Data\Budget.xlsx` | the path after the kind is withheld the same way, with the same reference: `File/Budget.xlsx — personal location withheld [ref …]`. A drive letter after `/` inside a URL or a longer path is left alone |
 | An ADF repository file, e.g. `pipeline/LoadSales.json` | kept (relative) |
 | UNC shares, SharePoint, Blob and ADLS locations | kept: real shared dependencies used for lineage |
 

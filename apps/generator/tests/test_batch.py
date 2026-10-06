@@ -84,6 +84,9 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(classify(self.tmp / "p")["kind"], "pbip")
         self.assertEqual(classify(self.pbix)["kind"], "pbix")
         self.assertEqual(classify(self.model)["kind"], "bim")
+        script = self.tmp / "Sales create.xmla"                      # an SSMS CREATE script of a tabular database
+        script.write_text('{"create": {"database": {"name": "Sales", "compatibilityLevel": 1500, "model": {"tables": []}}}}')
+        self.assertEqual((classify(script)["engine"], classify(script)["kind"]), ("power_bi", "bim"))
         self.assertEqual(classify(adf_factory(self.tmp / "f"))["kind"], "adf_git")
 
     def test_pbix_is_extracted_in_its_own_workspace(self):

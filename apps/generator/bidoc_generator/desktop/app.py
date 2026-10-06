@@ -294,7 +294,7 @@ class DesktopApi:
     def pick_files(self):
         import webview  # noqa: PLC0415
         chosen = self.window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=(
-            "BI models and factories (*.pbix;*.abf;*.pbip;*.bim;*.json)", "All files (*.*)"))
+            "BI models and factories (*.pbix;*.abf;*.pbip;*.bim;*.xmla;*.json)", "All files (*.*)"))
         return list(chosen or [])
 
     def pick_folder(self):

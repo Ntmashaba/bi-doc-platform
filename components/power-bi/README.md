@@ -196,6 +196,8 @@ and a folder combined with "Combine files". Both use invented names;
 | Input | Read |
 |---|---|
 | Semantic model | TMDL (`definition/` folder), TMSL (`model.bim`), and pbi-tools extracts in Raw, folder and TMDL layouts |
+| Analysis Services tabular model | `Model.bim` at compatibility level 1200 or later, or the script SSMS writes for **Script Database as → CREATE To** (also CREATE OR REPLACE and ALTER; usually saved as `.xmla`, and JSON at these levels). Pass either to `--model`. Sources come from the model's data sources: provider connection strings with SQL partitions, and structured data sources named in Power Query (`#"SQL/server;database"`) |
+| Analysis Services tabular model, levels 1100 and 1103 | The XML definition: `Model.bim`, or the SSMS **Script Database as → CREATE To** script (`.xmla`). Tables, columns, partitions and their data sources, measures, relationships, hierarchies and roles are read; KPIs, perspectives, translations and role members are not. Multidimensional cubes use the same XML and are refused by name |
 | Report | PBIR (`definition/pages/...`), the legacy single-file `report.json` / PBIX `Layout`, and pbi-tools' split report folders. PBIR inside a PBIX is read from the file itself |
 | Legacy models | Pre-2019 models whose tables read `SELECT * FROM [Table]` from a `Microsoft.PowerBI.OleDb` source: the Power Query packed in that source is traced instead |
 

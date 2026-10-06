@@ -13,9 +13,15 @@ def source_definitions(model):
     for expression in model.get('expressions', []):
         if expression.get('kind', '').lower() == 'm':
             add(expression['name'], expression.get('expression') or '')
+    # A structured data source (Analysis Services 1400+) is named in M like a shared query: #"SQL/server;db".
+    # A shared expression of the same name wins. A table of the same name does not: in a model with data
+    # sources, M can name a data source or an expression, never a table.
+    sources = {d['name']: d['expression'] for d in model.get('dataSources') or [] if d.get('expression')}
+    for name, code in sources.items():
+        definitions.setdefault(name, code)
     for table in model['tables']:
         parts = table.get('partitions', [])
-        if len(parts) == 1 and parts[0]['type'] == 'm':
+        if len(parts) == 1 and parts[0]['type'] == 'm' and table['name'] not in sources:
             add(table['name'], parts[0].get('expression') or '')
     return definitions
 

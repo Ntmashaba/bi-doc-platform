@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+from .data_sources import source_type as data_source_type
+
 _TOKEN = re.compile(r'"(?:[^"]|"")*"|//[^\n]*|/\*.*?\*/', re.S)
 _FUNCTION = re.compile(r'\b(Sql\.Database[s]?|Value\.NativeQuery|Odbc\.Query)\s*\(', re.I)
 
@@ -88,7 +90,8 @@ def enrich_source(source, expression, mode, data_source=None):
                 source["server"] = value
             elif key in ("initial catalog", "database"):
                 source["database"] = value
-        source["sourceType"] = "SQL query source"
+        # The provider or protocol says what kind of database it is; "SQL query source" when it does not.
+        source["sourceType"] = data_source_type(ds) or "SQL query source"
         return source
 
     calls = list(_calls(expression))

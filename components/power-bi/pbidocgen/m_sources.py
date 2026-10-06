@@ -179,6 +179,8 @@ ENTERED = {'#table', 'Table.FromRows', 'Table.FromRecords', 'Table.FromColumns',
 # Values generated inside Power Query (date lists, number ranges).
 GENERATORS = {'List.Dates', 'List.DateTimes', 'List.Numbers', 'List.Generate', 'List.Times', 'List.Durations'}
 FROM_LIST = {'Table.FromList'}
+# Constants written as constructors, such as an incremental-refresh RangeStart of #datetime(2024, 1, 1, 0, 0, 0).
+SCALAR_CONSTRUCTORS = {'#date', '#datetime', '#datetimezone', '#time', '#duration'}
 # Standard-library namespaces: a call into one of these is never a data connector.
 LIBRARY = {'Table', 'List', 'Text', 'Number', 'Date', 'DateTime', 'DateTimeZone', 'Duration', 'Time',
            'Record', 'Value', 'Binary', 'BinaryFormat', 'Json', 'Csv', 'Xml', 'Excel', 'Splitter', 'Combiner',
@@ -373,6 +375,9 @@ class Tracer:
         if hashed or (ts[0].kind == 'id' and 1 in pairs and pairs[1] == len(ts) - 1):
             fn = '#' + ts[1].value if hashed else ts[0].value
             arg_tokens = split(ts[3:-1] if hashed else ts[2:-1])
+            if fn in SCALAR_CONSTRUCTORS:
+                # A date or duration value: it reads no data, like 1 or "text".
+                return Value(text=''.join(t.value for t in ts), kind='literal')
             if fn in ENTERED or fn in GENERATORS or fn in FROM_LIST:
                 return self.internal(fn, arg_tokens, resolve)
             if fn in TRANSFORMS or fn in READERS:

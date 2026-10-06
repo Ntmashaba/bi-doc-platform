@@ -42,6 +42,11 @@ class Text(unittest.TestCase):
             "/home/alice/data/x.csv": "x.csv — ",
             "/Users/bob/Desktop/report.pbix": "report.pbix — ",
             r"\\?\C:\Users\x\y.csv": "y.csv — ",
+            # An Analysis Services structured data source is named after its address: kind, slash, path.
+            r"File/C:\Users\Alice\Documents\Budget 2024.xlsx": "File/Budget 2024.xlsx — ",
+            r"Folder/C:\Users\Alice\Data": "Folder/Data — ",
+            r"Unresolved M reference: File/C:\Users\Alice\x.csv": "Unresolved M reference: File/x.csv — ",
+            r'Source = #"File/C:\Users\Alice\x.csv",': 'Source = #"File/x.csv — ',
         }
         for raw, expected in cases.items():
             out = withhold_personal_paths(raw)
@@ -52,7 +57,10 @@ class Text(unittest.TestCase):
     def test_shared_and_relative_locations_are_kept(self):
         for keep in (r"\\fileserver\finance\budget.xlsx", "https://contoso.sharepoint.com/sites/x/Budget.xlsx",
                      "abfss://raw@lake.dfs.core.windows.net/a/b.csv", "pipeline/LoadSales.json",
-                     "file://server/share/x.csv", "ratio 3:1 of a/b", "SUM(Sales[Amount])", "https://x.com/home/a"):
+                     "file://server/share/x.csv", "ratio 3:1 of a/b", "SUM(Sales[Amount])", "https://x.com/home/a",
+                     # a drive letter after "/" inside a URL or a longer path is not a data source name
+                     "https://x.com/C:/a/b.csv", "https://host/File/C:/a/b.csv", "\\\\srv\\share\\File/C:\\a.csv",
+                     "abfss://raw@lake.dfs.core.windows.net/a/C:/b.csv", "either/or:/x"):
             self.assertEqual(withhold_personal_paths(keep), keep)
 
     def test_distinct_files_stay_distinct_and_refs_are_stable(self):
@@ -61,6 +69,10 @@ class Text(unittest.TestCase):
         self.assertNotEqual(a, b)
         self.assertEqual(a, withhold_personal_paths(r"C:\Users\Alice\Data\Budget.xlsx"))
         self.assertEqual(a, withhold_personal_paths("c:/users/alice/data/budget.xlsx").replace("budget", "Budget"))
+
+    def test_a_path_in_a_data_source_name_has_the_reference_of_the_bare_path(self):
+        bare = withhold_personal_paths(r"C:\Users\Alice\Data\Budget.xlsx")
+        self.assertEqual(withhold_personal_paths(r"File/C:\Users\Alice\Data\Budget.xlsx"), "File/" + bare)
 
     def test_reference_is_the_full_digest(self):
         import hashlib
@@ -123,6 +135,30 @@ class SharedPublication(unittest.TestCase):
         self.assertIn(r"\\fileserver\finance\rates.csv", paths)            # shared network location kept
         self.assertTrue(any("sharepoint.com" in (o["bindings"][0]["endpoint"]["url"] or "") or
                             "sharepoint.com" in o["object_id"] for o in sources.values()))
+
+    def test_a_structured_data_source_named_after_a_personal_path_is_withheld(self):
+        # Analysis Services names a structured data source after its address, so the path is in the name, and the
+        # name is repeated wherever the document says what a table was traced from.
+        name = r"File/C:\Users\Alice\Documents\Budget 2024.xlsx"
+        doc = {"compatibilityLevel": 1500, "model": {
+            "dataSources": [{"type": "structured", "name": name, "connectionDetails": {
+                "protocol": "file", "address": {"path": r"C:\Users\Alice\Documents\Budget 2024.xlsx"}}}],
+            "tables": [{"name": "Budget", "columns": [{"name": "A"}], "partitions": [{"name": "Budget", "source": {
+                "type": "m", "expression": f'let Source = Excel.Workbook(#"{name}", null, true) in Source'}}]}]}}
+        folder = self.tmp / "named"
+        folder.mkdir()
+        (folder / "model.bim").write_text(json.dumps(doc), encoding="utf-8")
+
+        def publish(profile):
+            r = generate(GenerateRequest(engine="power_bi", source_path=str(folder / "model.bim"), source_kind="bim",
+                                         output_dir=str(self.tmp / f"named-{profile}"), environment="Production", profile=profile))
+            self.assertEqual(r.status, "completed", r.errors)
+            return Path(r.artifact_path).read_text(encoding="utf-8")
+
+        self.assertIn("Alice", publish("local"))
+        shared = publish("shared")
+        self.assertNotIn("Alice", shared)
+        self.assertIn("File/Budget 2024.xlsx — personal location withheld", shared)
 
     def test_source_ids_are_stable_across_revisions(self):
         first = set(self.sources(self.publish("shared", out="a")))

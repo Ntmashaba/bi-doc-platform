@@ -3,6 +3,8 @@
 Accepts either format a Power BI project can use:
 
     model.bim                       TMSL, a single JSON document
+    Model.bim / script.xmla         an Analysis Services tabular model: JSON at compatibility level 1200 and
+                                    later (also inside an SSMS CREATE script), XML at 1100 and 1103
     Sales.SemanticModel/            a project folder holding either format
     Sales.SemanticModel/definition/ TMDL, a folder of .tmdl text files
 
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+from .data_sources import describe_all
 from .dax_lexer import mask_dax, REFERENCE
 from .legacy_mashup import is_mashup_source, location, members, section_text
 from .input_validation import validate_model
@@ -49,6 +52,69 @@ def load_json_lenient(path: Path) -> dict:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             last_err = exc
     raise ValueError(f"Could not parse {path} as JSON in any known encoding: {last_err}")
+
+
+# TMSL commands that carry a whole object definition, and the rest (which never do).
+_TMSL_DEFINING = {"create": "create", "createorreplace": "createOrReplace", "alter": "alter"}   # as TMSL spells them
+_TMSL_OTHER = ("refresh", "delete", "backup", "restore", "attach", "detach", "synchronize", "mergepartitions")
+
+
+def _scripted_database(command) -> dict | None:
+    """The database a single create / createOrReplace / alter command defines, if it defines a whole one."""
+    if not isinstance(command, dict):
+        return None
+    for key, body in command.items():
+        if str(key).lower() in _TMSL_DEFINING and isinstance(body, dict):
+            database = body.get("database")
+            if isinstance(database, dict) and isinstance(database.get("model"), dict):
+                return database
+    return None
+
+
+def unwrap_tmsl_script(doc):
+    """The database definition inside a TMSL command script, or `doc` itself when it is not a script.
+
+    SSMS "Script Database as > CREATE To" writes a model at compatibility level 1200 or later as
+    ``{"create": {"database": {...}}}`` (CREATE OR REPLACE and ALTER add an "object" beside it), usually in a
+    file named .xmla. The database object inside is the same document as a model.bim. A ``sequence`` is searched
+    for its first command that defines a database.
+    """
+    if not isinstance(doc, dict) or "model" in doc or "tables" in doc:
+        return doc
+    how = "In SSMS, right-click the database > Script > Script Database as > CREATE To."
+    commands = {str(key).lower(): value for key, value in doc.items()}
+    if "sequence" in commands:
+        operations = commands["sequence"].get("operations") if isinstance(commands["sequence"], dict) else None
+        for operation in operations if isinstance(operations, list) else []:
+            database = _scripted_database(operation)
+            if database is not None:
+                return database
+        raise ValueError("This TMSL sequence does not define a database. " + how)
+    database = _scripted_database(doc)
+    if database is not None:
+        return database
+    for name, spelled in _TMSL_DEFINING.items():
+        if isinstance(commands.get(name), dict):
+            raise ValueError(f"This TMSL '{spelled}' script does not define a whole database (it scripts a single "
+                             "object). " + how)
+    for name in _TMSL_OTHER:
+        if name in commands and len(commands) == 1:
+            raise ValueError(f"This is a TMSL '{name}' command, not a model definition. " + how)
+    return doc
+
+
+def load_model_file(path: Path) -> tuple[dict, str]:
+    """(model.bim document, format name) for a model file: a model.bim, a TMSL script of a database, or the XML
+    definition of a tabular model at compatibility level 1100 or 1103 (a Model.bim or an SSMS CREATE script)."""
+    from .assl_reader import looks_like_xml, read_assl_model
+    if looks_like_xml(path):
+        return read_assl_model(path), "ASSL"
+    doc = unwrap_tmsl_script(load_json_lenient(path))
+    if isinstance(doc, dict) and "model" not in doc and "tables" not in doc:
+        # Any other JSON object used to load as a model with no tables, and a document was written for it.
+        raise ValueError(f"{path.name} is JSON but not a model definition: it has no \"model\" object. Expected a "
+                         "model.bim, or a TMSL script that creates a database.")
+    return doc, "TMSL"
 
 
 def expr_text(value) -> str:
@@ -194,12 +260,12 @@ def load_model_document(model_path: str | Path) -> tuple[dict, str, Path]:
         if path.suffix.lower() in (".abf", ".pbix"):
             from .portable import model_document
             return model_document(path), "PBIXRay", path
-        return load_json_lenient(path), "TMSL", path
+        return (*load_model_file(path), path)
 
     # A folder: prefer an explicit model.bim, else look for TMDL.
     for candidate in (path / "model.bim", path / "definition" / "model.bim"):
         if candidate.is_file():
-            return load_json_lenient(candidate), "TMSL", candidate
+            return (*load_model_file(candidate), candidate)
 
     definition = find_definition_dir(path)
     if definition is not None:
@@ -326,7 +392,14 @@ def parse_model(model_path: str | Path) -> dict:
         partitions = []
         for part in tbl.get("partitions", []):
             src = part.get("source", {}) or {}
-            p_mode = src.get("type", "m")
+            data_source = next((d for d in model.get("dataSources", [])
+                                if d.get("name") == src.get("dataSource")), None)
+            # A provider data source's partition is {"query": ..., "dataSource": ...}; Analysis Services
+            # writes no "type" for it. Not for a pre-2019 Power BI mashup source: its query is a placeholder
+            # (SELECT * FROM [Age]) for Power Query that `inline_legacy_mashups` could not find, so the source
+            # stays unknown rather than being shown as SQL that was never run.
+            untyped_sql = "query" in src and "expression" not in src and not is_mashup_source(data_source)
+            p_mode = src.get("type") or ("query" if untyped_sql else "m")
             expression = expr_text(src.get("query", src.get("expression")) if p_mode == "query" else src.get("expression"))
             if p_mode == "entity":
                 # Direct Lake / Fabric: the upstream object is named outright
@@ -350,8 +423,6 @@ def parse_model(model_path: str | Path) -> dict:
                 }
             else:
                 source = extract_m_source(expression, p_mode)
-            data_source = next((d for d in model.get("dataSources", [])
-                                if d.get("name") == src.get("dataSource")), None)
             source = enrich_source(source, expression, p_mode, data_source)
             source["label"] = source_label(source)
             partitions.append({
@@ -628,6 +699,7 @@ def parse_model(model_path: str | Path) -> dict:
         "sourcePath": str(bim_path),
         "compatibilityLevel": doc.get("compatibilityLevel"),
         "culture": model.get("culture"),
+        "dataSources": describe_all(model),
         "tables": tables_out,
         "measures": measures_flat,
         "relationships": relationships_out,
