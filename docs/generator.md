@@ -18,7 +18,7 @@ bidoc desktop                                                                   
 | Option | Meaning |
 |---|---|
 | `--engine` | `power_bi` or `adf` |
-| `--kind` | Power BI: `pbix` (extracted first: pbi-tools if configured, otherwise the portable reader, see `portable-extraction.md`), `abf` (Tabular backup), `pbip`, `tmdl`, `bim`, `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources` |
+| `--kind` | Power BI: `pbix` (extracted first: pbi-tools if configured, otherwise the portable reader, see `portable-extraction.md`), `abf` (Tabular backup), `pbip`, `tmdl`, `bim` (a `model.bim`, or an SSMS CREATE script of a tabular database saved as `.xmla`; JSON at compatibility level 1200 and later, XML at 1100 and 1103), `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources` |
 | `--profile local` (default) | Everything the engines produce, query code included, for your own use |
 | `--profile shared` | Projected for the shared library: machine paths removed, credentials, URL tokens and entered data cleaned (best effort), query code withheld |
 | `--include-query-code` | Shared profile only: publish M/SQL as written. The cleaning above still runs, but it is not a guarantee |
@@ -83,6 +83,9 @@ Inspect the report before sharing it. The script shows how the extractors differ
 - PBIP project folders, or a `.pbip` file whose `.SemanticModel` folder sits beside it (a lone
   pointer is refused);
 - TMDL and PBIR folders, and `model.bim`;
+- an Analysis Services tabular model: its `Model.bim`, or the script SSMS writes for **Script Database as → CREATE To**
+  (`.xmla`), at compatibility level 1100 and later. A `.xmla` file is read only when it is named or added itself;
+  what is read and what is not is in `components/power-bi/README.md`;
 - pbi-tools extracts;
 - Data Factory Git folders, and ARM or resource JSON.
 
@@ -93,7 +96,8 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
   inside, so a model's own files or a factory's individual JSON files are never queued separately. A Data Factory Git folder
   needs JSON in at least one of its `pipeline`, `dataset`, `linkedService`, `dataflow`, `trigger` or `factory` folders, so a
   reports folder that merely has a subfolder with one of those names is still a container;
-- other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export);
+- other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export)
+  and `.xmla` (most are processing scripts; a CREATE script of a database is read when it is selected itself);
 - the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar are left out, as a
   search target and as a selection (selecting one is a failed item that says why);
 - **links are never followed**: a symbolic link or Windows junction is reported and skipped whether it is a selection, a folder
