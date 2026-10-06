@@ -52,7 +52,10 @@ def classify(path) -> dict:
         suffix = p.suffix.lower()
         if suffix in (".pbix", ".abf"):
             return {**item, "engine": "power_bi", "kind": suffix[1:]}
-        if suffix == ".bim":
+        if suffix in (".bim", ".xmla"):
+            # .xmla: an SSMS "Script Database as > CREATE To" script, which holds the same document as a model.bim
+            # (JSON at compatibility level 1200 and later, XML at 1100 and 1103; a .bim follows the same split).
+            # Only a file that is selected: folder searches skip .xmla, most of which are processing scripts.
             return {**item, "engine": "power_bi", "kind": "bim"}
         if suffix == ".pbip":
             model = [d for d in p.parent.glob(f"{p.stem}.SemanticModel") if d.is_dir()]

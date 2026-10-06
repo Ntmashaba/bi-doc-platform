@@ -5,7 +5,7 @@ Everything is static analysis of files you give it. Nothing connects to a live s
 
 | You have | Kinds accepted |
 |---|---|
-| Power BI | `.pbix` (extracted first), Tabular backups (`.abf`), PBIP projects, TMDL, `model.bim`, PBIR, an extracted folder |
+| Power BI | `.pbix` (extracted first), Tabular backups (`.abf`), PBIP projects, TMDL, `model.bim`, an SSMS CREATE script of a tabular database (`.xmla`; JSON at compatibility level 1200+, XML at 1100 and 1103), PBIR, an extracted folder |
 | Azure Data Factory | a Git folder, an ARM template, a resources export |
 
 Two outputs are kept apart on purpose: a **local** document with everything the engines produce, and a **shared** document that
