@@ -23,6 +23,7 @@ withheld unless you opt in). See [ADR 0001](docs/decisions/0001-b01-owner-decisi
 | [`packaging/windows`](packaging/windows) | The Windows installer (unsigned development build) and its acceptance script |
 | [`deploy/azure`](deploy/azure), [`Dockerfile`](Dockerfile) | Docker image and Azure deployment template for the library |
 | [`samples/manifest.json`](samples/manifest.json) | Checksum-pinned public sample files, downloaded on demand and never committed |
+| [`samples/large-manifest.json`](samples/large-manifest.json) | Large inputs for trying size limits by hand (a 460 MiB PBIX, and models whose documents are about 110 MiB and 300 MiB): `python scripts/large_samples.py` |
 | [`docs/`](docs) | Design, operation and verification notes. Start with [`docs/PROGRESS.md`](docs/PROGRESS.md) |
 
 ## Quick start
@@ -167,6 +168,9 @@ The two engines began as the standalone repositories [`Ntmashaba/pbi-doc-gen`](h
 [`Ntmashaba/adf-doc-gen`](https://github.com/Ntmashaba/adf-doc-gen). Their code was imported here at fixed commits
 ([`components/README.md`](components/README.md)) and is maintained here from then on; new work belongs in this repository. The
 standalone repositories stay public and unarchived: they carry a pointer to this repository, and four public sample `.pbix` files
+
+python -m pip uninstall -y bi-doc-generator bi-doc-engines bi-doc-contracts bi-doc-relationships bi-doc-library pbi-doc-gen adf-doc-gen
+where.exe bidoc
 that [`samples/manifest.json`](samples/manifest.json) downloads for tests (pinned by commit and checksum) are still served from
 `pbi-doc-gen`.
 

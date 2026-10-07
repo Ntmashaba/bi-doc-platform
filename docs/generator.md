@@ -162,6 +162,23 @@ The existing `pbi-doc-gen` and `adf-doc-gen` command lines are unchanged.
 
 The library's 25 MiB limit applies to publication, not to generation. A document above it is still written and works locally; the item finishes as local-only with a warning giving the size, the limit and the next step (`ARTIFACT_TOO_LARGE`), and `bidoc generate --profile shared` exits non-zero because the result cannot be published. `bidoc publish` checks the target library's advertised limit before uploading and says the file is unchanged. The hub export is a local folder and is not subject to the publication limit. Above a 256 MiB generation ceiling generation fails (`CONTRACT_VIOLATION`). The model payload is embedded twice (viewer and manifest), so documents are about twice the payload size.
 
+### Large samples to try
+
+`python scripts/large_samples.py` lists three large inputs and `python scripts/large_samples.py ID ...` (or `--all`) fetches or
+builds them into `samples/downloads/large/`. They are for trying the limits by hand: they are described in
+`samples/large-manifest.json`, pinned by size and SHA-256, never committed, and not part of the acceptance corpus that continuous
+integration downloads. The PBIX is unpacked from a `.7z` archive, which needs `python -m pip install py7zr`.
+
+| Id | Input | What `bidoc generate --profile local` does |
+|---|---|---|
+| `contoso-10m` | A 460 MiB PBIX with 10 million sales rows (SQLBI's public Contoso sample) | Completes; the document is under 1 MiB. A document's size follows the metadata (tables, measures, queries, report pages), not the rows |
+| `large-document` | A 16 MiB synthetic model: 1800 measures of about 9 KB of DAX each | Writes a 110 MiB document and exits 0, with the `ARTIFACT_TOO_LARGE` warning that it is above the 25 MiB publication limit |
+| `over-ceiling` | A 45 MiB synthetic model: 5000 such measures | Fails with exit code 4 and writes nothing: the document would be about 300 MiB, above the 256 MiB generation ceiling |
+
+The platform's document is larger than the engine's own (`pbi-doc-gen --model`) for the same input, because the envelope carries
+the model a second time in its manifest: 110 MiB against 51 MiB for `large-document`, and 0.8 MiB against 0.5 MiB for
+`contoso-10m`. For `over-ceiling` the engine alone writes 142 MiB.
+
 ## Portable offline export
 
 `bidoc export-library OUTPUT INPUT...` writes a folder that works without a network or a
