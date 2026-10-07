@@ -168,10 +168,10 @@ The two engines began as the standalone repositories [`Ntmashaba/pbi-doc-gen`](h
 [`Ntmashaba/adf-doc-gen`](https://github.com/Ntmashaba/adf-doc-gen). Their code was imported here at fixed commits
 ([`components/README.md`](components/README.md)) and is maintained here from then on; new work belongs in this repository. The
 standalone repositories stay public and unarchived: they carry a pointer to this repository, and four public sample `.pbix` files
-
-python -m pip uninstall -y bi-doc-generator bi-doc-engines bi-doc-contracts bi-doc-relationships bi-doc-library pbi-doc-gen adf-doc-gen
-where.exe bidoc
 that [`samples/manifest.json`](samples/manifest.json) downloads for tests (pinned by commit and checksum) are still served from
 `pbi-doc-gen`.
 
 No licence file has been added to this repository yet.
+
+python -m pip uninstall -y bi-doc-generator bi-doc-engines bi-doc-contracts bi-doc-relationships bi-doc-library pbi-doc-gen adf-doc-gen
+where.exe bidoc
