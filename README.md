@@ -23,6 +23,7 @@ withheld unless you opt in). See [ADR 0001](docs/decisions/0001-b01-owner-decisi
 | [`packaging/windows`](packaging/windows) | The Windows installer (unsigned development build) and its acceptance script |
 | [`deploy/azure`](deploy/azure), [`Dockerfile`](Dockerfile) | Docker image and Azure deployment template for the library |
 | [`samples/manifest.json`](samples/manifest.json) | Checksum-pinned public sample files, downloaded on demand and never committed |
+| [`samples/large-manifest.json`](samples/large-manifest.json) | Large inputs for trying size limits by hand (a 460 MiB PBIX, and models whose documents are about 110 MiB and 300 MiB): `python scripts/large_samples.py` |
 | [`docs/`](docs) | Design, operation and verification notes. Start with [`docs/PROGRESS.md`](docs/PROGRESS.md) |
 
 ## Quick start
