@@ -32,8 +32,14 @@ def main():
             env["CHROMIUM_PATH"] = "/opt/pw-browsers/chromium"
         for script in SCRIPTS:
             print(script, flush=True)
-            result = subprocess.run(["node", str(HERE / script), str(fixture)], env=env)
+            result = subprocess.run(["node", str(HERE / script), str(fixture)], env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            print(result.stdout, end="", flush=True)
             if result.returncode:
+                if os.environ.get("GITHUB_ACTIONS"):
+                    # The reason as an annotation, readable where the job log is not.
+                    tail = "\n".join(result.stdout.strip().splitlines()[-40:])[-3000:]
+                    print(f"::error title={script}::" + tail.replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
                 return result.returncode
     return 0
 

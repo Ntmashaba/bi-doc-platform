@@ -150,4 +150,7 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
  }
  fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify(checks,null,2));
  await browser.close();
-})().catch(e=>{console.error(e);process.exit(1)});
+})().catch(e=>{console.error(e);
+ // On GitHub Actions the reason also becomes an annotation, readable where the job log is not.
+ if(process.env.GITHUB_ACTIONS)console.log('::error title=check_sample_html::'+String(e&&e.stack||e).slice(0,3000).replace(/%/g,'%25').replace(/\r?\n/g,'%0A'));
+ process.exit(1)});
