@@ -86,6 +86,14 @@ class Inventory(Base):
         self.assertEqual([i.split(":")[-1] for i in rows["Customers"]["upstream"]], ["Stage"])
         self.assertEqual(rows["Stage"]["usedBy"], ["Customers", "Orders"])
 
+    def test_a_step_inside_try_does_not_hide_the_query_in_its_catch_handler(self):
+        doc = model_doc()
+        doc["model"]["tables"][1]["partitions"] = [m('try\n    let Stage = error "Source unavailable"\n    in Stage\ncatch () => Stage',
+                                                     name="Customers")]
+        rows, _ = self.rows(doc)
+        self.assertEqual([i.split(":")[-1] for i in rows["Customers"]["upstream"]], ["Stage"])
+        self.assertEqual(rows["Stage"]["usedBy"], ["Customers", "Orders"])
+
     def test_a_parameter_named_like_a_query_does_not_hide_it_after_the_function(self):
         doc = model_doc()
         doc["model"]["tables"][1]["partitions"] = [m('let\n    Transform = (Stage) => Stage\nin\n    Transform(Stage)', name="Customers")]

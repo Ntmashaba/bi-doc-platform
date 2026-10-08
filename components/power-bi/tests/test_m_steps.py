@@ -209,6 +209,14 @@ class Structure(unittest.TestCase):
         self.assertEqual(refs('try let Stage = 1 in Stage otherwise Stage'), ["Stage"])
         self.assertEqual(refs('let f = (x) => if x then let Stage = 1 in Stage else Stage in f(1)'), ["Stage"])
         self.assertEqual(refs('let f = (Stage) => try Stage, g = Stage in g'), ["Stage"])   # a try with no otherwise
+        # `catch` ends the protected expression as `otherwise` does; its handler is a function with its own parameter
+        self.assertEqual(refs('try let Stage = error "Source unavailable" in Stage catch () => Stage'), ["Stage"])
+        self.assertEqual(refs('try let Stage = 1 in Stage catch (e) => Stage'), ["Stage"])
+        self.assertEqual(refs('try Sales catch (Stage) => Stage'), ["Sales"])               # the handler's parameter
+        self.assertEqual(refs('let f = (Stage) => try Stage catch (e) => Stage in f(Sales)'), ["Sales"])
+        self.assertEqual(refs('let f = (Stage) => try let x = Stage in x catch () => Stage in f(Sales)'), ["Sales"])
+        self.assertEqual(refs('let f = (x) => try let Stage = x in Stage catch () => Stage in f(1)'), ["Stage"])
+        self.assertEqual(refs('let X = #"catch" in X'), [])                                  # a quoted name, not this one
         # ...and the body keeps its own keywords: the parameter still hides the query throughout it
         self.assertEqual(refs('let f = (Stage) => if Stage then Stage else Stage in f(Sales)'), ["Sales"])
         self.assertEqual(refs('let f = (Stage) => try Stage otherwise Stage in f(Sales)'), ["Sales"])

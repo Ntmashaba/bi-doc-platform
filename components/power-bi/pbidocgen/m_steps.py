@@ -35,7 +35,7 @@ _CUT_OFF = ("Unterminated M comment", "Unterminated M string/identifier", "Unbal
 _PARAMETER = re.compile(r"\bmeta\s*\[[^\]]*\bIsParameterQuery\s*=\s*true\b", re.I)
 _COMMENT = re.compile(r"//([^\n]*)|/\*(.*?)\*/", re.S)
 KEYWORDS = {"let", "in", "each", "if", "then", "else", "true", "false", "null", "and", "or", "not", "as", "is", "meta",
-            "type", "try", "otherwise", "error", "section", "shared", "optional", "nullable"}
+            "type", "try", "otherwise", "catch", "error", "section", "shared", "optional", "nullable"}
 
 
 @dataclass
@@ -260,8 +260,8 @@ def _expression_end(ts, start) -> int:
     """Index just past the expression that starts at ts[start].
 
     An expression runs until something that belongs to the construct around it: a comma or closing bracket at its
-    own level, or the `in` of an enclosing let, the `then` or `else` of an enclosing if, the `otherwise` of an
-    enclosing try. A let, if or try that starts inside it is followed to its own end, so its keywords and its
+    own level, or the `in` of an enclosing let, the `then` or `else` of an enclosing if, the `otherwise` or `catch`
+    of an enclosing try. A let, if or try that starts inside it is followed to its own end, so its keywords and its
     bindings' commas do not end it."""
     depth, open_ = 0, []                     # constructs begun inside the expression, innermost last
     for i in range(start, len(ts)):
@@ -279,10 +279,10 @@ def _expression_end(ts, start) -> int:
         if keyword(t, "let") or keyword(t, "if") or keyword(t, "try"):
             open_.append(t.value)
             continue
-        closes = {"in": "let", "then": "if", "else": "then", "otherwise": "try"}.get(t.value) if keyword(t, t.value) else None
+        closes = {"in": "let", "then": "if", "else": "then", "otherwise": "try", "catch": "try"}.get(t.value) if keyword(t, t.value) else None
         if closes is None and not _is(t, ","):
             continue
-        # a try without `otherwise` ended where its operand did, so it cannot take anything after this point
+        # a try without `otherwise` or `catch` ended where its operand did, so it cannot take anything after this point
         while open_ and open_[-1] == "try" and closes != "try":
             open_.pop()
         if _is(t, ","):
