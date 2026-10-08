@@ -148,6 +148,8 @@ class SourceObjectInventoryTests(unittest.TestCase):
     def test_generated_sources_csv_keeps_full_code_and_page_filter(self):
         p, _ = self.payload()
         next(r for r in p['sourceObjects'] if r['table']=='Sales')['originalM'] += '\n// ' + ('x' * 20000) + '\n// <script>marker</script>'
+        # The view shows a row's SQL and evidence (the full script is in Power Query); both must stay text.
+        next(r for r in p['sourceObjects'] if r['table']=='Sales')['evidence'] += ' <script>marker</script>'
         for row in p['sourceObjects']:
             row['referencedM'] = '// Referenced query: Stage\r\nlet\n\tS = Sql.Database("server", "db")\nin S'
             row['server'] = 'server,with\ttab and "quotes"'

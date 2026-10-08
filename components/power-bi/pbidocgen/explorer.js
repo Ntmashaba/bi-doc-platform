@@ -40,7 +40,7 @@ function restoreView(id){
   {const el=document.getElementById('global-page');if(el) el.value=pageScope;}
 }
 function scopeBar(id){
-  const globalViews=['overview','rels','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups'];
+  const globalViews=['overview','rels','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups','bookmarks'];
   const pages=[...(R?.pages||[])];
   if(id==='compare') for(const p of comparison?.report?.pages||[]) if(!pages.some(x=>x.id===p.id)) pages.push(p);
   if(id==='report-details') return '';
@@ -391,7 +391,7 @@ TABS.splice(2,0,
   {id:'impact',label:'Impact inspector',group:'Start',avail:has.model});
 TABS.splice(TABS.findIndex(t=>t.id==='filters'),0,{id:'layout',label:'Page layout',group:'Report',avail:has.report});
 TABS.push({id:'cleanup',label:'Cleanup review',group:'Quality',avail:has.model},
-  {id:'compare',label:'Compare extracts',group:'Quality',avail:true,hidden:true});
+  {id:'compare',label:'Compare extracts',group:'Quality',avail:true});
 Object.assign(RENDER,{matrix:rMatrix,impact:rImpact,layout:rLayout,cleanup:rCleanup,compare:rCompare});
 
 
@@ -409,7 +409,7 @@ function sourceObjectRows(q='',status=''){
   (!q||Object.values(r).join(' ').toLowerCase().includes(q)));
 }
 function rSourceObjects(){
- return `<h2>Report page → source object</h2>
+ return `<h1>Source objects</h1>
  <p class="sub">One row per page, model-table partition and source object. Repeated references are deduplicated; unknown sources stay visible. Resolved means identified statically, not checked against a live database. Partial means some context or coverage remains uncertain.</p>
  <div class="filter-row"><input id="source-object-search" class="search" style="margin:0" aria-label="Search source objects" placeholder="Search report, source object, connection or code…" oninput="filterSourceObjects()">
  <select id="source-object-status" class="search" style="width:auto;margin:0" aria-label="Filter source extraction status" onchange="filterSourceObjects()"><option value="">All extraction statuses</option>${['Resolved','Partial','Unresolved','Not applicable'].map(x=>`<option>${x}</option>`).join('')}</select>
@@ -426,10 +426,17 @@ function filterSourceObjects(){
  <td>${esc(r.table)}<div class="mut">${esc(r.queryName)}</div></td>
  <td><b>${esc(r.object)||'No object resolved'}</b><div class="mut">${esc(r.sourceType)} · ${esc(r.server)||'server unresolved'}${r.database?' / '+esc(r.database):''}${r.schema?' / '+esc(r.schema):''}</div></td>
  <td><span class="badge ${r.status==='Resolved'?'b-direct':r.status==='Not applicable'?'b-other':'b-warn'}">${esc(r.status)}</span>
- <details><summary>View source code</summary><div class="body"><b>Extraction evidence</b><p>${esc(r.evidence)}</p><p>${listText(r.notes)}</p>
- <b>Original M code</b><pre class="code">${esc(r.originalM)||'No M expression for this partition.'}</pre>
- <b>Extracted SQL</b><pre class="code">${esc(r.sql)||'No resolved native SQL text.'}</pre>
- ${r.referencedM?`<b>Referenced M queries / parameters</b><pre class="code">${esc(r.referencedM)}</pre>`:''}</div></details></td></tr>`).join('')||'<tr><td colspan="4">No source objects match this selection.</td></tr>';
+ ${sourceObjectQuery(r)}
+ <details><summary>Extraction evidence</summary><div class="body"><p>${esc(r.evidence)}</p><p>${listText(r.notes)}</p>
+ ${(r.referencedQueries||[]).length?`<p class="mut">Reads the queries: ${r.referencedQueries.map(n=>{const q=PQ.queries.find(q=>q.name===n);return q?queryLink(q.objectId):esc(n);}).join(', ')}</p>`:''}</div></details></td></tr>`).join('')||'<tr><td colspan="4">No source objects match this selection.</td></tr>';
+}
+// A source object's query control: native SQL when the file holds it, else the M source expression.
+const NATIVE_UNAVAILABLE=/Native SQL text is dynamic or unavailable|Unresolved native SQL/;
+function sourceObjectQuery(r){
+ const query=PQ.queries.find(q=>q.origin==='table'&&q.table===r.table&&(q.partitions||[]).includes(r.partition))||PQ.queries.find(q=>q.name===r.queryName);
+ if(!query&&!r.sql) return '';
+ const unavailable=!r.sql&&(NATIVE_UNAVAILABLE.test(r.evidence||'')||(r.notes||[]).some(n=>NATIVE_UNAVAILABLE.test(n)));
+ return queryControl({sql:r.sql,unavailable,query,note:unavailable?'The statement is built when the query runs, so its text is not in the file.':''});
 }
 function downloadSourceObjectsCsv(includeCode=true){
  const fields=includeCode?sourceObjectCsvFields:sourceObjectCsvFields.filter(([key])=>!['originalM','sql','referencedM'].includes(key));
@@ -532,18 +539,27 @@ function filterSourceList(){
 }
 function inspectSource(key){
   const g=sourceGroups().find(x=>x.key===key);if(!g) return;
-  const queries=uniq([...g.primaryQueries,...g.consumingQueries]);
-  const code=(DATA.sourceQueries||[]).filter(q=>queries.includes(q.queryName));
-  const sql=uniq((DATA.sourceObjects||[]).filter(o=>queries.includes(o.queryName)&&o.sql&&(!g.object||o.object===g.object||o.object===`${g.schema}.${g.object}`)).map(o=>o.sql));
+  const names=uniq([...g.primaryQueries,...g.consumingQueries]);
+  const objects=(DATA.sourceObjects||[]).filter(o=>names.includes(o.queryName)&&(!g.object||o.object===g.object||o.object===`${g.schema}.${g.object}`));
   const field=(label,value)=>value?`<tr><td class="mut">${label}</td><td>${esc(value)}</td></tr>`:'';
-  openInspector(`${g.sourceType} · ${g.name}`,`<table class="t"><tbody>${field('Type',g.sourceType)}${field('Server / connection',g.server)}${field('Database / service',g.database)}${field('Schema',g.schema)}${field('Object',g.object)}${field('File / folder / URL',g.location)}</tbody></table>
+  // One control per query that reaches this source: the native SQL the file holds, else the M source expression.
+  const controls=names.map(name=>{
+    const query=PQ.queries.find(q=>q.name===name), rows=objects.filter(o=>o.queryName===name);
+    const sql=uniq(rows.map(o=>o.sql)).join('\n\n-- Next source statement --\n\n');
+    const unavailable=!sql&&rows.some(o=>NATIVE_UNAVAILABLE.test(o.evidence||'')||(o.notes||[]).some(n=>NATIVE_UNAVAILABLE.test(n)));
+    const control=queryControl({sql,unavailable,query,note:unavailable?'The statement is built when the query runs, so its text is not in the file.':''});
+    return control?`<div class="source-query"><b>${esc(name)}</b>${control}</div>`:'';
+  }).join('');
+  const authentication=sourceAuthentication(g);
+  openInspector(`${g.sourceType} · ${g.name}`,`<table class="t"><tbody>${field('Type',g.sourceType)}${field('Server / connection',g.server)}${field('Database / service',g.database)}${field('Schema',g.schema)}${field('Object',g.object)}${field('File / folder / URL',g.location)}
+    <tr><td class="mut">Authentication type</td><td id="source-authentication">${authentication===NO_AUTHENTICATION?`<span class="mut">${NO_AUTHENTICATION}</span>`:esc(authentication)}</td></tr></tbody></table>
     <p><span class="badge ${USAGE_BADGE[g.reportingStatus]||'b-other'}">${esc(g.reportingStatus)}</span> <span class="badge ${g.status==='Resolved'?'b-direct':'b-warn'}">${esc(g.status)}</span></p>
-    <p class="mut">Resolved means identified statically, not checked against a live source. Reporting usage describes the downstream model table; this input's contribution to displayed values is not proven.</p>
+    <p class="mut">Resolved means identified statically, not checked against a live source. Reporting usage describes the downstream model table; this input's contribution to displayed values is not proven.${authentication===NO_AUTHENTICATION?' Power BI keeps credentials outside the file, so the authentication type is shown only when the file itself records it.':''}</p>
     <h3>Report pages</h3><p>${g.rows.filter(inPageScope).map(r=>`${esc(pageLabel(r))}: ${esc(r.reportingStatus)}`).join('<br>')||'None'}</p>
     <h3>Model tables</h3><p>${g.tables.map(tblLink).join(', ')||'None'}</p>
     <h3>Queries</h3><p>Connection: ${listText(g.primaryQueries)}</p><p>Consuming: ${listText(g.consumingQueries)}</p>
+    <div id="source-queries">${controls||'<p class="mut">No query was read for this source.</p>'}</div>
     <h3>Evidence</h3><p>${listText(uniq(g.rows.flatMap(r=>r.usageEvidence)))}</p><p>${listText(uniq(g.rows.flatMap(r=>r.preparationEffects)))}</p>
-    <p class="mut">Configured storage modes: ${listText(uniq(g.rows.flatMap(r=>r.storageModes)))}</p>
-    <h3>Code</h3>${code.map(q=>`<details><summary>M · ${esc(q.queryName)}</summary><pre class="code">${esc(q.mCode)}</pre></details>`).join('')||'<p>No M code found.</p>'}
-    ${sql.map(s=>`<details><summary>Extracted SQL</summary><pre class="code">${esc(s)}</pre></details>`).join('')}`);
+    <p class="mut">Configured storage modes: ${listText(uniq(g.rows.flatMap(r=>r.storageModes)))}</p>`);
 }
+

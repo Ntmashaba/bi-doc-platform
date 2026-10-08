@@ -46,8 +46,7 @@ function pqListItem(q) {
     <span class="pq-name">${esc(q.name)}</span>${mark}</button></li>`;
 }
 function rPowerQuery() {
-  const intro = `<h1>Power Query</h1>
-    <p class="sub">The Power Query Editor in Power BI Desktop: the queries that connect to sources and shape the data before it reaches the model.</p>`;
+  const intro = `<h1>Power Query</h1>`;
   if (!PQ.queries.length) return `${intro}<div class="empty"><b>This file holds no Power Query queries.</b><br>Its tables are defined another way; see how each table is defined in the table list.</div>`;
   if (!PQ_BY_ID.has(pqSelected)) pqSelected = (pqFolders().find(f => f.queries.length) || {queries: [PQ.queries[0]]}).queries[0].objectId;
   const folders = pqFolders();

@@ -150,7 +150,7 @@ function goRef(family, ...rest) {
   return !!o && goObject(o.id, options);
 }
 // Tab ids that an older link may still carry.
-const TAB_ALIASES = {};
+const TAB_ALIASES = {'src-objects': 'source-objects', 'src-queries': 'power-query'};
 function routeReport() {
   const raw = (window.location && window.location.hash || '').slice(1);
   if (raw.startsWith('o/')) {

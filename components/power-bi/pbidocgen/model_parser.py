@@ -380,6 +380,9 @@ def parse_model(model_path: str | Path) -> dict:
     measure_index: dict[str, str] = {}  # measure name -> home table
     column_index: dict[tuple[str, str], dict] = {}
 
+    structured_names = {d.get("name") for d in model.get("dataSources") or []
+                        if isinstance(d, dict) and d.get("name") and not is_mashup_source(d)}
+
     # ---- tables ---------------------------------------------------------
     for tbl in model.get("tables", []):
         name = tbl.get("name", "")
@@ -463,6 +466,14 @@ def parse_model(model_path: str | Path) -> dict:
                 "expression": expression,
                 "source": source,
             }
+            # The model data sources this partition reads through: the one a SQL partition names, or the
+            # structured data sources its M refers to (#"SQL/server;db"). What a data source records, such as
+            # its authentication type, applies to these partitions only.
+            through = [src["dataSource"]] if isinstance(src.get("dataSource"), str) and src.get("dataSource") else []
+            if p_mode == "m" and structured_names and expression:
+                through += [n for n in _named_in(expression, structured_names) if n not in through]
+            if through:
+                partition["dataSources"] = through
             if part.get("queryGroup"):
                 partition["queryGroup"] = str(part["queryGroup"])
             if p_mode == "query" and is_mashup_source(data_source):
@@ -753,6 +764,16 @@ def parse_model(model_path: str | Path) -> dict:
     # tracer knows more (shared queries, parameters, dataflows, entered data).
     apply_traced_sources(result)
     return result
+
+
+def _named_in(expression: str, names: set) -> list[str]:
+    """The names in `names` an M expression refers to (as identifiers, never as text)."""
+    from . import m_steps
+    from .m_sources import tokenize
+    try:
+        return m_steps.references(tokenize(expression), names)
+    except ValueError:
+        return []
 
 
 def _annotation(obj: dict, name: str):

@@ -88,9 +88,17 @@ class WorkerTest(unittest.TestCase):
             return json.loads(r.read())
 
     def test_pbix_job_is_extracted_generated_and_published(self):
+        from unittest import mock
+        import bidoc_engines.generate as engine
+        from bidoc_generator import __version__
         w = self.worker()
         job = self.submit(b"PK fake pbix", "pbix", "Sales Report.pbix")
-        self.assertEqual(w.run(once=True), 1)
+        requests = []
+        real = engine.generate
+        with mock.patch.object(engine, "generate", side_effect=lambda request, *a, **k: (requests.append(request), real(request, *a, **k))[1]):
+            self.assertEqual(w.run(once=True), 1)
+        # the worker's documents name the bidoc version that generated them
+        self.assertEqual([r.bidoc_version for r in requests], [__version__])
         j = self.job(job["job_id"])
         self.assertEqual(j["state"], "succeeded", j)
         with urllib.request.urlopen(f"{self.library.url}/api/v1/documents/{j['output_document_id']}/revisions") as r:

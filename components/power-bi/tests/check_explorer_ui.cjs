@@ -43,8 +43,10 @@ browserWindow.location.hash='#overview';listeners.popstate();
 assert.equal(run('activeTab'),'overview');assert.equal(historyEntries.length,historyCount);
 browserWindow.location.hash='#does-not-exist';listeners.popstate();assert.equal(run('activeTab'),'overview');
 assert.match(node('nav').innerHTML,/href="pbi-home.html#reports"/);
-assert.ok(!run("sectionTabs(sectionOf('compare')).some(t=>t.id==='compare')"));
-assert.equal(run("sectionOf('impact').label"),'Impact & usage');
+// Compare extracts is an action on the document, outside the seven sections.
+assert.equal(run("sectionOf('compare').utility"),true);
+assert.ok(!run("SECTIONS.some(s=>s.tabs.includes('compare')||s.tabs.includes('report-details'))"));
+assert.equal(run("sectionOf('impact').label"),'Model view');
 // Every available view must render in every supported extraction mode.
 for(const tab of run('TABS.filter(t=>t.avail).map(t=>t.id)')) run(`switchTab(${JSON.stringify(tab)})`);
 if(!run('has.model&&has.report')){console.log('Available mode views rendered');process.exit(0);}

@@ -22,6 +22,17 @@ from .live_connection import pairing as live_pairing, source_row as live_source_
 TEMPLATE = Path(__file__).parent / "template.html"
 
 
+ENGINE_NAME = "pbi-doc-gen"
+
+
+def producer(bidoc_version: str | None = None) -> dict:
+    """What generated a payload: this engine and its version, and the bidoc generator that ran it when one did.
+
+    `bidoc` is None when the engine was run on its own (pbi-doc-gen), where there is no generator version to record."""
+    from . import __version__
+    return {"engine": ENGINE_NAME, "engineVersion": __version__, "bidoc": bidoc_version or None}
+
+
 def build_payload(model: dict | None, report: dict | None,
                   linked: dict | None, title: str) -> dict:
     mode = ("combined" if model and report
@@ -51,6 +62,7 @@ def build_payload(model: dict | None, report: dict | None,
         "title": title,
         "mode": mode,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "producer": producer(),
         "model": model,
         "report": report,
         "linked": linked,

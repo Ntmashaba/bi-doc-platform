@@ -20,7 +20,7 @@ class PluralLabels(unittest.TestCase):
         self.assertEqual(json.loads(out), ['0 pages', '1 page', '2 pages', '1,234 tables', '1 category', '2 categories'])
 
     def test_the_overview_and_lists_use_the_helper(self):
-        for expected in ('plural(R.pages.length,"page")', 'plural(M.tables.length,"table")',
+        for expected in ('plural(R.pages.length,"page")', 'plural(countedTables().length,"table")',
                          'plural(M.measures.length,"measure")', 'plural(R.pages.reduce((a,p)=>a+p.visuals.length,0),"visual")'):
             self.assertIn(expected, TEMPLATE)
         for expected in ('plural(rows.length,"measure")', 'plural(visibleSourceGroups.length,"source")'):

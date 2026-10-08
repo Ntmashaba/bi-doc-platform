@@ -43,6 +43,18 @@ class Cli(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertTrue(Path(result["artifact_path"]).is_file())
 
+    def test_a_power_bi_document_names_the_bidoc_version_that_generated_it(self):
+        import pbidocgen
+        from bidoc_contracts import validate_artifact
+        from bidoc_generator import __version__
+        from fixtures import pbi_model
+        code, out, err = run(["generate", "--engine", "power_bi", "--source", str(pbi_model(self.tmp / "model")), "--kind", "bim",
+                              "--output-dir", str(self.tmp / "out"), "--json"])
+        self.assertEqual(code, 0, err)
+        manifest = validate_artifact(Path(json.loads(out)["artifact_path"]).read_bytes())
+        self.assertEqual(manifest["native_payload"]["data"]["producer"],
+                         {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": __version__})
+
     def test_invalid_input_exits_2(self):
         code, _, err = run(["generate", "--engine", "adf", "--source", str(self.tmp / "nope"), "--kind", "adf_git",
                             "--output-dir", str(self.tmp / "out")])

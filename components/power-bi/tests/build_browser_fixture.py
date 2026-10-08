@@ -67,7 +67,13 @@ def build(folder):
     raw['model']['tables'][0]['measures'].append({'name': 'Doubled', 'expression': 'SUM(Sales[Double])'})
     raw['model']['relationships'].append({'name': 'by year', 'fromTable': 'Sales', 'fromColumn': 'Double',
                                           'toTable': 'Calendar', 'toColumn': 'Year'})
-    raw['model']['dataSources'] = [{'name': 'dw', 'connectionString': 'Provider=SQLNCLI11;Data Source=server;Initial Catalog=db'}]
+    raw['model']['dataSources'] = [{'name': 'dw', 'connectionString': 'Provider=SQLNCLI11;Data Source=server;Initial Catalog=db;Integrated Security=SSPI'}]
+    # A native query whose statement is built when the query runs: its text is not in the file.
+    raw['model']['tables'].append({'name': 'Dynamic', 'columns': [{'name': 'Value'}], 'partitions': [{'name': 'Dynamic', 'source': {
+        'type': 'm', 'expression': 'let\n    S = Sql.Database("server", "db"),\n    Q = Value.NativeQuery(S, "SELECT * FROM " & Text.From(DateTime.LocalNow()))\nin\n    Q'}}]})
+    # ...and one whose statement is written in the file.
+    raw['model']['tables'].append({'name': 'Native', 'columns': [{'name': 'Value'}], 'partitions': [{'name': 'Native', 'source': {
+        'type': 'm', 'expression': 'let\n    S = Sql.Database("server", "db", [Query="SELECT Value FROM dbo.Facts WHERE Year = 2024"])\nin\n    S'}}]})
     raw['model']['queryGroups'] = [
         {'folder': 'Staging', 'description': 'Queries other queries start from.',
          'annotations': [{'name': 'PBI_QueryGroupOrder', 'value': '0'}]},

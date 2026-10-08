@@ -142,6 +142,18 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                 s['connectionString'] = connection_strings.redact(connection, connection_strings.SOURCE_KEYS)
             elif connection:
                 warnings.append(f"Data source '{r['Name']}' has an encrypted or opaque connection string. Server/database are unavailable; SQL object names remain visible.")
+            if re.search(r'(?i)(?:^|;)\s*(?:user id|uid)\s*=', connection):
+                s['signsInWithAccount'] = True      # that a login is named, never which one
+            # How it authenticates, never with what: the kind named by the credential, and the impersonation mode.
+            if isinstance(r.get('ImpersonationMode'), int):
+                s['impersonationMode'] = r['ImpersonationMode']
+            if r.get('Credential'):
+                try:
+                    credential = json.loads(r['Credential'])
+                    if isinstance(credential, dict) and isinstance(credential.get('AuthenticationKind'), str):
+                        s['credential'] = {'AuthenticationKind': credential['AuthenticationKind']}
+                except (ValueError, TypeError):
+                    pass                          # encrypted or opaque: the file does not say
             if r.get('ConnectionDetails'):
                 try:
                     details = json.loads(r['ConnectionDetails'])

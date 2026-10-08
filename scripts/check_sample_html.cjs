@@ -2,6 +2,7 @@
 const {chromium}=require('playwright');
 const fs=require('fs'),path=require('path');
 const {pathToFileURL}=require('url');
+const {checkOverviewCounts}=require('../components/power-bi/tests/overview_counts.cjs');
 (async()=>{
  const out=path.resolve(__dirname,'../samples/output');
  const results=JSON.parse(fs.readFileSync(path.join(out,'results.json'),'utf8'));
@@ -14,7 +15,7 @@ const {pathToFileURL}=require('url');
  // columns, names the column, restores on clear and says when nothing matches; the finder lands on the column.
  async function adventureWorksSearch(page){
   await page.evaluate(()=>{pageScope='*';switchTab('tables',false,true);});
-  const search=page.locator('#table-search'),cards=page.locator('#tbl-list > details:visible');
+  const search=page.locator('#table-search'),cards=page.locator('#tbl-list details[data-table]:visible');
   expect(await cards.count()===10,'AdventureWorks Sales lists 10 tables, found '+await cards.count());
   await search.pressSequentially('Mth of year');
   expect(await cards.count()===1,'"Mth of year" should leave one table, found '+await cards.count());
@@ -75,6 +76,31 @@ const {pathToFileURL}=require('url');
      expect(parameters.join()==='Culture,SqlServerDatabase,SqlServerInstance','DP500 08 parameters: '+parameters);
     }
    }
+   // Seven sections named after the Power BI views; every Overview number equals the list it opens;
+   // automatic date tables are in no headline count; the versions sit beside the generation time.
+   const sections=await page.locator('nav [id^="sec-"]').evaluateAll(els=>els.map(el=>el.textContent.trim()));
+   expect(sections.join()==='Overview,Data Sources,Power Query,Table view,Model view,DAX query view,Report view',r.file+': sections are '+sections);
+   expect(await page.locator('#util-compare').count()===1&&await page.locator('#util-report-details').count()===1,r.file+': document actions missing');
+   const unreachable=await page.evaluate(()=>TABS.filter(t=>t.avail&&!sectionOf(t.id)).map(t=>t.id));
+   expect(!unreachable.length,r.file+': views in no section: '+unreachable);
+   const viewLines=await page.evaluate(()=>TABS.filter(t=>t.avail).filter(t=>{switchTab(t.id);const line=document.getElementById('view-line');
+    return !sectionOf(t.id).utility&&!(line&&line.textContent.trim().startsWith(sectionOf(t.id).label+'.'));}).map(t=>t.id));
+   expect(!viewLines.length,r.file+': views that do not open with the line naming the Power BI view: '+viewLines);
+   await checkOverviewCounts(page);
+   const auto=await page.evaluate(()=>has.model?M.tables.filter(isAutoDate).length:0);
+   if(auto){
+    const sum=await page.locator('#count-source-tables .big, #count-calc-tables .big, #count-calc-groups .big, #count-other-tables .big').evaluateAll(els=>els.reduce((n,el)=>n+Number(el.textContent.replace(/,/g,'')),0));
+    expect(sum===await page.evaluate(()=>M.tables.length)-auto,r.file+': automatic date tables are in a headline count');
+    await page.evaluate(()=>switchTab('tables',true,true));
+    expect(await page.locator('#tbl-group-auto').evaluate(el=>!el.open&&!el.nextElementSibling),r.file+': automatic date tables are not collapsed at the end of Table view');
+    expect(await page.locator('#tbl-group-auto details[data-table]').count()===auto,r.file+': automatic date table group is incomplete');
+    await page.evaluate(()=>switchTab('overview'));
+   }
+   const generated=await page.locator('#generated-line').innerText();
+   // acceptance.py calls the engine library directly, not bidoc, so the bidoc version is honestly "not recorded" here;
+   // the bidoc paths (generate, batch, worker) are covered by apps/generator/tests.
+   expect(/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · /.test(generated),r.file+': versions missing beside the generation time: '+generated);
+   expect(!(await page.locator('#main').innerText()).includes('Show SQL query'),r.file+': "Show SQL query" is still shown');
    // Table kinds: one of the seven for every table; the calculation tabs list what their counts say.
    if(await page.evaluate(()=>has.model)){
     const kinds=await page.evaluate(()=>({

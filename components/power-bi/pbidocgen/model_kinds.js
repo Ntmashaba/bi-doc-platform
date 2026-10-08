@@ -39,7 +39,24 @@ function namesCalcColumn(text) {
 const fxInText = text => namesCalcColumn(text) ? ' ' + FX : '';
 // A node of the dependency graph: its label, marked when it is a calculated column.
 const nodeHtml = n => n ? esc(n.label) + (n.kind === 'column' ? fx(n.table, n.name) : '') : '';
-const calcColumns = () => (M?.tables || []).flatMap(t => t.columns.filter(c => c.isCalculated).map(c => ({table: t, column: c})));
+/* What the headline numbers count. Automatic date tables are tables Power BI adds for date columns; they, their
+   columns and their relationships are in no headline count, and are listed apart, at the end of Table view. */
+const AUTO_DATE_NAMES = new Set(tablesDefinedBy('Automatic date table').map(t => t.name));
+const countedTables = () => (M?.tables || []).filter(t => !AUTO_DATE_NAMES.has(t.name));
+const countedColumns = () => countedTables().flatMap(t => t.columns.map(c => ({table: t, column: c})));
+const autoDateRelationship = r => AUTO_DATE_NAMES.has(r.fromTable) || AUTO_DATE_NAMES.has(r.toTable);
+const countedRelationships = () => (M?.relationships || []).filter(r => !autoDateRelationship(r));
+const TABLE_GROUPS = [
+  {id: 'source', label: 'Source tables', kinds: ['Power Query', 'SQL query', 'Entity'],
+   note: 'Tables whose rows are read from a source: by a Power Query query, a SQL statement or an entity.'},
+  {id: 'calculated', label: 'Calculated tables', kinds: ['Calculated table'], note: 'Tables whose rows come from a DAX expression.'},
+  {id: 'groups', label: 'Calculation groups', kinds: ['Calculation group'], note: 'Tables that hold calculation items.'},
+  {id: 'other', label: 'Other tables', kinds: ['Other'], note: 'Tables defined in a way this document does not classify.'},
+];
+const tablesInGroup = g => countedTables().filter(t => g.kinds.includes(definedBy(t).kind));
+const sourceTables = () => tablesInGroup(TABLE_GROUPS[0]);
+const calcColumns = () => countedTables().flatMap(t => t.columns.filter(c => c.isCalculated).map(c => ({table: t, column: c})));
+const autoDateCalcColumns = () => tablesDefinedBy('Automatic date table').reduce((n, t) => n + t.columns.filter(c => c.isCalculated).length, 0);
 const calcColumnAnchor = (table, column) => 'cc-' + slug(table) + '-' + slug(column);
 const calcTableAnchor = table => 'ct-' + slug(table);
 const calcGroupAnchor = table => 'cg-' + slug(table);
@@ -55,7 +72,9 @@ function rCalcColumns() {
   const all = calcColumns();
   const head = `<h1>Calculated Columns</h1>
     <p class="sub">Columns defined by a DAX expression that is evaluated for each row, marked ${FX} wherever they appear in this document. Each is classified from its own metadata, not from the table it belongs to.</p>`;
-  if (!all.length) return `${head}<div class="empty"><b>This model has no calculated columns.</b></div>`;
+  const hidden = autoDateCalcColumns();
+  const autoNote = hidden ? `<p class="mut" style="margin-top:1rem">${plural(hidden, 'calculated column')} of automatic date tables ${hidden === 1 ? 'is' : 'are'} not listed here; ${hidden === 1 ? 'it is' : 'they are'} with ${hidden === 1 ? 'its table' : 'their tables'} at the end of <button class="xl" onclick="openTableGroup('auto')">Table view</button>.</p>` : '';
+  if (!all.length) return `${head}<div class="empty"><b>This model has no calculated columns.</b></div>${autoNote}`;
   const card = ({table: t, column: c}) => `<details class="measure calc-col" id="${calcColumnAnchor(t.name, c.name)}" data-search="${esc([c.name, t.name, c.expression, c.description, c.displayFolder].join(' ').toLowerCase())}">
       <summary><span class="mea-name">${esc(c.name)} ${FX}</span>
         ${c.isHidden ? '<span class="badge b-hidden">hidden</span>' : ''}
@@ -81,7 +100,7 @@ function rCalcColumns() {
   return `${head}
     <input id="calc-column-search" class="search" placeholder="Search names, tables or DAX…" aria-label="Search calculated columns" oninput="fCalcColumns(this.value)">
     <p id="calc-column-status" class="mut" role="status" aria-live="polite"></p>
-    <div id="calc-column-list">${grouped}</div>`;
+    <div id="calc-column-list">${grouped}</div>${autoNote}`;
 }
 // What a calculated column reads: from the dependency graph (which binds an unqualified [Column] to its own
 // table), or from the references read off its expression when this document has no graph.
@@ -105,7 +124,7 @@ function rCalcTables() {
   const tables = tablesDefinedBy('Calculated table'), auto = tablesDefinedBy('Automatic date table');
   const head = `<h1>Calculated Tables</h1>
     <p class="sub">Tables whose rows come from a DAX expression. A table is listed here because every one of its partitions is a DAX expression, whatever its name.</p>`;
-  const autoNote = auto.length ? `<p class="mut" style="margin-top:1rem">${plural(auto.length, 'automatic date table')} that Power BI creates for date columns ${auto.length === 1 ? 'is' : 'are'} not listed here; ${auto.length === 1 ? 'it is' : 'they are'} in <button class="xl" onclick="switchTab('tables')">Table view</button>.</p>` : '';
+  const autoNote = auto.length ? `<p class="mut" style="margin-top:1rem">${plural(auto.length, 'automatic date table')} that Power BI creates for date columns ${auto.length === 1 ? 'is' : 'are'} not listed here; ${auto.length === 1 ? 'it is' : 'they are'} at the end of <button class="xl" onclick="openTableGroup('auto')">Table view</button>.</p>` : '';
   if (!tables.length) return `${head}<div class="empty"><b>This model has no calculated tables.</b></div>${autoNote}`;
   return `${head}${tables.map(t => {
     const own = t.columns.filter(c => c.isCalculated), fromTable = t.columns.filter(c => !c.isCalculated);

@@ -53,7 +53,7 @@ const calcTables=show('calc-tables');
 same([...calcTables.matchAll(/<details class="measure calc-table" id="[^"]+" open>\s*<summary><span class="mea-name">([^<]*)</g)].map(m=>m[1]),
   ['Calendar','LocalDateTable_lookalike']);
 assert.equal(count('calc-tables'),2);
-assert.match(text(calcTables),/2 automatic date tables that Power BI creates for date columns are not listed here; they are in Table view/);
+assert.match(text(calcTables),/2 automatic date tables that Power BI creates for date columns are not listed here; they are at the end of Table view/);
 assert.ok(!calcTables.includes('LocalDateTable_7f')&&!calcTables.includes('DateTableTemplate_9a'),'automatic date tables are not calculated tables');
 assert.match(text(calcTables),/Columns from the expression Date Calculated columns added Year fx/);
 const groups=show('calc-groups');

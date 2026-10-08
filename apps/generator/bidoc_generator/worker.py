@@ -331,7 +331,7 @@ class Worker:
         request = GenerateRequest(engine="power_bi", source_path=str(path), source_kind=kind,
                                   output_dir=str(workspace / "out"), profile="shared", query_code="withheld",
                                   document_id=job.get("document_id"), mapping_dir=str(workspace / "identity"),
-                                  extracted_path=str(extracted) if extracted else None)
+                                  extracted_path=str(extracted) if extracted else None, bidoc_version=__version__)
 
         def engine_progress(stage, message=""):
             if stage == "rendering":

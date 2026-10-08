@@ -19,7 +19,7 @@ works offline and can be emailed, put on SharePoint or committed to a repo.
 5. [Sources](#sources)
 6. [Cleanup: which columns and measures can be removed](#cleanup-which-columns-and-measures-can-be-removed)
 7. [Warnings](#warnings)
-8. [The report library and report details](#the-report-library-and-report-details)
+8. [The report library and documentation details](#the-report-library-and-report-details)
 9. [Other outputs: CSV, JSON, Word, agent context](#other-outputs-csv-json-word-agent-context)
 10. [Command-line reference](#command-line-reference)
 11. [Limitations](#limitations)
@@ -158,7 +158,7 @@ Open **Review issues → Warnings**:
 
 ### 7. Record where a report lives and who connects
 
-In any report, open **Report details**: set the original location (for example
+In any report, open **Documentation details** (below the sections in the left rail): set the original location (for example
 `\\fileserver\Reports\Finance\Corporate Spend.pbix`), a library folder
 (`Finance / Monthly`) and connection notes such as the service account. Choose
 **Download updated HTML** and replace the file. The library groups the report
@@ -214,16 +214,57 @@ report only.
 
 ## What is in a report page
 
-The page opens on **Overview**. The left rail has six sections:
+The page opens on **Overview**. The left rail has seven sections, in this order, named after the views of
+Power BI Desktop. Every view opens with one line saying which Power BI view it stands for.
 
-| Section | Views |
+| Section | Power BI view it stands for | Views |
+|---|---|---|
+| Overview | none: a summary of the file | Overview, Warnings, Cleanup review |
+| Data Sources | Data source settings | Sources, Sources by table, Primary sources, Source objects |
+| Power Query | Power Query Editor | Power Query (queries pane, Applied Steps, script) |
+| Table view | Table view | Tables, Columns |
+| Model view | Model view | Relationships, Security, Lineage, Impact inspector, Usage matrix, Table usage |
+| DAX query view | DAX query view | Measures, Calculated Columns, Calculated Tables, Calculation Groups |
+| Report view | Report view | Pages, Page layout, Filters, Field manifest, Bookmarks |
+
+A section the file has nothing for stays in the rail, disabled, and says why (for example, no report was
+supplied). Below the sections are two **document actions**, also offered at the foot of the Overview:
+**Compare extracts** and **Documentation details** (report location, library folder and connection notes, see
+[below](#the-report-library-and-report-details)).
+
+Where each earlier view went (links and bookmarks to any of them still open the same view):
+
+| Before | Now |
 |---|---|
-| Overview | Counts, sources at a glance, usage summary, documentation coverage (measures, columns and tables described) and duplicate measures |
-| Data & sources | Tables, Columns, Measures, Relationships, Lineage, Sources, Primary sources, Security |
-| Pages & visuals | Page layout, Pages, Filters, Field manifest |
-| Impact & usage | Impact inspector, Usage matrix, Usage |
-| Review issues | Cleanup review, Warnings |
-| Report details | Report location, library folder and connection notes (see [below](#the-report-library-and-report-details)) |
+| Overview | Overview › Overview |
+| Review issues › Warnings, Cleanup review | Overview › Warnings, Cleanup review |
+| Data & sources › Sources (source list) | Data Sources › Sources |
+| Data & sources › Sources (table and page summary) | Data Sources › Sources by table |
+| Data & sources › Sources (source objects) | Data Sources › Source objects |
+| Data & sources › Primary sources | Data Sources › Primary sources |
+| Data & sources › Power Query | Power Query |
+| Data & sources › Tables, Columns | Table view › Tables, Columns |
+| Data & sources › Relationships, Security, Lineage | Model view › Relationships, Security, Lineage |
+| Impact & usage › Impact inspector, Usage matrix, Usage | Model view › Impact inspector, Usage matrix, Table usage |
+| Data & sources › Measures, Calculated Columns, Calculated Tables, Calculation Groups | DAX query view, same names |
+| Pages & visuals › Page layout, Pages, Filters, Field manifest | Report view, same names |
+| Bookmarks (only a count on the Overview) | Report view › Bookmarks, a list the count opens |
+| Impact & usage › Compare extracts | Document action: Compare extracts |
+| Report details | Document action: Documentation details |
+
+**Overview numbers.** Every number under *What this file contains* is a link, and equals the number of items in
+the list it opens: Source tables, Calculated tables, Calculation groups, Other tables, Columns, Calculated
+columns, Measures, Relationships, Power Query queries, Data sources, Security roles, Pages, Visuals, Filters,
+Bookmarks, Warnings. The numbers count the whole file, whatever report page is selected. **Automatic date
+tables** (the hidden tables Power BI adds for date columns) are in none of them, nor are their columns and
+relationships: they are listed, closed, at the end of Table view, and their relationships in a closed block
+under Relationships. The coverage ratios under *Documentation and quality* are shares of the visible objects,
+as their note says.
+
+**Versions.** Beside the generation time the Overview names what generated the document: the `bidoc` version
+and the engine version (`pbi-doc-gen 0.5.0`). A value the document does not hold reads *not recorded*: the
+`bidoc` version when the engine was run on its own (`pbi-doc-gen`, `generate_docs.py`), and both for a page
+generated before versions were recorded.
 
 A bar above each view holds the **Report page** selector, which filters usage views
 and exports to one page, and an analysis-coverage badge; select the badge to see
@@ -254,8 +295,26 @@ shared queries, parameters, custom functions and "Combine files" helper queries.
 Nothing is executed and no connection is made.
 
 **Sources** lists one row per external source with its model tables, report pages,
-reporting usage and identification status. **Primary sources** lists each external
-input per report page and exports it as CSV.
+reporting usage and identification status. **Sources by table** has one row per report page and table
+partition. **Primary sources** lists each external input per report page and exports it as CSV.
+**Source objects** lists every traced object with its extraction evidence.
+
+Wherever a source's query is offered, the control says which of three things the file holds, and links to the
+whole script in the Power Query view (**Full M script**):
+
+| Label | Meaning |
+|---|---|
+| Native SQL from the file | The SQL statement is written in the file (a SQL partition, or a native query whose text the tracer could read, including through parameters). It opens in place. |
+| Source expression (M) | There is no native SQL. The M step that names the source opens in place. |
+| Native query unavailable | A native query is run, but its text is built when the query runs, so it is not in the file. |
+
+In a shared document without query code the control says *Query code withheld* instead.
+
+**Authentication type.** A source shows how it authenticates only when the file says so: the authentication
+kind of a structured data source's credential, integrated security or a named login in a provider connection
+string, or the impersonation mode of an Analysis Services data source. Only the type is read, never an account
+name, password or key. It is shown for the tables that read through that data source. A file made by Power BI
+Desktop keeps credentials outside the file, so its sources read **Not available from this file**.
 
 | Kind | Connectors |
 |---|---|
@@ -434,7 +493,7 @@ without reading any Power BI files:
 python generate_docs.py --catalog "C:\Documentation"
 ```
 
-In a report page, **Report details** records the original report location, a
+In a report page, **Documentation details** records the original report location, a
 library folder (such as `Finance / Monthly`) and connection notes (connection name,
 authentication, username or service account). These are notes you maintain, never
 passwords, so don't put secrets in them. To keep your edits, choose **Download
@@ -529,7 +588,9 @@ node tests/browser_catalog.cjs
 `check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
 `browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
 a framing page), `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
-links) and `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs). In this
+links), `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs) and
+`browser_sections.cjs` (the seven sections, the migration map, Overview numbers against the lists they open,
+automatic date tables, the Data Sources query control and authentication type, the versions line). In this
 repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:

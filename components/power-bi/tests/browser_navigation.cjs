@@ -79,10 +79,10 @@ const step=name=>console.log('  ok '+name);
   // ---- typing in the finder never changes a view's own filter; selecting handles a filter that hides the object
   await page.evaluate(()=>switchTab('tables'));
   await page.locator('#table-search').fill('Dim');
-  assert.equal(await page.locator('#tbl-list > details:visible').count(),1);
+  assert.equal(await page.locator('#tbl-list details[data-table]:visible').count(),1);
   await finder.fill('Amount');
   assert.equal(await page.locator('#table-search').inputValue(),'Dim');
-  assert.equal(await page.locator('#tbl-list > details:visible').count(),1,'the view is still filtered while the finder is used');
+  assert.equal(await page.locator('#tbl-list details[data-table]:visible').count(),1,'the view is still filtered while the finder is used');
   const amount=await col('Sales','Amount');
   assert.ok(await page.locator(amount).isHidden(),'the object is hidden by the active filter');
   await page.locator('#finder-list [role=option]',{hasText:'Amount'}).filter({hasText:/^Amount/}).first().click();
@@ -177,17 +177,22 @@ const step=name=>console.log('  ok '+name);
   step('table and measure links reveal their target and Back returns');
   // ---- Tables search: column names, the matching column named, clearing, and the empty state
   await page.evaluate(()=>switchTab('tables'));
-  const search=page.locator('#table-search'),cards=page.locator('#tbl-list > details:visible');
+  const search=page.locator('#table-search'),cards=page.locator('#tbl-list details[data-table]:visible');
   await search.fill('');
   const all=await cards.count();
-  assert.equal(all,await page.evaluate(()=>M.tables.length));
+  assert.equal(all,await page.evaluate(()=>countedTables().length),'every table but the automatic date tables, which are closed at the end');
   await search.fill('bookmarkon');
   assert.equal(await cards.count(),1);
   assert.match(await cards.first().locator('summary').innerText(),/^Sales\b/);
   assert.equal(await cards.first().locator('.tbl-match').innerText(),'Matching column: BookmarkOnly');
   assert.equal(await page.locator('#table-search-status').innerText(),'1 table shown');
-  assert.ok(await page.locator('#table-source-summary tbody tr:visible').count()>0,'the source rows of the matching table stay');
+  assert.deepEqual(await page.locator('#tbl-list .tbl-group:visible > h2').allInnerTexts().then(a=>a.map(t=>t.replace(/\s*\d+$/,''))),['Source tables'],'groups with no match go with their tables');
+  // a match inside the closed automatic date tables opens them; clearing closes them again
+  await search.fill('LocalDateTable_1f');
+  assert.equal(await cards.count(),1);
+  assert.ok(await page.locator('#tbl-group-auto').evaluate(el=>el.open));
   await search.fill('');
+  assert.ok(!(await page.locator('#tbl-group-auto').evaluate(el=>el.open)));
   assert.equal(await cards.count(),all,'clearing restores the full list');
   assert.equal(await page.locator('#tbl-list .tbl-match:visible').count(),0);
   await search.fill('zz-no-such-thing');

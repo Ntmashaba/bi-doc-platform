@@ -21,7 +21,7 @@ assert.ok(run("PQ.queries.every(q=>OBJECT_BY_ID.get(q.objectId)?.kind==='query'&
 assert.ok(run("TABS.some(t=>t.id==='power-query'&&t.avail)"));
 run("switchTab('power-query')");
 const page=node('main').innerHTML;
-assert.match(text(page),/^.*Power Query The Power Query Editor in Power BI Desktop/);
+assert.match(text(page),/Power Query\. The Power Query Editor in Power BI Desktop: the queries that connect to sources/);
 // Folders in the file's order, then the queries outside every folder; each folder's queries in the file's order.
 same(run('pqFolders().map(f=>[f.label,f.queries.map(q=>q.name)])'),[['Parameters',['BaseUrl','Region']],['Staging',['Stage']],
   ['Other Queries',['Sales','Customers','fnClean','Orders / 2023','Orders / 2024','Orphan']]]);

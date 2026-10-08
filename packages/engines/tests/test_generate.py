@@ -64,6 +64,12 @@ class AdfGeneration(Base):
             self.assertNotIn(ADF_MARKERS[name].encode(), shared, name)
         self.assertIn("credential", {o["reason"] for o in m["projection"]["omissions"]})
 
+    def test_the_data_factory_payload_is_unchanged_by_the_generator_version(self):
+        """The Power BI rework added `producer`; Data Factory documents are as they were."""
+        data, m = self.artifact(self.run_adf(self.factory, bidoc_version="7.8.9"), adf.VIEW_IDS)
+        self.assertNotIn("producer", m["native_payload"]["data"])
+        self.assertNotIn(b"7.8.9", data)
+
     def test_objects_bindings_and_search_text(self):
         _, m = self.artifact(self.run_adf(self.factory), adf.VIEW_IDS)
         by_id = {o["object_id"]: o for o in m["objects"]}
@@ -258,6 +264,45 @@ class PowerBIGeneration(Base):
                     for name, marker in PBI_MARKERS.items():
                         self.assertNotIn(marker, blob, name)
                     self.assertNotIn(str(self.tmp), blob)
+
+    def test_the_document_says_what_generated_it(self):
+        """bidoc and engine versions travel in the payload, on both profiles and through a re-render."""
+        import pbidocgen
+        from bidoc_engines.convert import reproject, rerender
+        expected = {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": "7.8.9"}
+        for profile in ("local", "shared"):
+            data, m = self.artifact(self.run_pbi(self.model, profile=profile, bidoc_version="7.8.9"), power_bi.VIEW_IDS)
+            self.assertEqual(m["native_payload"]["data"]["producer"], expected, profile)
+            self.assertIn(b'"bidoc": "7.8.9"', data.replace(b'":"', b'": "'))
+        # what generated a document does not change when the library or an export renders it again
+        html, stored = rerender(m)
+        self.assertEqual(stored["native_payload"]["data"]["producer"], expected)
+        self.assertIn(b'"bidoc": "7.8.9"', html.replace(b'":"', b'": "'))
+        local, m = self.artifact(self.run_pbi(self.model, bidoc_version="7.8.9"), power_bi.VIEW_IDS)
+        _, shared = reproject(m)
+        self.assertEqual(shared["native_payload"]["data"]["producer"], expected)
+        # the engine library run on its own: there is no bidoc version, and none is made up
+        _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
+        self.assertEqual(m["native_payload"]["data"]["producer"], dict(expected, bidoc=None))
+
+    def test_authentication_is_a_type_and_never_an_account(self):
+        """Across the whole artifact, local and shared: how a source authenticates, never with which account."""
+        source = self.tmp / "auth" / "model.bim"
+        source.parent.mkdir()
+        source.write_text(json.dumps({"name": "Auth", "model": {"dataSources": [
+            {"name": "dw", "connectionString": "Provider=SQLNCLI11;Data Source=srv;Initial Catalog=db;User ID=acct_marker_login;Password=acct_marker_pw"},
+            {"type": "structured", "name": "SQL/srv2;db2", "connectionDetails": {"protocol": "tds", "address": {"server": "srv2", "database": "db2"}},
+             "credential": {"AuthenticationKind": "Windows", "Username": "CORP\\acct_marker_user", "EncryptConnection": True}}],
+            "tables": [
+                {"name": "Budget", "columns": [{"name": "Amount", "dataType": "double"}],
+                 "partitions": [{"name": "Budget", "source": {"query": "SELECT * FROM dbo.Budget", "dataSource": "dw"}}]},
+                {"name": "Orders", "columns": [{"name": "Id", "dataType": "int64"}], "partitions": [{"name": "Orders", "source": {
+                    "type": "m", "expression": 'let S = #"SQL/srv2;db2", T = S{[Schema="dbo",Item="Orders"]}[Data] in T'}}]}]}}), encoding="utf-8")
+        for profile in ("local", "shared"):
+            data, m = self.artifact(self.run_pbi(source, profile=profile), power_bi.VIEW_IDS)
+            self.assertNotIn(b"acct_marker", data, profile)
+            sources = {d["name"]: d.get("authentication") for d in m["native_payload"]["data"]["model"]["dataSources"]}
+            self.assertEqual(sources, {"dw": "User name and password", "SQL/srv2;db2": "Windows"}, profile)
 
     def test_include_query_code_is_explicit(self):
         _, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)

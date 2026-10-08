@@ -17,15 +17,14 @@ const step=name=>console.log('  ok '+name);
  const status=async label=>(await detail.locator('.pq-status',{has:page.locator('dt',{hasText:label})}).locator('.badge').innerText()).trim();
  try{
   await page.goto(url);
-  await page.locator('#sec-data').click();
-  await page.locator('#nav-power-query').click();
+  await page.locator('#sec-power-query').click();
   assert.equal(await page.evaluate(()=>activeTab),'power-query');
-  assert.match(await page.locator('#main .sub').first().innerText(),/^The Power Query Editor in Power BI Desktop/);
+  assert.match(await page.locator('#view-line').innerText(),/^Power Query\. The Power Query Editor in Power BI Desktop/);
   // ---- the queries pane: folders as recorded, a nested folder under its parent, the rest under "Other Queries"
   assert.deepEqual((await page.locator('.pq-folder').allInnerTexts()).map(t=>t.replace(/\s*\d+$/,'')),['Staging','Parameters','Other Queries']);
   const indent=await page.locator('.pq-folder').evaluateAll(els=>els.map(el=>parseFloat(getComputedStyle(el).paddingLeft)));
   assert.ok(indent[1]>indent[0]&&indent[2]===indent[0],'the folder inside Staging is indented: '+indent);
-  assert.deepEqual(await page.locator('.pq-item .pq-name').allInnerTexts(),['Stage','Region','Sales','fnClean','Dim','Cut off']);
+  assert.deepEqual(await page.locator('.pq-item .pq-name').allInnerTexts(),['Stage','Region','Sales','fnClean','Dim','Dynamic','Native','Cut off']);
   assert.equal(await item('Stage').locator('.pq-name').evaluate(el=>getComputedStyle(el).fontStyle),'italic','a query that is not loaded is in italics');
   assert.equal(await item('Sales').locator('.pq-name').evaluate(el=>getComputedStyle(el).fontStyle),'normal');
   assert.equal(await item('fnClean').locator('.pq-kind').innerText(),'fx');
@@ -125,7 +124,7 @@ const step=name=>console.log('  ok '+name);
   assert.equal(await page.evaluate(()=>activeTab),'power-query');
   // Sources points here for scripts
   await page.evaluate(()=>switchTab('sources'));
-  await page.locator('#main button.xl',{hasText:'Power Query'}).click();
+  await page.locator('#main button.xl',{hasText:/^Power Query$/}).click();
   assert.equal(await page.evaluate(()=>activeTab),'power-query');
   await shown('Stage');
   step('an object link opens the query after a reload and from any view');

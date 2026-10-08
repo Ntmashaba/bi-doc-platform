@@ -13,12 +13,12 @@ const {pathToFileURL}=require('node:url'),{execFileSync}=require('node:child_pro
  const download=async(label,dest)=>{const event=page.waitForEvent('download');await page.getByRole('button',{name:label,exact:true}).click();await (await event).saveAs(dest);};
  try{
   await page.goto(pathToFileURL(report).href);
-  await page.locator('#sec-details').click();
+  await page.locator('#util-report-details').click();
   assert.match(await page.locator('#doc-status').innerText(),/No unsaved changes/);
   await page.locator('#doc-location').fill('C:\\Reports\\Finance\\Monthly\\Sales.pbip');
   await page.locator('#doc-0-username').fill('CORP\\reader');
   assert.match(await page.locator('#doc-status').innerText(),/2 unsaved changes/);
-  await page.locator('#sec-overview').click();await page.locator('#sec-details').click();
+  await page.locator('#sec-overview').click();await page.locator('#util-report-details').click();
   assert.equal(await page.locator('#doc-0-username').inputValue(),'CORP\\reader');
   await page.getByRole('button',{name:'Add connection reference',exact:true}).click();
   const last=await page.locator('input[id$="-username"]').count()-1;
@@ -28,7 +28,7 @@ const {pathToFileURL}=require('node:url'),{execFileSync}=require('node:child_pro
   assert.equal(await page.locator('input[id$="-username"]').last().inputValue(),'second_user');
   await page.locator('#doc-folder').fill('Finance / <img src=x onerror="globalThis.injected=1">');
   await download('Download updated HTML',report);
-  await page.goto(pathToFileURL(report).href);await page.locator('#sec-details').click();
+  await page.goto(pathToFileURL(report).href);await page.locator('#util-report-details').click();
   assert.equal(await page.locator('input[id$="-username"]').filter({}).evaluateAll(ns=>ns.some(n=>n.value==='second_user')),true);
   await page.locator('#doc-folder').fill('Finance / Monthly');
   await download('Download updated HTML',report);

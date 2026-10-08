@@ -11,7 +11,7 @@ const step=name=>console.log('  ok '+name);
  page.on('pageerror',error=>errors.push(error.message));
  page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
  const url=pathToFileURL(path.resolve(process.argv[2])).href;
- const card=name=>page.locator('#tbl-list > details').filter({has:page.locator(`xpath=./summary[starts-with(normalize-space(.), "${name} ")]`)});
+ const card=name=>page.locator('#tbl-list details[data-table]').filter({has:page.locator(`xpath=./summary[starts-with(normalize-space(.), "${name} ")]`)});
  try{
   await page.goto(url);
   // ---- every table says, once, how it is defined; its role label is as before
@@ -20,7 +20,7 @@ const step=name=>console.log('  ok '+name);
    'LocalDateTable_1f':['date dimension','Automatic date table'],'LocalDateTable_lookalike':['disconnected','Calculated table'],
    'Time Intelligence':['calculation group','Calculation group'],Budget:['disconnected','SQL query'],Lake:['disconnected','Entity'],
    'Sales-US':['disconnected','Other (no partition)']};
-  const shown=await page.locator('#tbl-list > details').evaluateAll(cards=>Object.fromEntries(cards.map(c=>[c.dataset.table,
+  const shown=await page.locator('#tbl-list details[data-table]').evaluateAll(cards=>Object.fromEntries(cards.map(c=>[c.dataset.table,
    [c.querySelector(':scope > summary > .badge').textContent,[...c.querySelectorAll(':scope > summary > .defined')].map(d=>d.textContent.replace(/^defined by\s*/,''))]])));
   for(const [name,[role,defined]] of Object.entries(expected)) assert.deepEqual(shown[name],[role,[defined]],name);
   assert.ok(Object.values(shown).every(([,defined])=>defined.length===1),'exactly one kind per table');
@@ -121,7 +121,7 @@ const step=name=>console.log('  ok '+name);
    const missing=await unmarked();assert.deepEqual(missing,[],'fx is missing in '+tab);
    return page.locator('#main .fx').count();};
   const counts={};
-  counts.tables=await open('tables',()=>page.evaluate(()=>document.querySelectorAll('#tbl-list > details').forEach(d=>d.open=true)));
+  counts.tables=await open('tables',()=>page.evaluate(()=>document.querySelectorAll('#tbl-list details[data-table]').forEach(d=>d.open=true)));
   counts.columns=await open('columns');
   counts.measures=await open('measures',()=>page.evaluate(()=>document.querySelectorAll('#mea-list details').forEach(d=>d.open=true)));
   counts.rels=await open('rels');
@@ -147,7 +147,7 @@ const step=name=>console.log('  ok '+name);
   assert.match(await page.locator('#inspector').innerText(),/^Close\s*Sales\[Double\]\s*calculated column · Sales\[Double\] fx/);
   await page.evaluate(()=>closeInspector());
   // a column that is not calculated never carries it
-  await page.evaluate(()=>{pageScope='*';switchTab('tables',false,true);document.querySelectorAll('#tbl-list > details').forEach(d=>d.open=true);});
+  await page.evaluate(()=>{pageScope='*';switchTab('tables',false,true);document.querySelectorAll('#tbl-list details[data-table]').forEach(d=>d.open=true);});
   assert.equal(await page.locator(await page.evaluate(()=>'#'+columnAnchor('Sales','Amount'))+' .fx').count(),0);
   step('fx marks a calculated column in every view that names one, as text where markup cannot go');
   // ---- narrow screens
