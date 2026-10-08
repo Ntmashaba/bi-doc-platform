@@ -148,7 +148,7 @@ class SeededPowerBI(unittest.TestCase):
         for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
                      "api_key"):
             self.assertNotIn(PBI_MARKERS[name], text, name)
-        for name in ("sql_literal", "piped_literal", "step_name"):   # code shared as written, by choice
+        for name in ("sql_literal", "piped_literal", "step_name", "described_column"):   # code shared as written, by choice
             self.assertIn(PBI_MARKERS[name], text, name)
         self.assertIn("Sql.Database", text)
         self.assertIn(f'https://{X}@api.contoso.com/v1/orders', text)          # the address stays readable

@@ -27,7 +27,7 @@ import json
 import re
 from .data_sources import describe_all
 from .dax_lexer import mask_dax, REFERENCE
-from .legacy_mashup import is_mashup_source, location, members, section_text
+from .legacy_mashup import is_mashup_source, location, member_descriptions, members, section_text
 from .input_validation import validate_model
 from pathlib import Path
 from .source_inventory import enrich_source
@@ -285,10 +285,19 @@ def inline_legacy_mashups(model: dict) -> None:
     sources = {d.get("name"): d for d in model.get("dataSources") or [] if is_mashup_source(d)}
     if not sources:
         return
-    section = {}
+    section, described = {}, {}
     for ds in sources.values():
-        for name, expression in members(section_text(ds)).items():
+        text = section_text(ds)
+        described.update(member_descriptions(text))
+        for name, expression in members(text).items():
             section.setdefault(name, expression)
+    # The file's whole package, when the reader found it: it also holds the queries no table reads, and what
+    # the file records about each query (its folder, what it returned).
+    package = model.get("mashupPackage") if isinstance(model.get("mashupPackage"), dict) else {}
+    described.update(member_descriptions(package.get("section")))
+    for name, expression in members(package.get("section")).items():
+        section.setdefault(name, expression)
+    facts = package.get("queries") if isinstance(package.get("queries"), dict) else {}
     used = set()
     for tbl in model.get("tables") or []:
         for part in tbl.get("partitions") or []:
@@ -297,12 +306,31 @@ def inline_legacy_mashups(model: dict) -> None:
             member = location(ds) if ds else None
             if (src.get("type") or ("query" if "query" in src else "")) == "query" and member in section:
                 part["source"] = dict(src, type="m", expression=section[member], legacyQuery=src.get("query"))
+                folder = (facts.get(member) or {}).get("queryGroup")
+                if folder and not part.get("queryGroup"):
+                    part["queryGroup"] = folder
                 used.add(member)
     existing = {e.get("name") for e in model.get("expressions") or []}
-    extra = [{"name": n, "kind": "m", "expression": e, "legacyMashup": True}
-             for n, e in section.items() if n not in used | existing]
+    extra = []
+    for name, expression in section.items():
+        if name in used | existing:
+            continue
+        item = {"name": name, "kind": "m", "expression": expression, "legacyMashup": True}
+        fact = facts.get(name) or {}
+        if fact.get("queryGroup"):
+            item["queryGroup"] = fact["queryGroup"]
+        if fact.get("resultType"):
+            item["annotations"] = [{"name": "PBI_ResultType", "value": fact["resultType"]}]
+        if described.get(name):
+            item["description"] = described[name]
+        extra.append(item)
     if extra:
         model["expressions"] = list(model.get("expressions") or []) + extra
+    if package.get("groups") and not model.get("queryGroups"):
+        model["queryGroups"] = [{"folder": g["folder"], "description": g.get("description"),
+                                 "annotations": [{"name": "PBI_QueryGroupOrder", "value": str(g["order"])}]
+                                 if g.get("order") is not None else []}
+                                for g in package["groups"] if isinstance(g, dict) and g.get("folder")]
 
 
 CROSS_FILTER_ONE = "oneDirection"

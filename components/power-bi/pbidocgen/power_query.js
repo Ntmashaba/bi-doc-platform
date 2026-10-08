@@ -130,11 +130,28 @@ function hlM(code) {
   }
   return out + esc(code.slice(last));
 }
+/* Applied Steps in source order under the author's names. A step says in words what it is written to do only
+   where the generator recognised both the operation and its arguments; its expression opens as written. */
+function pqStep(q, code, s) {
+  const formula = Number.isInteger(s.s) && Number.isInteger(s.e) ? code.slice(s.s, s.e) : '';
+  const head = `<span class="pq-step-name">${esc(s.name)}</span>${s.says ? `<span class="pq-step-says">${esc(s.says)}</span>` : ''}${
+    s.call && !s.says ? `<span class="pq-step-call" title="The function this step calls; its arguments are not in a form that is described in words">${esc(s.call)}</span>` : ''}`;
+  const note = s.note ? `<p class="pq-step-note"><b>Comment in the script:</b> ${esc(s.note)}</p>` : '';
+  if (!formula) return `<li><div class="pq-step">${head}${note}</div></li>`;
+  return `<li><details class="pq-step"><summary>${head}</summary><div class="body">${note}<pre class="code">${hlM(formula)}</pre></div></details></li>`;
+}
 function pqSteps(q) {
   const steps = q.steps || {}, items = steps.items || [];
   if (q.publication === 'withheld') return `<p class="mut">Step names are part of the query code, which this shared document withholds.</p>`;
-  if (steps.status === 'parsed') return `${steps.scope === 'function body' ? '<p class="mut">This query is a function; these are the steps of its body.</p>' : ''}
-    <ol class="pq-steps">${items.map(s => `<li><span class="pq-step-name">${esc(s.name)}</span></li>`).join('')}</ol>`;
+  if (steps.status === 'parsed') {
+    const code = pqCode(q), described = items.filter(s => s.says).length;
+    return `${steps.scope === 'function body' ? '<p class="mut">This query is a function; these are the steps of its body.</p>' : ''}
+    <p class="mut pq-steps-lead">In the order written. ${described === items.length ? (items.length === 1 ? 'The step is described from its text.' : 'Each step is described from its text.')
+      : described ? `${described} of ${items.length} steps ${described === 1 ? 'is' : 'are'} described from ${described === 1 ? 'its' : 'their'} text; the rest are written in a form that is not put into words.`
+      : 'No step is written in a form that is put into words.'} A description says what a step is written to do, not what happened when it ran. Open a step for its expression.</p>
+    <ol class="pq-steps">${items.map(s => pqStep(q, code, s)).join('')}</ol>
+    ${steps.returns ? `<p class="mut">The query returns the step <b>${esc(steps.returns)}</b>, which is not the last one; the steps after it are not part of the result.</p>` : ''}`;
+  }
   if (steps.status === 'unsupported') return `<p class="mut">${esc(steps.note || 'The steps could not be read.')} The script below is shown as written.</p>`;
   return `<p class="mut">No top-level Applied Steps: ${esc(steps.note || 'the expression is a single value or call rather than a let … in.')}</p>`;
 }

@@ -104,14 +104,14 @@ def build_source_queries(model: dict | None, report: dict | None) -> list[dict]:
 
     # What each query is, and whether all of it was read.
     for row in rows:
-        facts = m_steps.read(row["mCode"])
-        row["_tokens"] = facts["tokens"]
-        row["kind"] = "function" if row.get("resultType") == "Function" and facts["kind"] == "query" else facts["kind"]
-        row["extraction"] = dict(facts["extraction"])
-        if row.pop("unavailable", None) and row["extraction"]["status"] == "unavailable":
-            row["extraction"]["note"] = ("This file keeps the query in a Power Query package that could not be read. "
-                                         "Only the placeholder the model stores for the table is present.")
-        row["steps"] = {key: facts["steps"][key] for key in ("status", "note", "scope")}
+        reading = m_steps.read(row["mCode"])
+        row["_tokens"] = reading.tokens
+        row["kind"] = "function" if row.get("resultType") == "Function" and reading.kind == "query" else reading.kind
+        row["extraction"] = dict(reading.extraction)
+        note = row.pop("unavailable", None)
+        if note and row["extraction"]["status"] == "unavailable":
+            row["extraction"]["note"] = note
+        row["steps"] = {"status": reading.status, "note": reading.note, "scope": reading.scope}
 
     # Names M can refer to. A shared expression wins over a table of the same name (rule 3): in a model that
     # has both, M names the expression.

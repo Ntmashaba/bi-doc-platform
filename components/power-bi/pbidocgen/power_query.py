@@ -45,6 +45,9 @@ def power_query_view(payload: dict) -> dict:
     rows = [row for row in payload.get("sourceQueries") or [] if isinstance(row, dict)]
     recorded = _recorded(rows)
     reread = {} if recorded else _reread(payload, rows)
+    # What each query name is, so a step that calls a function query or starts from another query can say so.
+    kinds = {row.get("queryName"): (row if recorded else reread.get(i, {})).get("kind", "query")
+             for i, row in enumerate(rows) if row.get("queryName")}
     queries, taken = [], set()
     renamed = {}             # an older payload read again: the id the fresh reading gave -> the id this document uses
     for i, row in enumerate(rows):
@@ -72,10 +75,15 @@ def power_query_view(payload: dict) -> dict:
             entry["extraction"] = {"status": NOT_RECORDED, "note": ""}
             steps = {"status": NOT_RECORDED, "note": "", "scope": ""}
         if publication != "withheld" and code.strip():
-            read = m_steps.read(code)["steps"]
             # What is shown must match the script that is shown, so the steps come from this copy of it.
-            steps = {"status": read["status"], "note": read["note"], "scope": read["scope"],
-                     "items": [{"name": name} for name in read["names"]]}
+            reading = m_steps.read(code, kinds)
+            at = m_steps.utf16_offsets(code)
+            steps = {"status": reading.status, "note": reading.note, "scope": reading.scope, "items": [
+                {key: value for key, value in (("name", step.name), ("s", at(step.start)), ("e", at(step.end)),
+                                                ("call", step.call), ("says", step.description), ("note", step.comment))
+                 if value not in ("", None)} for step in reading.steps]}
+            if reading.returns:
+                steps["returns"] = reading.returns
         entry["steps"] = steps
         queries.append(entry)
     if renamed:

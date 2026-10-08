@@ -277,6 +277,12 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                                     for g in query_groups.values()]
         if raw_model.get('ID') is not None and anns(raw_model['ID']):
             model['annotations'] = anns(raw_model['ID'])
+        if path.suffix.lower() == '.pbix' and path.is_file():
+            # Pre-2019 files keep Power Query in the DataMashup part; newer files have none.
+            from .legacy_mashup import pbix_package
+            package = pbix_package(path)
+            if package and package.get('section'):
+                model['mashupPackage'] = package
     # A file cannot establish who else uses a model, nor prove deletion safety.
     coverage = {'backend':'pbixray', 'version':status()['installed'], 'inputKind':path.suffix.lstrip('.').lower(),
                 'complete':not gaps, 'warnings':sorted(set(warnings+gaps)),

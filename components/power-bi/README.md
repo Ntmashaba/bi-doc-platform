@@ -288,7 +288,8 @@ parameters, whichever file format supplied it.
 - **Header.** The table a query loads (and its partitions when there are several), the tables that use it
   directly or through other queries, its load status, the queries it reads and the external sources it reaches.
   A query used by several tables is listed once.
-- **Applied Steps**, in source order, and the **full M script** in a block that opens on request.
+- **Applied Steps**, in source order and under the names the author gave them, and the **full M script** in
+  a block that opens on request. Each step opens to its own expression, exactly as written.
 - **Three statuses**, reported separately because they answer different questions:
 
 | Status | Values | Says |
@@ -299,6 +300,52 @@ parameters, whichever file format supplied it.
 
 Load status is **loaded** (the query is a table's partition), **not loaded** (a shared expression) or
 **unknown** (a pre-2019 file whose table could not be matched to its query).
+
+### How Applied Steps are read
+
+The steps are the bindings of the query's top-level `let`, which is what the editor lists. They are found by
+tokenizing the script (the tokenizer the source tracer already uses), not by searching its text, so a comma, a
+bracket or the word `in` inside a string, a comment, a quoted name such as `#"in"` or a nested `let` is never
+taken for the end of a step. A `let` nested inside a step belongs to that step. A function whose body is a
+`let` shows the steps of its body. A comment written above a step, or after it on the same line, is shown with
+that step.
+
+A step is put into words only when both its operation and its arguments are recognised: a known function
+called with the literal forms the editor writes.
+
+| Written in the script | Shown |
+|---|---|
+| `Table.RemoveColumns(Source,{"A", "B"})` | Removes 2 columns: A, B |
+| `Table.TransformColumnTypes(Source,{{"Amount", Currency.Type}})` | Sets the data type of 1 column: Amount (fixed decimal number) |
+| `Table.SelectRows(Source, each [Region] = "West")` | Keeps rows where [Region] = "West" |
+| `Source{[Schema="dbo",Item="Orders"]}[Data]` | Navigates to dbo.Orders |
+| `Sql.Database("srv", "dw", [Query="SELECT …"])` | Connects to SQL Server: server srv, database dw; runs a native query (the statement is in the script) |
+| `Table.RemoveColumns(Source, ColumnsToDrop)` | no sentence: which columns is decided elsewhere. The step keeps its name and shows the function it calls |
+
+- A description says what a step is **written** to do. It never says what happened when the query ran: no
+  row counts, no claim that a step succeeded or folded to the source.
+- A description never repeats a connection string, a native SQL statement, the user and password of a URL or a
+  URL's query string. Those stay in the script.
+- Descriptions and step names are read from the script in the copy being rendered. A shared document that
+  withholds query code has neither; one that includes cleaned code shows steps read from the cleaned text.
+- The list of described functions is `DESCRIBERS` in `pbidocgen/m_steps.py`. On the 29 real reports in
+  pbi-tools/pbix-samples, every one of 179 queries is read completely and 98% of 922 steps are described.
+
+**Limits.** A missing comma between two steps is reported as unsupported syntax when the next step starts with
+a name (`A = 1 B = 2`); other malformed M is reported by the first rule it breaks, and the script is shown as
+written. M is never evaluated, so a step built at run time (`Expression.Evaluate`, a function returned by
+another query) is listed by name only.
+
+### Queries of files saved before 2019
+
+Older PBIX files keep Power Query in a package (the `DataMashup` part) and store only a placeholder per table in
+the model (`SELECT * FROM [Sales]`). The generator reads the package from the PBIX itself, or from the `Mashup/`
+folder a pbi-tools extract writes (`Package/Formulas/Section1.m` as one file or as a folder of one file per
+query). That is the only place a query that no table reads is recorded, so before this such queries were
+missing from the documentation. The package layout is the documented one ([MS-QDEFF] 2.2) and was checked
+against the DataMashup of real PBIX files; query folders in the package metadata are read in the documented
+form, but no real pre-2019 sample with folders was available to confirm it, so a package in any other form
+gives a flat list rather than a guess.
 
 Where a file supplies the same query twice, one rule decides what is listed (`pbidocgen/source_queries.py`):
 a table's partition expression is the query of record; a shared expression with the same name and text is the

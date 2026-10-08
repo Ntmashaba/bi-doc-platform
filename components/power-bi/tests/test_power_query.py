@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from pbidocgen import input_limits, m_steps, portable  # noqa: E402
+from pbidocgen import input_limits, portable  # noqa: E402
 from pbidocgen.model_parser import parse_model  # noqa: E402
 from pbidocgen.object_index import build_search_index  # noqa: E402
 from pbidocgen.pbitools_folder import assemble  # noqa: E402
@@ -75,72 +75,6 @@ class Base(unittest.TestCase):
     def rows(self, doc=None):
         model = self.parse(doc or model_doc())
         return {row["queryName"]: row for row in build_source_queries(model, None)}, model
-
-
-class Steps(unittest.TestCase):
-    """m_steps.read: three separate answers about one expression."""
-
-    def status(self, code):
-        facts = m_steps.read(code)
-        return facts["extraction"]["status"], facts["steps"]["status"], facts["kind"], facts["steps"]["names"]
-
-    def test_a_let_lists_its_steps_in_source_order_with_their_own_names(self):
-        code = ('let\n    // where the data comes from\n    Source = Sql.Database("s", "d"),\n'
-                '    #"Changed Type" = Table.TransformColumnTypes(Source, {{"A", type text}}),\n'
-                '    #"Added ""Net"", say" = Table.AddColumn(#"Changed Type", "Net", each\n'
-                '        let Gross = [A], Tax = Gross * 0.2 in Gross - Tax),\n    Última = #"Added ""Net"", say"\nin\n    Última')
-        self.assertEqual(self.status(code), ("complete", "parsed", "query",
-                                             ["Source", "Changed Type", 'Added "Net", say', "Última"]))
-
-    def test_an_expression_without_let_has_no_steps_and_that_is_not_a_failure(self):
-        for code in ('"West"', "42", '#date(2024, 1, 1)', 'Sql.Database("s", "d")', "Stage", '{1, 2, 3}', '[A = 1, B = 2]',
-                     'if Flag then "a" else "b"'):
-            extraction, steps, kind, names = self.status(code)
-            self.assertEqual((extraction, steps, names), ("complete", "none", []), code)
-
-    def test_a_parameter_is_a_parameter_whatever_its_value(self):
-        self.assertEqual(self.status('"West" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]')[2], "parameter")
-        self.assertEqual(self.status('#datetime(2024, 1, 1, 0, 0, 0) meta [IsParameterQuery = true, Type = "DateTime"]')[2], "parameter")
-        self.assertEqual(self.status('"IsParameterQuery=true"')[2], "query")
-
-    def test_a_function_shows_the_steps_of_its_body(self):
-        code = "(t as table, optional n as number) as table =>\nlet\n    A = Table.FirstN(t, n),\n    B = Table.Distinct(A)\nin\n    B"
-        facts = m_steps.read(code)
-        self.assertEqual((facts["kind"], facts["steps"]["status"], facts["steps"]["scope"], facts["steps"]["names"]),
-                         ("function", "parsed", "function body", ["A", "B"]))
-        self.assertEqual(self.status("(x) => x + 1"), ("complete", "none", "function", []))
-        self.assertEqual(self.status("let\n    Source = (x as number) => x * 2\nin\n    Source")[1:3], ("parsed", "function"))
-        self.assertEqual(self.status("let Source = (1 + 2) * 3 in Source")[2], "query")
-
-    def test_text_that_stops_inside_a_construct_is_known_partial(self):
-        for code in ('let\n    Source = Sql.Database("server", "db', 'let Source = Table.FromRows({{1, 2}', 'let A = 1 /* note'):
-            extraction, steps, _, names = self.status(code)
-            self.assertEqual((extraction, steps, names), ("known partial", "unsupported", []), code)
-        note = m_steps.read('let A = "x')["extraction"]["note"]
-        self.assertIn("may hold only part", note)
-
-    def test_complete_text_that_is_not_understood_is_unsupported_not_partial(self):
-        for code in ("let A = 1, A = 2 in A", "let A = 1, in A", "let A = 1", "let A 1 in A",
-                     'section Section1; shared A = 1;', 'let A = "#(zz)" in A'):
-            extraction, steps, _, names = self.status(code)
-            self.assertEqual((extraction, steps, names), ("complete", "unsupported", []), code)
-        self.assertTrue(m_steps.read("let A = 1, A = 2 in A")["steps"]["note"])
-
-    def test_no_expression_is_unavailable(self):
-        for code in (None, "", "  \n "):
-            self.assertEqual(self.status(code)[:2], ("unavailable", "none"))
-
-    def test_references_respect_steps_fields_and_parameters_of_the_same_name(self):
-        names = {"Stage", "Region", "Sales", "fnClean", "t"}
-        refs = lambda code: m_steps.references(m_steps.read(code)["tokens"], names)  # noqa: E731
-        self.assertEqual(refs('let Source = Stage, K = Table.SelectRows(Source, each [Region] = Region) in fnClean(K)'),
-                         ["Stage", "Region", "fnClean"])
-        self.assertEqual(refs('let Stage = 1, X = Stage + 1 in X'), [])                   # a step of that name hides the query
-        self.assertEqual(refs('let X = Table.SelectRows(T, each [Sales] > 0 and _[Region] = "W") in X'), [])    # fields
-        self.assertEqual(refs('let X = [Sales = 1, Region = 2] in X'), [])                 # record fields being set
-        self.assertEqual(refs('(t as table) => Table.Join(t, "k", Sales, "k")'), ["Sales"])  # t is the parameter
-        self.assertEqual(refs('let X = "Stage" in X'), [])                                  # text is not a reference
-        self.assertEqual(refs('let X = #"Stage" in X'), ["Stage"])
 
 
 class Inventory(Base):

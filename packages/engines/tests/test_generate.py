@@ -167,7 +167,7 @@ class PowerBIGeneration(Base):
     def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
         """HTML, embedded payload, search index and manifest: code as written, credential patterns cleaned."""
         shared, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)
-        for name in ("sql_literal", "piped_literal", "step_name"):
+        for name in ("sql_literal", "piped_literal", "step_name", "described_column"):
             self.assertIn(PBI_MARKERS[name].encode(), shared, name)
         for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
                      "api_key"):
@@ -193,15 +193,26 @@ class PowerBIGeneration(Base):
         step = PBI_MARKERS["step_name"]
         local, _, _ = view("local")
         self.assertEqual([s["name"] for s in local["Stepped"]["steps"]["items"]], ["Source", step])
+        self.assertEqual(local["Stepped"]["steps"]["items"][1]["says"], f"Removes 1 column: {PBI_MARKERS['described_column']}")
         self.assertEqual((local["Stepped"]["publication"], local["Stepped"]["extraction"]["status"]), ("included", "complete"))
         withheld, m, text = view("shared")
         q = withheld["Stepped"]
         self.assertEqual((q["publication"], q["extraction"]["status"], q["steps"]["status"]), ("withheld", "complete", "parsed"))
         self.assertNotIn("items", q["steps"])
         self.assertEqual((q["table"], q["load"], q["kind"]), ("Stepped", "loaded", "query"))     # facts stay
-        self.assertNotIn(step, text)
+        for name in ("step_name", "described_column"):            # no step, no description, no expression
+            self.assertNotIn(PBI_MARKERS[name], text, name)
+        self.assertNotIn("Removes 1 column", text)
         included, _, text = view("shared", query_code="included")
         self.assertEqual([s["name"] for s in included["Stepped"]["steps"]["items"]], ["Source", step])
+        # Descriptions are read from the cleaned script, so they cannot say more than it does.
+        self.assertEqual(included["Stepped"]["steps"]["items"][1]["says"], f"Removes 1 column: {PBI_MARKERS['described_column']}")
+        creds = included["Creds"]["steps"]["items"][0]
+        self.assertEqual(creds["says"], "Connects through ODBC; the connection text is in the script")
+        api = included["Userinfo"]["steps"]["items"][0]
+        self.assertNotIn(PBI_MARKERS["url_password"], json.dumps(api))
+        self.assertEqual(api["says"], "Reads JSON from https://api.contoso.com/v1/orders")
+        self.assertNotIn(PBI_MARKERS["url_password"], json.dumps(local["Userinfo"]["steps"]))    # not even locally
         self.assertEqual(included["Creds"]["publication"], "cleaned")
         self.assertEqual(included["Stepped"]["publication"], "included")
         self.assertNotIn(PBI_MARKERS["odbc_password"], text)

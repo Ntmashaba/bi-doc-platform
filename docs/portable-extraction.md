@@ -89,6 +89,11 @@ Each of these is a different claim, and the documents keep them apart.
   query, M and calculated partitions and calculation groups; any other partition type is recorded with an unknown source,
   the extraction notes that remote-model lineage is incomplete, and the document is marked partial. Storage mode
   (Import, DirectQuery, Dual) is read for every table.
+- **Power Query facts are read with the model.** Query folders, the order of the queries pane, and each shared
+  expression's lineage tag, folder, description and result type come from the metadata database. A PBIX saved
+  before 2019 keeps its queries in the `DataMashup` part; that part is read from the PBIX (it is not inside the
+  data model), so queries no table loads are listed too. See *Queries of files saved before 2019* in
+  `components/power-bi/README.md`.
 - **Still incomplete where documented:** embedded entity partitions in remote-model PBIX files, advanced calculation-group
   semantics (extracted, but selection and format semantics are not verified) and object-level security. A detected gap
   marks the document partial, which keeps it local-only.
@@ -108,6 +113,9 @@ anything is parsed. A few KiB of crafted input can claim hundreds of GiB. `pbido
   that permits only `SELECT` and `PRAGMA table_info`.
 - Report layout and PBIR files were already size-capped by their declared sizes, which Python's `zipfile`
   cannot be tricked into exceeding.
+- **Power Query package (`DataMashup`):** at most 50 MiB, read only when it has the documented layout. Its
+  metadata XML is not parsed if it declares a DOCTYPE or an entity. A package in any other form is ignored
+  and the queries the tables themselves hold are still documented.
 - Extraction still runs in the child process with its timeout and cancellation. These limits bound disk use;
   the timeout bounds time.
 

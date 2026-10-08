@@ -64,8 +64,23 @@ if(copy==='local'){
   // The full script, collapsed, as written.
   assert.match(detail,/<details class="pq-code" id="pq-code"><summary>Full M script/);
   assert.ok(!/<details class="pq-code"[^>]*open/.test(detail),'the script is collapsed until asked for');
-  const shown=detail.match(/<pre class="code">([\s\S]*?)<\/pre>/)[1].replace(/<[^>]+>/g,'').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
-  assert.equal(shown,run("DATA.sourceQueries.find(q=>q.queryName==='Sales').mCode"),'the script is shown exactly as written');
+  const written=block=>block.replace(/<[^>]+>/g,'').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  const script=detail.match(/<details class="pq-code"[\s\S]*?<pre class="code">([\s\S]*?)<\/pre>/)[1];
+  assert.equal(written(script),run("DATA.sourceQueries.find(q=>q.queryName==='Sales').mCode"),'the script is shown exactly as written');
+  // Each step: its words where the form is recognised, and its own expression, exactly as written.
+  const stepHtml=[...detail.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m=>m[1]);
+  same(stepHtml.map(h=>(h.match(/class="pq-step-says">([^<]*)</)||[])[1]||''),
+    ['Connects to SQL Server: server srv, database dw','Navigates to dbo.Orders','Keeps rows where [Region] = Region','Invokes the function fnClean']);
+  same(stepHtml.map(h=>written(h.match(/<pre class="code">([\s\S]*?)<\/pre>/)[1])),
+    ['Sql.Database("srv", "dw")','Source{[Schema="dbo",Item="Orders"]}[Data]','Table.SelectRows(Orders, each [Region] = Region)','fnClean(#"Kept Rows")']);
+  assert.match(plain,/Each step is described from its text\. A description says what a step is written to do, not what happened when it ran\./);
+  assert.ok(stepHtml.every(h=>/^<details class="pq-step"><summary>/.test(h)&&!/<details class="pq-step" open/.test(h)),'steps open on request');
+  // A step in a form that is not recognised keeps its name and the function it calls, and gets no sentence.
+  const orders=open('Orders / 2023'),last=[...orders.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m=>m[1]).at(-1);
+  assert.match(last,/class="pq-step-says">Keeps rows where \[Year\] = 2023</);
+  const orphan=open('Orphan');
+  assert.match(orphan,/class="pq-step-says">Builds a table from values written in the script</);
+  detail=open('Sales');plain=text(detail);
   plain=text(open('fnClean'));
   assert.match(plain,/^fnClean Function shared query/);
   assert.match(plain,/This query is a function; these are the steps of its body\./);

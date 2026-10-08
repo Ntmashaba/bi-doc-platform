@@ -45,6 +45,16 @@ const step=name=>console.log('  ok '+name);
   assert.match(facts['External sources'],/SQL Server · server \/ db · dbo\.Orders/);
   assert.deepEqual([await status('Expression extraction'),await status('Applied Steps'),await status('Publication')],['Complete','Parsed','Included']);
   assert.deepEqual(await detail.locator('.pq-step-name').allInnerTexts(),['S','T','Cleaned','Tagged, with Stage']);
+  // Each step says what it is written to do where its form is recognised, and opens to its own expression.
+  assert.deepEqual(await detail.locator('.pq-steps > li').evaluateAll(items=>items.map(li=>li.querySelector('.pq-step-says')?.textContent||'')),
+   ['Connects to SQL Server: server server, database db','Navigates to dbo.Orders','Invokes the function fnClean','Adds the column Tag']);
+  const third=detail.locator('.pq-steps > li').nth(2).locator('details');
+  assert.ok(await third.locator('pre').isHidden(),'a step is closed until asked for');
+  await third.locator('summary').click();
+  assert.equal(await third.locator('pre').innerText(),'fnClean(T)');
+  await third.locator('summary').focus();await page.keyboard.press('Enter');
+  assert.ok(await third.locator('pre').isHidden(),'a step opens and closes from the keyboard');
+  assert.match(await detail.locator('.pq-steps-lead').innerText(),/^In the order written\. Each step is described from its text\./);
   const code=detail.locator('#pq-code');
   assert.equal(await code.evaluate(el=>el.open),false);
   assert.ok(await code.locator('pre').isHidden(),'the script is collapsed');

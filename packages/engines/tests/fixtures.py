@@ -13,6 +13,7 @@ PBI_MARKERS = {
     "api_key": "SEEDAPIKEY_3c2b1a",
     "piped_literal": "SEEDPIPE_Beta",
     "step_name": "SEEDSTEP_Payroll_Joined",
+    "described_column": "SEEDCOL_Salary_Band",
 }
 M = {
     "Creds": f'let S = Odbc.DataSource("Driver={{SQL Server}};Server=db1;Uid=svc;Pwd={PBI_MARKERS["odbc_password"]}") in S',
@@ -31,7 +32,8 @@ M = {
              f'    F = Table.SelectRows(Source, each [Status] = "A | {PBI_MARKERS["piped_literal"]}")\nin\n    F',
     # a step name is part of the code: withheld with it, and with every list of steps read from it
     "Stepped": 'let Source = Sql.Database("finance-sql.corp.local,1444", "FinanceDW"),\n'
-               f'    #"{PBI_MARKERS["step_name"]}" = Table.Distinct(Source)\nin\n    #"{PBI_MARKERS["step_name"]}"',
+               f'    #"{PBI_MARKERS["step_name"]}" = Table.RemoveColumns(Source, {{"{PBI_MARKERS["described_column"]}"}})\n'
+               f'in\n    #"{PBI_MARKERS["step_name"]}"',
     "Sales": 'let Source = Sql.Database("finance-sql.corp.local,1444", "FinanceDW"),\n'
              '    T = Source{[Schema="dbo",Item="FactSales"]}[Data]\nin\n    T',
 }
