@@ -257,23 +257,44 @@ def read(code: str | None, queries: dict | None = None) -> Reading:
 
 
 def _expression_end(ts, start) -> int:
-    """Index just past the expression that starts at ts[start]: the next comma at its own level, or the bracket
-    that closes the group it sits in. A `let` inside it is skipped whole, so its bindings' commas do not end it."""
-    depth = lets = 0
+    """Index just past the expression that starts at ts[start].
+
+    An expression runs until something that belongs to the construct around it: a comma or closing bracket at its
+    own level, or the `in` of an enclosing let, the `then` or `else` of an enclosing if, the `otherwise` of an
+    enclosing try. A let, if or try that starts inside it is followed to its own end, so its keywords and its
+    bindings' commas do not end it."""
+    depth, open_ = 0, []                     # constructs begun inside the expression, innermost last
     for i in range(start, len(ts)):
         t = ts[i]
         if t.kind == "symbol" and t.value in "([{":
             depth += 1
-        elif t.kind == "symbol" and t.value in ")]}":
+            continue
+        if t.kind == "symbol" and t.value in ")]}":
             if not depth:
                 return i
             depth -= 1
-        elif not depth and keyword(t, "let"):
-            lets += 1
-        elif not depth and keyword(t, "in") and lets:
-            lets -= 1
-        elif not depth and not lets and _is(t, ","):
+            continue
+        if depth:
+            continue
+        if keyword(t, "let") or keyword(t, "if") or keyword(t, "try"):
+            open_.append(t.value)
+            continue
+        closes = {"in": "let", "then": "if", "else": "then", "otherwise": "try"}.get(t.value) if keyword(t, t.value) else None
+        if closes is None and not _is(t, ","):
+            continue
+        # a try without `otherwise` ended where its operand did, so it cannot take anything after this point
+        while open_ and open_[-1] == "try" and closes != "try":
+            open_.pop()
+        if _is(t, ","):
+            if "let" in open_:
+                continue                     # a binding of a let begun inside the expression
             return i
+        if open_ and open_[-1] == closes:
+            open_.pop()
+            if closes == "if":
+                open_.append("then")         # an if still needs its else
+            continue
+        return i                             # the keyword belongs to a construct around the expression
     return len(ts)
 
 

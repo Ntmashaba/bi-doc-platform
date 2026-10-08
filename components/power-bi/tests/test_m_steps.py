@@ -199,6 +199,20 @@ class Structure(unittest.TestCase):
         self.assertEqual(refs('let f = (t as table) => Table.Join(t, "k", Stage, "k") in f(Sales)'), ["Stage", "Sales"])
         self.assertEqual(refs('let a = let Stage = 2 in Stage, b = Stage in b'), ["Stage"])  # a nested let's step
         self.assertEqual(refs('let a = Stage, Stage = 1 in a'), [])                         # a later step, still that let's
+        # a scope ends with its expression: at the enclosing let's `in`, an if's `then` or `else`, a try's `otherwise`,
+        # including when the function or nested let is the last binding, with no comma after it
+        self.assertEqual(refs('let Transform = (Stage) => Stage in Transform(Stage)'), ["Stage"])
+        self.assertEqual(refs('let a = let Stage = 1 in Stage in Stage'), ["Stage"])
+        self.assertEqual(refs('if Sales then (Stage) => Stage else Stage'), ["Sales", "Stage"])
+        self.assertEqual(refs('if Sales then let Stage = 1 in Stage else Stage'), ["Sales", "Stage"])
+        self.assertEqual(refs('try (Stage) => Stage otherwise Stage'), ["Stage"])
+        self.assertEqual(refs('try let Stage = 1 in Stage otherwise Stage'), ["Stage"])
+        self.assertEqual(refs('let f = (x) => if x then let Stage = 1 in Stage else Stage in f(1)'), ["Stage"])
+        self.assertEqual(refs('let f = (Stage) => try Stage, g = Stage in g'), ["Stage"])   # a try with no otherwise
+        # ...and the body keeps its own keywords: the parameter still hides the query throughout it
+        self.assertEqual(refs('let f = (Stage) => if Stage then Stage else Stage in f(Sales)'), ["Sales"])
+        self.assertEqual(refs('let f = (Stage) => try Stage otherwise Stage in f(Sales)'), ["Sales"])
+        self.assertEqual(refs('let f = (Stage) => let x = Stage, y = Stage in y in f(Sales)'), ["Sales"])
 
 
 class Descriptions(unittest.TestCase):

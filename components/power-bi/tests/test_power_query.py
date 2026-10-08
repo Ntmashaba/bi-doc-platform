@@ -86,6 +86,13 @@ class Inventory(Base):
         self.assertEqual([i.split(":")[-1] for i in rows["Customers"]["upstream"]], ["Stage"])
         self.assertEqual(rows["Stage"]["usedBy"], ["Customers", "Orders"])
 
+    def test_a_parameter_named_like_a_query_does_not_hide_it_after_the_function(self):
+        doc = model_doc()
+        doc["model"]["tables"][1]["partitions"] = [m('let\n    Transform = (Stage) => Stage\nin\n    Transform(Stage)', name="Customers")]
+        rows, _ = self.rows(doc)
+        self.assertEqual([i.split(":")[-1] for i in rows["Customers"]["upstream"]], ["Stage"])
+        self.assertEqual(rows["Stage"]["usedBy"], ["Customers", "Orders"])
+
     def test_one_entry_per_query_with_what_it_is_and_what_it_feeds(self):
         rows, _ = self.rows()
         self.assertEqual(sorted(rows), ["BaseUrl", "Customers", "Orders / 2023", "Orders / 2024", "Orphan", "Region", "Sales",

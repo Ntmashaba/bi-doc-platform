@@ -27,7 +27,8 @@ missing page history, an inflated Filters count, a phone-width regression and a 
 PR review at `1170f04` found three more, each fixed with a regression test that fails on the old code:
 - Step 3: a record field, parameter or nested step named like a query hid that query everywhere in the expression,
   dropping it from upstream and "used by". Names now resolve within their scopes (`m_steps.references`;
-  `tests/test_m_steps.py`, `test_power_query.py`).
+  `tests/test_m_steps.py`, `test_power_query.py`). A second review found a scope still ran past the enclosing
+  `in`, `else` or `otherwise` when the function or nested let was the last binding; it now ends there.
 - Step 1: a library target for a query carried only its name, so of two queries named alike the first opened and
   was reported exact. Targets now carry the query id; a name lookup after a missing id is not exact
   (`packages/engines/tests/test_generate.py`, `tests/check_query_cases.cjs`).
