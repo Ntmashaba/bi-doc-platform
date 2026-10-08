@@ -191,7 +191,9 @@ def describe(payload: dict, coverage: str = "complete"):
             q.get("group") and f"Query folder: {q['group']}",
             q.get("load") and f"Load status: {q['load']}",
             q.get("sources") and "Sources: " + ", ".join(q["sources"])]))
-        targets.append({"target_id": qsid, "view_id": "pbi.query", "args": {"query": q["queryName"][:512]}})
+        # Two queries can share a name (a table's query and a shared query with different text), so the target
+        # carries the query's own id; the name stays for documents generated before ids were looked up.
+        targets.append({"target_id": qsid, "view_id": "pbi.query", "args": {"query": q["queryName"][:512], "object": qid[:512]}})
 
     # sourceObjects has one row per (logical source, page usage); objects are the logical sources.
     grouped: dict[str, dict] = {}

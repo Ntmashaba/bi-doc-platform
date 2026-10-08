@@ -1058,7 +1058,10 @@ const VIEWER_VIEWS = {
   "pbi.table": a => goRef("table", a.table, {history:false}) || (switchTab("tables"), viewerReveal("tbl-"+slug(a.table))),
   "pbi.measure": a => goRef("measure", a.measure, {history:false}) || (switchTab("measures"), viewerReveal("mea-"+slug(a.measure))),
   "pbi.page": a => goRef("page", a.page, {history:false}) || (switchTab("pages"), viewerReveal("pg-"+pageKey(a.page))),
-  "pbi.query": a => goRef("query", a.query, {history:false}),
+  // By the query's own id: two queries can share a name. A document without that id is searched by name, and
+  // a name lookup after the id was not found is never reported as exact.
+  "pbi.query": a => a.object ? (goObject(a.object, {history:false}) || (goRef("query", a.query, {history:false}), false))
+                             : goRef("query", a.query, {history:false}),
   "pbi.source": a => {
     switchTab("sources");
     const same = (x, y) => !y || String(x||"") === y;

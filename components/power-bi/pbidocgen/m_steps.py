@@ -256,40 +256,87 @@ def read(code: str | None, queries: dict | None = None) -> Reading:
     return reading
 
 
+def _expression_end(ts, start) -> int:
+    """Index just past the expression that starts at ts[start]: the next comma at its own level, or the bracket
+    that closes the group it sits in. A `let` inside it is skipped whole, so its bindings' commas do not end it."""
+    depth = lets = 0
+    for i in range(start, len(ts)):
+        t = ts[i]
+        if t.kind == "symbol" and t.value in "([{":
+            depth += 1
+        elif t.kind == "symbol" and t.value in ")]}":
+            if not depth:
+                return i
+            depth -= 1
+        elif not depth and keyword(t, "let"):
+            lets += 1
+        elif not depth and keyword(t, "in") and lets:
+            lets -= 1
+        elif not depth and not lets and _is(t, ","):
+            return i
+    return len(ts)
+
+
+def _bound_name(ts, lo, hi):
+    """The name a `name = value` binding or record field defines, when ts[lo:hi] is one (`=>` is not one)."""
+    if hi - lo >= 2 and ts[lo].kind == "id" and _is(ts[lo + 1], "=") and not (lo + 2 < hi and _is(ts[lo + 2], ">")):
+        return ts[lo].value
+    return None
+
+
+def _scopes(tokens, pairs) -> list[tuple[str, int, int]]:
+    """(name, first, last) for every name the expression defines, over the tokens where that name is visible:
+    a let's bindings over the whole let (M lets bindings refer to one another in any order), a record's fields
+    over that record, a function's parameters over its parameter list and body."""
+    out = []
+    for k, t in enumerate(tokens):
+        if keyword(t, "let"):
+            end_in = _let_end(tokens, k)
+            if end_in is None:
+                continue
+            last = _expression_end(tokens, end_in + 1)
+            for lo, hi in _split(tokens, k + 1, end_in):
+                name = _bound_name(tokens, lo, hi)
+                if name is not None:
+                    out.append((name, k, last))
+        elif _is(t, "[") and k in pairs:
+            close = pairs[k]
+            fields = [_bound_name(tokens, lo, hi) for lo, hi in _split(tokens, k + 1, close)]
+            out.extend((name, k, close) for name in fields if name is not None)
+        elif _is(t, "(") and k in pairs:
+            body = _function_body(tokens, pairs, k)
+            if body is None:
+                continue
+            last = _expression_end(tokens, body)
+            for lo, hi in _split(tokens, k + 1, pairs[k]):
+                ids = [p for p in tokens[lo:hi] if p.kind == "id" and not keyword(p, "optional")]
+                if ids:
+                    out.append((ids[0].value, k, last))
+    return out
+
+
 def references(tokens, names) -> list[str]:
     """The names in `names` an expression refers to, in the order first met.
 
-    A name is not a reference where the expression itself defines it (a step or a function parameter of that
-    name hides the query), where it is a field being read (`row[Sales]`, `[Sales]`) or where it is a record
-    field being set (`[Sales = 1]`).
+    A name is not a reference where the expression itself defines it, and only where it does: a step of a let
+    hides a query of that name within that let, a record field within that record, a function parameter within
+    that function. Outside those scopes the same name is the query. A field being read (`row[Sales]`,
+    `[Sales]`) is never a reference.
     """
     if not tokens:
         return []
-    local = set()
-    for i, t in enumerate(tokens):
-        if t.kind != "id":
-            continue
-        nxt = tokens[i + 1] if i + 1 < len(tokens) else None
-        prev = tokens[i - 1] if i else None
-        binding = nxt is not None and _is(nxt, "=") and not (i + 2 < len(tokens) and _is(tokens[i + 2], ">"))
-        if binding and prev is not None and (keyword(prev, "let") or _is(prev, ",") or _is(prev, "[")):
-            local.add(t.value)          # a step, or a record field (a record field of that name is not a query either)
     try:
         pairs = pairs_for(tokens)
     except ValueError:
         pairs = {}
-    for open_, close in pairs.items():   # function parameters: (a, optional b as text) =>
-        if _is(tokens[open_], "(") and close + 2 < len(tokens) and (
-                _is(tokens[close + 1], "=") and _is(tokens[close + 2], ">") or keyword(tokens[close + 1], "as")):
-            for lo, hi in _split(tokens, open_ + 1, close):
-                ids = [t for t in tokens[lo:hi] if t.kind == "id" and not keyword(t, "optional")]
-                if ids:
-                    local.add(ids[0].value)
+    scopes = [s for s in _scopes(tokens, pairs) if s[0] in names]
     found = []
     for i, t in enumerate(tokens):
-        if t.kind != "id" or t.value not in names or t.value in local or t.value in found:
+        if t.kind != "id" or t.value not in names or t.value in found:
             continue
         if not t.quoted and t.value in KEYWORDS:
+            continue
+        if any(name == t.value and lo <= i <= hi for name, lo, hi in scopes):
             continue
         prev = tokens[i - 1] if i else None
         nxt = tokens[i + 1] if i + 1 < len(tokens) else None

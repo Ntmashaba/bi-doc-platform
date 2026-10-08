@@ -24,6 +24,16 @@ Independent review (a separate agent, after Step 8) found a shared-document SQL 
 missing page history, an inflated Filters count, a phone-width regression and a print cut-off; all were fixed in
 `55512eb` and re-verified by the same reviewer.
 
+PR review at `1170f04` found three more, each fixed with a regression test that fails on the old code:
+- Step 3: a record field, parameter or nested step named like a query hid that query everywhere in the expression,
+  dropping it from upstream and "used by". Names now resolve within their scopes (`m_steps.references`;
+  `tests/test_m_steps.py`, `test_power_query.py`).
+- Step 1: a library target for a query carried only its name, so of two queries named alike the first opened and
+  was reported exact. Targets now carry the query id; a name lookup after a missing id is not exact
+  (`packages/engines/tests/test_generate.py`, `tests/check_query_cases.cjs`).
+- Change 2: a let that returns an earlier step no longer says the later steps are unused; M evaluates whatever
+  the result refers to, in any written order (`tests/check_query_cases.cjs`).
+
 Still open:
 - Final gate: regenerate the reporting user's own file and walk through it with them.
 - pbi-tools bookmark groups are not read (no sample has one).

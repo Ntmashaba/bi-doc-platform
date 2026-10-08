@@ -149,7 +149,7 @@ function pqSteps(q) {
       : described ? `${described} of ${items.length} steps ${described === 1 ? 'is' : 'are'} described from ${described === 1 ? 'its' : 'their'} text; the rest are written in a form that is not put into words.`
       : 'No step is written in a form that is put into words.'} A description says what a step is written to do, not what happened when it ran. Open a step for its expression.</p>
     <ol class="pq-steps">${items.map(s => pqStep(q, code, s)).join('')}</ol>
-    ${steps.returns ? `<p class="mut">The query returns the step <b>${esc(steps.returns)}</b>, which is not the last one; the steps after it are not part of the result.</p>` : ''}`;
+    ${steps.returns ? `<p class="mut">The query returns the step <b>${esc(steps.returns)}</b>, which is not the last one written. M works out every step the result refers to, in whatever order the steps are written, so a step written after it can still be part of the result.</p>` : ''}`;
   }
   if (steps.status === 'unsupported') return `<p class="mut">${esc(steps.note || 'The steps could not be read.')} The script below is shown as written.</p>`;
   return `<p class="mut">No top-level Applied Steps: ${esc(steps.note || 'the expression is a single value or call rather than a let … in.')}</p>`;

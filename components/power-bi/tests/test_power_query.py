@@ -78,6 +78,14 @@ class Base(unittest.TestCase):
 
 
 class Inventory(Base):
+    def test_a_record_field_named_like_a_query_does_not_hide_the_query(self):
+        doc = model_doc()
+        doc["model"]["tables"][1]["partitions"] = [m('let\n    Source = Stage,\n    Added = Table.AddColumn(Source, "Details", '
+                                                     'each [Stage = 1])\nin\n    Added', name="Customers")]
+        rows, _ = self.rows(doc)
+        self.assertEqual([i.split(":")[-1] for i in rows["Customers"]["upstream"]], ["Stage"])
+        self.assertEqual(rows["Stage"]["usedBy"], ["Customers", "Orders"])
+
     def test_one_entry_per_query_with_what_it_is_and_what_it_feeds(self):
         rows, _ = self.rows()
         self.assertEqual(sorted(rows), ["BaseUrl", "Customers", "Orders / 2023", "Orders / 2024", "Orphan", "Region", "Sales",
@@ -132,6 +140,17 @@ class Inventory(Base):
         self.assertEqual(sorted(r["origin"] for r in both), ["shared", "table"])
         self.assertEqual(sorted(r["objectId"] for r in both), ["pbi:query:name:Sales", "pbi:query:name:Sales~2"])
         self.assertEqual(sorted(r["load"] for r in both), ["loaded", "not loaded"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node needed to run the generated script")
+    def test_two_queries_of_one_name_and_a_step_returned_early_in_the_view(self):
+        doc = model_doc()
+        doc["model"]["expressions"] += [{"name": "Sales", "kind": "m", "expression": 'let Source = Stage in Source'},
+                                        {"name": "Out of order", "kind": "m", "expression": "let Result = Final, Final = 42 in Result"}]
+        model = self.parse(doc)
+        html = render_html(build_payload(model, None, None, "Shop"), self.tmp / "same.html")
+        result = subprocess.run(["node", str(Path(__file__).with_name("check_query_cases.cjs")), str(html)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_ids_are_unique_follow_lineage_tags_and_match_the_object_index(self):
         model = self.parse(model_doc())

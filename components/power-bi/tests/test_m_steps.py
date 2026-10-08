@@ -190,6 +190,15 @@ class Structure(unittest.TestCase):
         self.assertEqual(refs('let X = #"Stage" in X'), ["Stage"])
         self.assertEqual(refs('let X = #"in" in X'), ["in"])                                # a query really named "in"
         self.assertEqual(refs('let X = 1 in X'), [])                                        # the keyword is not that query
+        # a name is hidden only where it is defined: a record field, a parameter or a step elsewhere in the
+        # expression leaves the query of that name a reference everywhere else
+        self.assertEqual(refs('let Source = Stage, Added = Table.AddColumn(Source, "Details", each [Stage = 1]) in Added'), ["Stage"])
+        self.assertEqual(refs('let a = [Stage = 1], b = Stage in b'), ["Stage"])
+        self.assertEqual(refs('[Stage = 1, b = Stage][b]'), [])                             # fields see one another
+        self.assertEqual(refs('let f = (Stage) => Stage + 1, x = f(Stage) in x'), ["Stage"])
+        self.assertEqual(refs('let f = (t as table) => Table.Join(t, "k", Stage, "k") in f(Sales)'), ["Stage", "Sales"])
+        self.assertEqual(refs('let a = let Stage = 2 in Stage, b = Stage in b'), ["Stage"])  # a nested let's step
+        self.assertEqual(refs('let a = Stage, Stage = 1 in a'), [])                         # a later step, still that let's
 
 
 class Descriptions(unittest.TestCase):

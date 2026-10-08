@@ -227,8 +227,22 @@ class PowerBIGeneration(Base):
         self.assertIn("Query Stepped", sections)
         self.assertIn("Loads table: Stepped", sections["Query Stepped"]["text"])
         self.assertNotIn("Sql.Database", sections["Query Stepped"]["text"])
-        target = next(t for t in m["navigation"]["targets"] if t["view_id"] == "pbi.query" and t["args"] == {"query": "Stepped"})
+        target = next(t for t in m["navigation"]["targets"] if t["view_id"] == "pbi.query" and t["args"]["query"] == "Stepped")
         self.assertEqual(target["target_id"], sections["Query Stepped"]["id"])
+        stepped = next(q for q in m["native_payload"]["data"]["sourceQueries"] if q["queryName"] == "Stepped")
+        self.assertEqual(target["args"]["object"], stepped["objectId"])     # opened by its id, not only its name
+
+    def test_two_queries_of_one_name_have_a_target_each(self):
+        """A table's query and a shared query with the same name and different text: each target opens its own."""
+        from bidoc_engines.power_bi import describe
+        payload = {"title": "t", "mode": "full", "sourceQueries": [
+            {"queryName": "Same", "objectId": "pbi:query:name:Same", "origin": "table", "table": "Same"},
+            {"queryName": "Same", "objectId": "pbi:query:name:Same~2", "origin": "shared"}]}
+        _, sections, targets = describe(payload)
+        queries = [t for t in targets if t["view_id"] == "pbi.query"]
+        self.assertEqual([t["args"] for t in queries], [{"query": "Same", "object": "pbi:query:name:Same"},
+                                                        {"query": "Same", "object": "pbi:query:name:Same~2"}])
+        self.assertEqual(len({t["target_id"] for t in queries}), 2)
 
     def test_lineage_tags_are_object_ids_and_sources_are_logical(self):
         _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
