@@ -26,6 +26,11 @@ function rememberView(){
   document.querySelectorAll('#main details[id][open]').forEach(el=>state.details.push(el.id));
   viewState.set(activeTab,state);
 }
+function forgetView(id){
+  viewState.delete(id);
+  if(id==='matrix'){matrixQuery='';}
+  if(id==='impact'){impactQuery='';}
+}
 function restoreView(id){
   if(id==='report-details') return;
   const state=viewState.get(id);
@@ -518,7 +523,7 @@ function filterSourceList(){
   const q=(document.getElementById('source-search')?.value||'').trim().toLowerCase();
   visibleSourceGroups=sourceGroups().filter(g=>g.rows.some(inPageScope)).filter(g=>!q||[g.sourceType,g.name,g.server,g.location,...g.tables,...g.primaryQueries,...g.consumingQueries].join(' ').toLowerCase().includes(q));
   document.getElementById('source-count').textContent=plural(visibleSourceGroups.length,"source");
-  body.innerHTML=visibleSourceGroups.map(g=>`<tr><th><button class="xl" onclick="${action('inspectSource',g.key)}">${esc(g.sourceType)} · ${esc(g.name)}</button>
+  body.innerHTML=visibleSourceGroups.map(g=>`<tr id="${sourceAnchor(g.key)}"><th><button class="xl" onclick="${action('inspectSource',g.key)}">${esc(g.sourceType)} · ${esc(g.name)}</button>
     <div class="mut">${esc(g.server||g.location||'')}</div></th>
     <td>${g.tables.map(tblLink).join(', ')||'<span class="mut">No model consumer</span>'}</td>
     <td><div class="pill-list">${g.pages.map(p=>`<span class="tag-page">${esc(p.page)}</span>`).join('')||'<span class="mut">No page usage</span>'}</div></td>

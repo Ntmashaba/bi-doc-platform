@@ -1,0 +1,42 @@
+/* The finder: one box to browse and search every object, above whichever view is open. */
+.content{min-width:0}
+.finder{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--line2);padding:10px 36px}
+.finder-box{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:1408px}
+.finder-label{font-weight:600;font-size:.85rem;color:var(--ink2)}
+.finder-field{position:relative;flex:0 1 480px;min-width:200px}
+.finder-input{width:100%;padding:.5rem 2rem .5rem .7rem;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--panel);color:var(--ink)}
+.finder-input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.finder-clear{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:0;border-radius:6px;background:none;color:var(--ink2);font-size:1.1rem;line-height:1;cursor:pointer}
+.finder-clear:hover{background:var(--panel2);color:var(--ink)}
+.finder-clear[hidden],.finder-panel[hidden]{display:none}
+.finder-count{font-size:.8rem;color:var(--ink2);font-variant-numeric:tabular-nums}
+.finder-hint{font-size:.78rem;color:var(--ink3);margin-left:auto}
+.finder-hint kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 .3rem;background:var(--panel)}
+.finder-panel{position:absolute;left:0;top:calc(100% + 6px);width:min(640px,calc(100vw - 32px));max-height:min(70vh,560px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px #0f172a2e;padding:6px}
+.finder-kind{position:sticky;top:-6px;background:var(--panel);font-size:.76rem;font-weight:600;color:var(--ink2);padding:.5rem .6rem .25rem}
+.finder-kind .n{font-weight:400;color:var(--ink3);font-variant-numeric:tabular-nums}
+.finder-opt{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.8rem;align-items:baseline;padding:.36rem .6rem;border-radius:6px;cursor:pointer}
+.finder-opt:hover{background:var(--panel2)}
+.finder-opt.active{background:var(--accentSoft);box-shadow:inset 3px 0 0 var(--accent)}
+.fo-name{font-weight:500;overflow-wrap:anywhere}
+.fo-name mark{background:#FDE68A;color:inherit;border-radius:2px}
+.fo-kind{font-size:.75rem;color:var(--ink2);white-space:nowrap}
+.fo-parent{grid-column:1/-1;font-size:.76rem;color:var(--ink3);overflow-wrap:anywhere}
+.fo-parent:empty{display:none}
+.finder-more{display:block;font-size:.8rem;color:var(--accent);padding:.36rem .6rem}
+div.finder-more[role=presentation]{color:var(--ink3)}
+.finder-empty{padding:1.2rem .8rem;color:var(--ink2);font-size:.88rem}
+.finder-note{font-size:.82rem;color:var(--ink2);margin-top:6px}
+.finder-note:empty{display:none}
+.scope-bar{top:57px}
+/* The object a link, a search result or the library just opened. */
+.obj-hit{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+tr.obj-hit>td,tr.obj-hit>th{background:var(--accentSoft)}
+details.obj-hit>summary{background:var(--accentSoft);border-radius:12px}
+tr[tabindex="-1"]:focus,[tabindex="-1"].card:focus,span[tabindex="-1"]:focus{outline:2px solid var(--accent);outline-offset:2px}
+tr.col-match>td:first-child .ref{background:#FDE68A;border-color:#D9A514}
+p.empty#table-search-status{margin:.4rem 0 1rem}
+#table-search-status:empty{display:none}
+#tbl-results[hidden],.tbl-match[hidden]{display:none}
+@media(max-width:860px){.finder{position:static;padding:10px 20px}.finder-hint{display:none}.finder-field{flex:1 1 100%}.scope-bar{top:0}}
+@media print{.finder{display:none}}

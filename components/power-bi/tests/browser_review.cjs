@@ -1,10 +1,11 @@
-// Real Chromium gate. Requires Playwright and its Chromium binary.
+// Real Chromium gate. Requires Playwright and its Chromium binary (CHROMIUM_PATH may name a local one).
+// Run through check_browser.py, which builds the fixture first.
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),os=require('node:os');
 const {pathToFileURL}=require('node:url');
 const {execFileSync}=require('node:child_process');
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const browser=await chromium.launch(process.env.CHROMIUM_PATH?{headless:true,executablePath:process.env.CHROMIUM_PATH}:{headless:true});
  const context=await browser.newContext({acceptDownloads:true,viewport:{width:1440,height:1000}});
  const page=await context.newPage();const errors=[];
  page.on('pageerror',error=>errors.push(error.message));
@@ -55,9 +56,9 @@ const {execFileSync}=require('node:child_process');
    const pending=page.waitForEvent('download');await page.getByRole('button',{name:label,exact:true}).click();const download=await pending;
    assert.equal(download.suggestedFilename(),'Sales-'+suffix);
    const file=path.join(tmp,suffix);await download.saveAs(file);
-   if(suffix==='source-queries.csv') execFileSync('python',['-c','import csv,sys; f=open(sys.argv[1],encoding="utf-8-sig",newline=""); r=csv.reader(f); assert next(r)==["report","query name","query m code"]; assert any(row[1]=="Stage" and "\\n" in row[2] for row in r)',file]);
+   if(suffix==='source-queries.csv') execFileSync(process.env.PYTHON||'python',['-c','import csv,sys; f=open(sys.argv[1],encoding="utf-8-sig",newline=""); r=csv.reader(f); assert next(r)==["report","query name","query m code"]; assert any(row[1]=="Stage" and "\\n" in row[2] for row in r)',file]);
   }
-  const baseline=JSON.parse(fs.readFileSync('/tmp/pbidocgen-browser.json','utf8'));baseline.model.expressions[0].expression='changed';
+  const baseline=JSON.parse(fs.readFileSync(path.resolve(process.argv[2]).replace(/\.html$/,'.json'),'utf8'));baseline.model.expressions[0].expression='changed';
   // Comparison is an advanced route, intentionally absent from navigation.
   await page.goto(page.url().split('#')[0]+'#compare');await page.locator('input[type=file]').setInputFiles({name:'before.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(baseline))});
   await page.locator('tbody th').filter({hasText:'Shared expression'}).waitFor();

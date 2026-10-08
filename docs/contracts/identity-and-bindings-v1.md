@@ -18,6 +18,26 @@ Engine revisions surveyed: pbi-doc-gen `a7d5565`, adf-doc-gen `7c8cfe5` (see `do
 
 **Fallback without `lineageTag`** (older BIM, legacy extracts): `pbi:table:name:{name}` and `pbi:measure:name:{table}/{name}`, with the sidecar mapping file persisting them. A rename without a durable tag is a new object and triggers Needs review; there is never fuzzy matching. Copied PBIX files share lineage tags. That is harmless because IDs are scoped per `document_id`, and a copy gets a new stream only by explicit choice.
 
+### Identity inside the document (2026-10-08)
+
+The generated Power BI page keys its search index and its object links on the same ids, built by one module
+(`pbidocgen/object_index.py`) that the adapter imports. Table and measure ids are unchanged, so manifest objects,
+navigation targets and existing library links resolve as before. The additional ids below exist only inside the
+document (index entries and `#o/<id>` links); they are **not** manifest objects, and `identity_version` stays
+`pbi-identity/1`.
+
+| Kind | id | Basis |
+|---|---|---|
+| column, calculated column | `pbi:column:{lineageTag}`, else `pbi:column:name:{table}/{column}` | as tables and measures |
+| query (a partition's M or a shared expression) | `pbi:query:{lineageTag}` when the file gives the expression a tag, else `pbi:query:name:{query name}` | the query inventory's name |
+| page | `pbi:page:{page id}` | the report's page id |
+| visual | `pbi:visual:{page id}/{visual id}` | the report's ids |
+| data source | `pbi:datasource:{16 hex}`: SHA-256 of type, server, database, schema, object and location | opaque; never spells a location, and changes when the source's identity changes |
+| security role | `pbi:role:{name}` | role names are unique in a model |
+
+Two objects that would share an id (a hand-edited model with a repeated tag) keep an entry each: the later one
+gets `~2`, `~3`. An object link whose id is no longer in the document opens the Overview and says so.
+
 ## `adf-identity/1`
 
 | Kind | object_id | Basis |

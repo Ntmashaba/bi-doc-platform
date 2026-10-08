@@ -416,10 +416,13 @@ Browser checks (Playwright and Chromium):
 
 ```
 npm install --no-save playwright@1.62.1 && npx playwright install chromium
-python tests/build_browser_fixture.py
-node tests/browser_review.cjs /tmp/pbidocgen-browser.html
+python tests/check_browser.py
 node tests/browser_catalog.cjs
 ```
+
+`check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
+and `browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
+a framing page). In this repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:
 

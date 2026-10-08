@@ -1,6 +1,7 @@
 """generate(): valid envelope-v1 artifacts from both engines, stream identity, and the
 local/shared policies end to end (A29 across HTML, manifest and search text)."""
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -163,6 +164,29 @@ class PowerBIGeneration(Base):
         ep = fact["bindings"][0]["endpoint"]
         self.assertEqual((ep["server"], ep["port"], ep["database"]), ("finance-sql.corp.local", 1444, "FinanceDW"))
         self.assertEqual(fact["bindings"][0]["operation"], "read")
+
+    def test_the_document_and_the_manifest_use_the_same_object_ids(self):
+        """Hub links carry manifest object ids; the document's own index resolves the same ids (pbi-identity/1)."""
+        for profile in ("local", "shared"):
+            with self.subTest(profile=profile):
+                data, m = self.artifact(self.run_pbi(self.model, profile=profile), power_bi.VIEW_IDS)
+                text = data.decode("utf-8")
+                start = re.search(r"\bconst DERIVED = ", text).end()
+                index = json.JSONDecoder().raw_decode(text, start)[0]["search"]
+                indexed = {item[3]: (index["kinds"][item[0]], item[1]) for item in index["items"]}
+                for obj in m["objects"]:
+                    if obj["kind"] in ("table", "measure"):
+                        self.assertEqual(indexed[obj["object_id"]][1], obj["label"], obj["object_id"])
+                self.assertEqual(indexed[f"pbi:table:{SALES_TAG}"], ("table", "Sales"))
+                self.assertEqual(indexed[f"pbi:measure:{MEASURE_TAG}"], ("measure", "Revenue"))
+                self.assertEqual(indexed["pbi:table:name:Dates"], ("calculated table", "Dates"))
+                self.assertEqual(indexed["pbi:column:name:Sales/Amount"], ("column", "Amount"))
+                self.assertEqual(indexed["pbi:query:name:Native"], ("query", "Native"))
+                if profile == "shared":      # built from the projected payload: nothing withheld is searchable
+                    blob = json.dumps(index, ensure_ascii=False)
+                    for name, marker in PBI_MARKERS.items():
+                        self.assertNotIn(marker, blob, name)
+                    self.assertNotIn(str(self.tmp), blob)
 
     def test_include_query_code_is_explicit(self):
         _, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)

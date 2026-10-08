@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from .column_usage import build_column_usage
+from .object_index import build_search_index
 from .source_inventory import build_source_inventory
 from .source_queries import build_source_queries
 from .source_objects import build_source_objects
@@ -109,6 +111,28 @@ def build_summary(model, report, columns, primary, quality=None) -> dict:
     }
 
 
+def build_derived(payload: dict) -> dict:
+    """Content the page works out from the payload it is given: the search index.
+
+    It is rebuilt on every render from the payload being rendered, and is not part of the payload. A document
+    re-rendered from a stored payload (a library import, a portable export) therefore gets it from the engine
+    doing the rendering, and a shared document derives it only from what its projection left on the page.
+    """
+    return {"search": build_search_index(payload)}
+
+
+# Every place the template is filled. One pass: text that has been inserted is never searched again, so a
+# name in the payload that spells a slot is inert.
+_SLOTS = re.compile(r"<!--__DOCUMENTATION_METADATA__-->|/\*__DOCUMENTATION_JS__\*/|__TITLE__|/\*__EXPLORER_CSS__\*/"
+                    r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null")
+SCRIPTS = ("explorer.js", "navigation.js")
+STYLES = ("explorer.css", "navigation.css")
+
+
+def _part(name: str) -> str:
+    return TEMPLATE.with_name(name).read_text(encoding="utf-8")
+
+
 def render_html(payload: dict, out_path: str | Path) -> Path:
     from .catalog import read_metadata, validate_metadata, json_script
     out_path = Path(out_path)
@@ -117,20 +141,17 @@ def render_html(payload: dict, out_path: str | Path) -> Path:
         metadata = read_metadata(out_path.read_text(encoding="utf-8-sig"))
     metadata = validate_metadata(metadata or {})
     payload = dict(payload, documentationFilename=out_path.name)
-    template = TEMPLATE.read_text(encoding="utf-8")
-    template = template.replace('<!--__DOCUMENTATION_METADATA__-->',
-        '<script type="application/json" id="pbi-documentation-metadata">' + json_script(metadata) + '</script>')
-    template = template.replace('/*__DOCUMENTATION_JS__*/', TEMPLATE.with_name('report_metadata.js').read_text(encoding='utf-8'))
-    blob = json.dumps(payload, ensure_ascii=False)
-    # keep the embedded JSON from terminating the script block early or spelling
-    # another element (e.g. a second manifest); these characters only occur in strings
-    blob = blob.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    html = (template
-            .replace("__TITLE__", payload["title"].replace("<", "&lt;"))
-            .replace("/*__EXPLORER_CSS__*/", TEMPLATE.with_name("explorer.css").read_text(encoding="utf-8"))
-            .replace("/*__EXPLORER_JS__*/", TEMPLATE.with_name("explorer.js").read_text(encoding="utf-8"))
-            .replace("/*__DATA__*/null", blob))
-    out_path = Path(out_path)
+    slots = {
+        "<!--__DOCUMENTATION_METADATA__-->":
+            '<script type="application/json" id="pbi-documentation-metadata">' + json_script(metadata) + "</script>",
+        "/*__DOCUMENTATION_JS__*/": _part("report_metadata.js"),
+        "__TITLE__": payload["title"].replace("<", "&lt;"),
+        "/*__EXPLORER_CSS__*/": "\n".join(_part(name) for name in STYLES),
+        "/*__EXPLORER_JS__*/": "\n".join(_part(name) for name in SCRIPTS),
+        "/*__DERIVED__*/null": json_script(build_derived(payload)),
+        "/*__DATA__*/null": json_script(payload),
+    }
+    html = _SLOTS.sub(lambda match: slots[match.group(0)], TEMPLATE.read_text(encoding="utf-8"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     return out_path
