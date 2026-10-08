@@ -33,6 +33,7 @@ from pathlib import Path
 from .source_inventory import enrich_source
 from .source_labels import refine_source_type, source_label
 from .partition_sources import apply_traced_sources
+from .table_kinds import column_type, defined_by
 
 
 # --------------------------------------------------------------------------
@@ -391,6 +392,7 @@ def parse_model(model_path: str | Path) -> dict:
                 "dataType": col.get("dataType", ""),
                 "isHidden": bool(col.get("isHidden", False)),
                 "isCalculated": col.get("type") == "calculated",
+                "columnType": column_type(col),
                 "expression": expr_text(col.get("expression")) or None,
                 "sortByColumn": col.get("sortByColumn"),
                 "description": expr_text(col.get("description")) or None,
@@ -483,15 +485,21 @@ def parse_model(model_path: str | Path) -> dict:
         calc_group = tbl.get("calculationGroup")
         tables_out.append({
             "name": name,
+            "definedBy": defined_by({"calculationGroup": calc_group, "annotations": annotations, "partitions": partitions}),
             "isHidden": bool(tbl.get("isHidden", False)),
             "calculationGroupDefinition": calc_group,
             "detailRowsDefinition": tbl.get("detailRowsDefinition"),
             "calculationGroup": (
                 [{"name": ci.get("name", ""),
-                  "expression": expr_text(ci.get("expression"))}
+                  "expression": expr_text(ci.get("expression")),
+                  **({"ordinal": ci["ordinal"]} if isinstance(ci.get("ordinal"), int) else {}),
+                  **({"formatStringExpression": expr_text(ci["formatStringDefinition"].get("expression"))}
+                     if isinstance(ci.get("formatStringDefinition"), dict) and ci["formatStringDefinition"].get("expression") else {}),
+                  **({"description": expr_text(ci.get("description"))} if ci.get("description") else {})}
                  for ci in (calc_group.get("calculationItems") or [])]
                 if calc_group else None
             ),
+            "calculationGroupPrecedence": (calc_group or {}).get("precedence"),
             "description": expr_text(tbl.get("description")) or None,
             "dataCategory": tbl.get("dataCategory"),
             "columns": columns,

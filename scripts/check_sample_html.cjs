@@ -75,6 +75,25 @@ const {pathToFileURL}=require('url');
      expect(parameters.join()==='Culture,SqlServerDatabase,SqlServerInstance','DP500 08 parameters: '+parameters);
     }
    }
+   // Table kinds: one of the seven for every table; the calculation tabs list what their counts say.
+   if(await page.evaluate(()=>has.model)){
+    const kinds=await page.evaluate(()=>({
+     bad:M.tables.filter(t=>!DEFINED_KINDS.includes(definedBy(t).kind)).map(t=>t.name),
+     auto:tablesDefinedBy('Automatic date table').map(t=>t.name),
+     counts:['calc-columns','calc-tables','calc-groups','measures'].map(id=>TABS.find(t=>t.id===id).count()),
+     lists:[calcColumns().length,tablesDefinedBy('Calculated table').length,tablesDefinedBy('Calculation group').length,M.measures.length]}));
+    if(kinds.bad.length)throw Error(r.file+': tables without a defined-by kind: '+kinds.bad.slice(0,5).join('; '));
+    if(kinds.counts.join()!==kinds.lists.join())throw Error(r.file+': a calculation tab count differs from its list: '+kinds.counts+' vs '+kinds.lists);
+    if(r.sample==='DP500 08 Composite model.pbix'){
+     expect(kinds.auto.length>0&&kinds.auto.every(n=>/^(LocalDateTable|DateTableTemplate)_/.test(n)),'DP500 08 automatic date tables: '+kinds.auto);
+     expect(kinds.auto.some(n=>n.startsWith('DateTableTemplate_')),'DP500 08 has the date table template');
+    }
+    if(r.sample==='AdventureWorks Sales.pbix'){
+     expect(await page.evaluate(()=>isCalcColumn('Date','Mth of year')),'"Mth of year" is a calculated column');
+     await page.evaluate(()=>{pageScope='*';switchTab('calc-columns');});
+     expect(await page.locator('#calc-column-list details.calc-col .mea-name',{hasText:'Mth of year'}).count()===1,'"Mth of year" is listed under Calculated Columns');
+    }
+   }
    if(r.sample==='AdventureWorks Sales.pbix'&&r.profile==='local')await adventureWorksSearch(page);
    await page.evaluate(()=>switchTab('overview'));
   }

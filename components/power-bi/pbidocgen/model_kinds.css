@@ -1,0 +1,13 @@
+/* fx: a calculated column, wherever its name is shown. */
+.fx{display:inline-block;font-family:Georgia,"Times New Roman",serif;font-style:italic;font-weight:700;font-size:.78rem;line-height:1.25;color:var(--date);background:var(--dateBg);border-radius:4px;padding:0 .32rem;text-decoration:none;cursor:help;white-space:nowrap;vertical-align:baseline}
+.fx-link{border:0;background:none;padding:0;margin:0;font:inherit;cursor:pointer;border-radius:4px}
+.fx-link .fx{cursor:pointer}
+.fx-link:hover .fx{outline:1px solid var(--date)}
+.fo-name .fx,.mea-name .fx{font-size:.72rem}
+/* How a table is defined: beside its role, never instead of it. */
+.defined{font-size:.78rem;font-weight:600;color:var(--ink2);border:1px solid var(--line);border-radius:999px;padding:.08rem .55rem;white-space:nowrap;background:var(--panel)}
+.defined-by{font-weight:400;color:var(--ink3)}
+.defined-line{color:var(--ink2)}
+.defined-line b{color:var(--ink)}
+.calc-item{font-size:.92rem;font-weight:650;margin:1rem 0 .35rem}
+details.calc-table>summary,details.calc-group>summary{align-items:center}

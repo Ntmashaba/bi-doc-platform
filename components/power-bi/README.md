@@ -275,6 +275,34 @@ Unquoted Oracle names are folded to upper case, so `billing.tariff` and
 `BILLING.TARIFF` are one source. Credentials in connection strings and URLs are
 never copied into source identities.
 
+## How a table is defined, and the DAX tabs
+
+Every table shows two labels that answer different questions. Its **role** (fact, dimension, date dimension,
+…) is unchanged. Beside it, **defined by** says where the table's rows come from, exactly one kind per table,
+read from the table's own metadata (`pbidocgen/table_kinds.py`):
+
+| Defined by | When |
+|---|---|
+| Power Query | every partition is an M query (or the placeholder a pre-2019 file stores for one) |
+| SQL query | every partition is a statement against a provider data source |
+| Entity | every partition names an entity (Direct Lake, DirectQuery to another model) |
+| Calculated table | every partition is a DAX expression |
+| Automatic date table | the file marks the table with `__PBI_LocalDateTable` or `__PBI_TemplateDateTable`. Only the marker counts: a table merely named `LocalDateTable_…` is a calculated table |
+| Calculation group | the table carries a calculation group |
+| Other | anything else, with the partition types as the file gives them, for example `Other (m, calculated)` |
+
+Columns are classified one by one from their own metadata, not from their table: a calculated table can hold
+calculated columns, and an imported table can too. A **calculated column** (a DAX expression per row) carries
+the **fx** marker wherever its name is shown: in table and column lists, visual bindings, filters, the field
+manifest, relationships, hierarchies, measure dependencies, the usage matrix, impact and cleanup views and the
+finder. Where markup cannot go (a drop-down, a tooltip, a layout box) the marker is the text `(fx)`. A column
+that a calculated table's expression produces is labelled *from the table expression* and has no fx.
+
+Four tabs list the model's DAX by kind, and each tab's count is the number of entries it lists:
+**Measures**, **Calculated Columns** (expression, table, what it reads), **Calculated Tables** (expression,
+columns it produces) and **Calculation Groups** (items in their order, with format string expressions).
+Automatic date tables are not calculated tables and are not listed there.
+
 ## Power Query
 
 **Power Query** lists the queries of the file the way the Power Query Editor does: a queries pane on the
@@ -500,8 +528,9 @@ node tests/browser_catalog.cjs
 
 `check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
 `browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
-a framing page) and `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
-links). In this repository the `frontend` CI job runs it.
+a framing page), `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
+links) and `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs). In this
+repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:
 

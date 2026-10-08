@@ -6,6 +6,7 @@
    keyboard focus there. An object link (#o/<id>) does the same after a reload and with Back and Forward. */
 const SEARCH_INDEX = (typeof DERIVED !== 'undefined' && DERIVED && DERIVED.search) || {kinds:[], parents:[], items:[]};
 const KIND_PLURAL = {'data source':'Data sources','query':'Queries','table':'Tables','calculated table':'Calculated tables',
+  'automatic date table':'Automatic date tables',
   'calculation group':'Calculation groups','column':'Columns','calculated column':'Calculated columns','measure':'Measures',
   'security role':'Security roles','page':'Pages','visual':'Visuals'};
 const columnAnchor = (table, column) => 'col-' + slug(table) + '-' + slug(column);
@@ -35,7 +36,7 @@ const OBJECT_BY_REF = new Map();
 for (const o of OBJECTS) {
   const keys = {
     'table': () => [refKey('table', o.name)], 'calculated table': () => [refKey('table', o.name)],
-    'calculation group': () => [refKey('table', o.name)],
+    'calculation group': () => [refKey('table', o.name)], 'automatic date table': () => [refKey('table', o.name)],
     'column': () => [refKey('column', o.parent, o.name)], 'calculated column': () => [refKey('column', o.parent, o.name)],
     'measure': () => [refKey('measure', o.name), refKey('measure', o.parent, o.name)],
     'query': () => [refKey('query', o.name)], 'security role': () => [refKey('security role', o.name)],
@@ -50,7 +51,7 @@ const objectFor = (family, ...parts) => OBJECT_BY_REF.get(refKey(family, ...part
 // tab: the view that shows it. el: its element there. then: what to do once it is on screen.
 function homeOf(o) {
   switch (o.kind) {
-    case 'table': case 'calculated table': case 'calculation group':
+    case 'table': case 'calculated table': case 'calculation group': case 'automatic date table':
       return {tab: 'tables', el: 'tbl-' + slug(o.name)};
     case 'column': case 'calculated column':
       return {tab: 'tables', el: columnAnchor(o.parent, o.name)};
@@ -232,7 +233,7 @@ function renderFinder() {
       const i = finder.options.push({id: o.id}) - 1;
       html += `<div class="finder-opt" role="option" id="finder-opt-${i}" aria-selected="false" data-object="${esc(o.id)}"
         aria-label="${esc(o.name + ', ' + o.kind + (o.parent ? ', ' + o.parent : ''))}"
-        onclick="finderActivate(${i})"><span class="fo-name">${markMatch(o.name, found.query)}</span><span class="fo-kind">${esc(o.kind)}</span><span class="fo-parent">${esc(o.parent)}</span></div>`;
+        onclick="finderActivate(${i})"><span class="fo-name">${markMatch(o.name, found.query)}${o.kind === 'calculated column' ? ' ' + FX : ''}</span><span class="fo-kind">${esc(o.kind)}</span><span class="fo-parent">${esc(o.parent)}</span></div>`;
     }
     if (items.length < group.items.length && all) {
       html += `<div class="finder-more" role="presentation">Type more to narrow the other ${num(group.items.length - items.length)}</div>`;

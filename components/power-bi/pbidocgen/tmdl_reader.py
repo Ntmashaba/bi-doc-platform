@@ -382,6 +382,10 @@ def _table_to_tmsl(node: Node) -> dict:
             col["expression"] = expr
         elif c.prop("type"):
             col["type"] = c.prop("type")
+        elif "isNameInferred" in c.properties or "isDataTypeInferred" in c.properties:
+            # TMDL leaves the type out. A column whose name or data type is inferred takes them from its
+            # table's DAX expression: it is a calculated table's column, not a calculated column.
+            col["type"] = "calculatedTableColumn"
         columns.append(col)
     out["columns"] = columns
 

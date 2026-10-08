@@ -62,7 +62,7 @@ const step=name=>console.log('  ok '+name);
   assert.equal(await code.locator('pre').innerText(),await page.evaluate(()=>DATA.sourceQueries.find(q=>q.queryName==='Sales').mCode));
   step('a query shows its header, three statuses, Applied Steps in order and the full script on request');
   await item('Stage').click();await shown('Stage');
-  assert.equal((await detail.locator('.pq-facts tr',{hasText:'Used by'}).locator('td').innerText()).replace(/\s+/g,' '),'Dim, Sales');
+  assert.equal((await detail.locator('.pq-facts tr',{hasText:'Used by'}).locator('td').innerText()).replace(/\s+/g,' '),'Dim, Lake, Sales');
   assert.match(await detail.locator('.pq-desc').innerText(),/every table query starts from/);
   await item('Cut off').click();await shown('Cut off');
   assert.deepEqual([await status('Expression extraction'),await status('Applied Steps'),await status('Publication')],['Known partial','Unsupported syntax','Included']);

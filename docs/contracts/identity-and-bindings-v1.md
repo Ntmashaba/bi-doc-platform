@@ -35,6 +35,12 @@ document (index entries and `#o/<id>` links); they are **not** manifest objects,
 | data source | `pbi:datasource:{16 hex}`: SHA-256 of type, server, database, schema, object and location | opaque; never spells a location, and changes when the source's identity changes |
 | security role | `pbi:role:{name}` | role names are unique in a model |
 
+Each index entry is tagged with a kind: `data source`, `query`, `table`, `calculated table`,
+`automatic date table`, `calculation group`, `column`, `calculated column`, `measure`, `security role`, `page`,
+`visual`. The kind of a table follows how it is defined (`pbidocgen/table_kinds.py`: an automatic date table
+only when the file marks it with `__PBI_LocalDateTable` or `__PBI_TemplateDateTable`); the kind of a column
+follows the column's own type. The kind never changes an id: a table keeps `pbi:table:…` whichever kind it is.
+
 Two objects that would share an id (a hand-edited model with a repeated tag) keep an entry each: the later one
 gets `~2`, `~3`. An object link whose id is no longer in the document opens the Overview and says so.
 

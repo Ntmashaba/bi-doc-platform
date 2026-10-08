@@ -186,6 +186,8 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                     gaps.append(f"Unknown data type {dt} on {t['Name']}[{cname(c)}]")
                 if c['Type'] == 2:
                     col['type'] = 'calculated'
+                elif c['Type'] == 4:
+                    col['type'] = 'calculatedTableColumn'
                 if c['SortByColumnID']:
                     sort = cols.get(c['SortByColumnID'])
                     if sort:

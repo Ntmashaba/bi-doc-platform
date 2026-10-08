@@ -16,7 +16,7 @@ const tableInScope = name => pageScope==='*'||(DATA.columns?.tablePages||[]).som
 const scopedTables = () => (M?.tables||[]).filter(t=>tableInScope(t.name));
 const action = (fn,...args) => esc(fn+'('+args.map(a=>JSON.stringify(a)).join(',')+')');
 const nodeId = (kind,table,name) => JSON.stringify([kind,table,name]);
-const listText = a => a?.length?a.map(esc).join('<br>'):'—';
+const listText = a => a?.length?a.map(x=>esc(x)+fxInText(x)).join('<br>'):'—';
 function rememberView(){
   if(!activeTab || activeTab==='report-details') return;
   const state={inputs:[],details:[]};
@@ -40,7 +40,7 @@ function restoreView(id){
   {const el=document.getElementById('global-page');if(el) el.value=pageScope;}
 }
 function scopeBar(id){
-  const globalViews=['overview','rels','security','warnings','cleanup','report-details','power-query'];
+  const globalViews=['overview','rels','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups'];
   const pages=[...(R?.pages||[])];
   if(id==='compare') for(const p of comparison?.report?.pages||[]) if(!pages.some(x=>x.id===p.id)) pages.push(p);
   if(id==='report-details') return '';
@@ -102,7 +102,7 @@ function rMatrix(){
     <div class="column-scroll"><table class="t matrix"><thead><tr><th>Table / column</th>${slots.map(p=>`<th title="${esc(p.pageId)}">${esc(p.page)}</th>`).join('')}</tr></thead><tbody id="matrix-body">${matrixBody(slots)}</tbody></table></div>`;
 }
 function matrixBody(slots){
-  return matrixRows().map(r=>`<tr><th>${r.column===null?`<button class="xl" aria-expanded="${expandedTables.has(r.table)}" onclick="${action('toggleMatrixTable',r.table)}">${expandedTables.has(r.table)?'−':'+'} ${esc(r.table)}</button>`:`<span class="matrix-column">${esc(r.column)}</span>`}</th>
+  return matrixRows().map(r=>`<tr><th>${r.column===null?`<button class="xl" aria-expanded="${expandedTables.has(r.table)}" onclick="${action('toggleMatrixTable',r.table)}">${expandedTables.has(r.table)?'−':'+'} ${esc(r.table)}</button>`:`<span class="matrix-column">${esc(r.column)}${fx(r.table,r.column)}</span>`}</th>
     ${slots.map(p=>{
       const matches=(r.column===null?DATA.columns.tablePages:DATA.columns.rows).filter(x=>x.table===r.table&&(r.column===null||x.column===r.column)&&x.pageId===p.pageId);
       const counted=r.column===null?matches.map(matrixKinds).filter(x=>x.kinds.length):matches.filter(x=>x.evidence.length);
@@ -127,7 +127,7 @@ function inspectCell(table,column,pageId){
   const columns=DATA.columns.rows.filter(r=>r.table===table&&r.pageId===pageId&&(column===null||r.column===column));
   openInspector(column===null?table:`${table}[${column}]`, `<p>${esc(R.name)} / ${esc(page?.name||'No specific page')} ${esc(pageId)}</p>
     <h3>Evidence on this page</h3><p>${listText(evidence)||'—'}</p>${!evidence.length?'<p>No usage evidence detected for this cell.</p>':''}
-    <h3>Column assessments (whole extract)</h3>${columns.map(r=>`<p><button class="xl" onclick="${action('inspectNode',nodeId('c',r.table,r.column),pageId)}">${esc(r.column)}</button> · ${esc(r.decision)}</p>`).join('')||'<p>No resolved column references.</p>'}
+    <h3>Column assessments (whole extract)</h3>${columns.map(r=>`<p><button class="xl" onclick="${action('inspectNode',nodeId('c',r.table,r.column),pageId)}">${esc(r.column)}</button>${fx(r.table,r.column)} · ${esc(r.decision)}</p>`).join('')||'<p>No resolved column references.</p>'}
     ${column!==null?`<button class="chip" onclick="${action('inspectNode',nodeId('c',table,column),pageId)}">Trace dependency paths</button>`:''}`);
 }
 // A breadth-first walk gives one shortest, explicit reference path per dependent.
@@ -153,12 +153,12 @@ function impactDetails(id,scope=pageScope){
   const wholeTables=graph.wholeTableDependencies.filter(e=>e.node===id).map(e=>e.table);
   const dependent=[...paths.keys()].filter(k=>k!==id).map(k=>graphNodes.get(k));
   const sources=[...new Map(DATA.tableSources.filter(r=>r.table===n.table).map(r=>[r.partition,r])).values()];
-  const pathHtml=consumers.map(c=>`<li><b>${esc(pageLabel(c))}</b><div>${esc(c.evidence)}</div>${c.possible?'<b>Possible dependency — runtime selection/output lineage unresolved</b>':''}<p class="path">${c.path.map(k=>esc(graphNodes.get(k)?.label||k)).join(' → ')}</p>${c.visualId?`<button class="xl" onclick="${action('inspectVisual',c.pageId,c.visualId)}">Inspect visual ${esc(c.visualId)}</button>`:''}</li>`).join('');
-  return `<p>${esc(n.kind)} · ${esc(n.label)}</p>${col?`<p><b>${esc(col.decision)}</b> · ${esc(col.reason)}</p>`:''}
+  const pathHtml=consumers.map(c=>`<li><b>${esc(pageLabel(c))}</b><div>${esc(c.evidence)}</div>${c.possible?'<b>Possible dependency — runtime selection/output lineage unresolved</b>':''}<p class="path">${c.path.map(k=>nodeHtml(graphNodes.get(k))||esc(k)).join(' → ')}</p>${c.visualId?`<button class="xl" onclick="${action('inspectVisual',c.pageId,c.visualId)}">Inspect visual ${esc(c.visualId)}</button>`:''}</li>`).join('');
+  return `<p>${esc(n.kind==='column'&&isCalcColumn(n.table,n.name)?'calculated column':n.kind)} · ${nodeHtml(n)}</p>${col?`<p><b>${esc(col.decision)}</b> · ${esc(col.reason)}</p>`:''}
     <h3>Where it is used</h3><p class="mut">${consumers.length} binding locations in the selected scope. One shortest detected path per binding is shown; DAX is not executed.</p><ul class="impact-paths">${pathHtml||'<li>No resolved usage in this page scope.</li>'}</ul>
-    <h3>Reads these fields</h3><p>${dependencies.map(d=>`<button class="xl" onclick="${action('inspectNode',d.id,scope)}">${esc(d.label)}</button>`).join(', ')||'No explicit field dependencies detected'}</p>
+    <h3>Reads these fields</h3><p>${dependencies.map(d=>`<button class="xl" onclick="${action('inspectNode',d.id,scope)}">${esc(d.label)}</button>${d.kind==='column'?fx(d.table,d.name):''}`).join(', ')||'No explicit field dependencies detected'}</p>
     ${wholeTables.length?`<p>Whole-table references: ${listText(wholeTables)}. Individual column use cannot be confirmed from these references alone.</p>`:''}
-    <h3>Dependent calculations (whole model)</h3><p>${dependent.map(d=>`<button class="xl" onclick="${action('inspectNode',d.id,scope)}">${esc(d.label)}</button>`).join(', ')||'None detected'}</p>
+    <h3>Dependent calculations (whole model)</h3><p>${dependent.map(d=>`<button class="xl" onclick="${action('inspectNode',d.id,scope)}">${esc(d.label)}</button>${d.kind==='column'?fx(d.table,d.name):''}`).join(', ')||'None detected'}</p>
     ${col?`<h3>Other dependencies and uncertainty</h3><p>${listText(col.modelDependencies)}</p><p>${listText(col.reviewNotes)}</p>`:''}
     ${expression?`<h3>Expression</h3><pre class="code">${esc(expression)}</pre>`:''}
     <h3>Home table sources</h3><p class="mut">For measures, the home table is organisational. Follow “Reads these fields” above to trace data sources.</p>
@@ -174,7 +174,7 @@ function rImpact(){
     <label>Field <select id="impact-field" class="search" onchange="impactNode=this.value;renderImpactDetails()">${impactOptions(nodes)}</select></label>
     <div id="impact-details">${impactDetails(impactNode||nodes[0]?.id)}</div>`;
 }
-function impactOptions(nodes){return nodes.map(n=>`<option value="${esc(n.id)}"${n.id===impactNode?' selected':''}>${esc(n.label)} · ${n.kind}</option>`).join('');}
+function impactOptions(nodes){return nodes.map(n=>`<option value="${esc(n.id)}"${n.id===impactNode?' selected':''}>${esc(n.label)}${n.kind==='column'?fxText(n.table,n.name):''} · ${n.kind}</option>`).join('');}
 function renderImpactOptions(){
   const nodes=graph.nodes.filter(n=>n.label.toLowerCase().includes(impactQuery.toLowerCase()));
   if(!nodes.some(n=>n.id===impactNode)) impactNode=nodes[0]?.id||'';
@@ -241,7 +241,7 @@ function rLayout(){
       return `<div class="card"><h2 title="${esc(p.id)}">${esc(pageTitle(p))} ${p.hidden?'· hidden page':''}</h2>
       ${g.placed.length?`<div class="erd-toolbar layout-toolbar"><span class="mut">Select a shape for details. Zoom and scroll to read small visuals.</span><div class="erd-zoom" role="group" aria-label="Zoom ${esc(p.name)}"><button aria-label="Zoom out ${esc(p.name)}" onclick="${action('zoomPageLayout',p.id,-.25)}">−</button><output id="layout-zoom-${pageKey(p.id)}" aria-live="polite">${Math.round((layoutZooms.get(p.id)||1)*100)}%</output><button aria-label="Zoom in ${esc(p.name)}" onclick="${action('zoomPageLayout',p.id,.25)}">+</button><button onclick="${action('zoomPageLayout',p.id,0)}">Fit width</button></div></div><div class="layout-viewport" tabindex="0" role="region" aria-label="${esc(p.name)} visual layout"><div id="layout-canvas-${pageKey(p.id)}" class="page-canvas" style="width:${(layoutZooms.get(p.id)||1)*100}%;aspect-ratio:${g.width}/${g.height}">${g.placed.map(v=>{
         const f=visualFields(p.id,v), kind=visualKind(v);
-        const names=[...f.measures.map(n=>'Σ '+n.name),...f.columns.map(n=>n.name)];
+        const names=[...f.measures.map(n=>'Σ '+n.name),...f.columns.map(n=>n.name+fxText(n.table,n.name))];
         const label=`${visualName(p.id,v)} (${kind}${v.hidden?', hidden':''})${f.unresolved.length?`, ${f.unresolved.length} unresolved binding(s)`:''}`;
         return `<button data-page-id="${esc(p.id)}" data-visual-id="${esc(v.id)}" aria-pressed="false" class="visual-box ${KIND_CLASS[kind]}${v.hidden?' hidden-visual':''}" style="left:${100*(v.x-g.left)/g.width}%;top:${100*(v.y-g.top)/g.height}%;width:${100*v.width/g.width}%;height:${100*v.height/g.height}%" title="${esc(label+(names.length?': '+names.join(', '):''))}" aria-label="${esc(label)}" onclick="${action('inspectVisual',p.id,v.id)}">
           <span class="vb-head">${f.unresolved.length?'<span class="badge b-warn">!</span> ':''}<b>${esc(visualName(p.id,v))}</b><small>${esc(visualTypeName(v.type))}${v.hidden?' · hidden':''}</small></span>
@@ -255,9 +255,9 @@ function inspectVisual(pageId,visualId){
   const roots=graph.consumers.filter(c=>c.pageId===pageId&&c.visualId===visualId);
   const unresolved=visualFields(pageId,v).unresolved;
   openInspector(visualName(p.id,v),`<p>${esc(p.name||p.label)} · ${esc(visualTypeName(v.type))} <span class="mut">(${esc(v.type)} · ${esc(v.id)})</span>${v.hidden?' · hidden':''}</p>${unresolved.length?`<p><span class="badge b-warn">Unresolved</span> ${unresolved.map(f=>esc(`${f.table||'?'}[${f.field}]`)).join(', ')} could not be matched to the model, so usage for that table is uncertain.</p>`:''}<h3>Declared bindings</h3>
-    <p>${v.fields.map(f=>esc(`${f.table||'?'}[${f.field}] (${f.kind})`)).join('<br>')||'No field bindings detected.'}</p>
-    <h3>Resolved fields</h3>${[...new Set(roots.map(c=>c.node))].map(id=>`<p><button class="xl" onclick="${action('inspectNode',id,pageId)}">${esc(graphNodes.get(id)?.label)}</button></p>`).join('')||'<p>No resolved model fields.</p>'}
-    <h3>Visual filters</h3><p>${v.filters.map(f=>esc(`${f.table||'?'}[${f.field}] ${f.raw||''}`)).join('<br>')||'None detected'}</p>`);
+    <p>${v.fields.map(f=>esc(`${f.table||'?'}[${f.field}] (${f.kind})`)+fx(f.table,f.field)).join('<br>')||'No field bindings detected.'}</p>
+    <h3>Resolved fields</h3>${[...new Set(roots.map(c=>c.node))].map(id=>`<p><button class="xl" onclick="${action('inspectNode',id,pageId)}">${esc(graphNodes.get(id)?.label)}</button>${graphNodes.get(id)?.kind==='column'?fx(graphNodes.get(id).table,graphNodes.get(id).name):''}</p>`).join('')||'<p>No resolved model fields.</p>'}
+    <h3>Visual filters</h3><p>${v.filters.map(f=>esc(`${f.table||'?'}[${f.field}]`)+fx(f.table,f.field)+esc(f.raw?' '+f.raw:'')).join('<br>')||'None detected'}</p>`);
 }
 function cleanupRows(){return DATA.columns.rows.filter(r=>!cleanupDecision||r.decision===cleanupDecision);}
 function rCleanup(){
@@ -267,7 +267,7 @@ function rCleanup(){
     ${rCleanupTables()}<h2>Columns</h2><p>${rows.length} distinct columns · <button class="xl" onclick="exportCsvFile(columnCsv(cleanupRows()),'cleanup-column-page-usage.csv')">Export evidence at column/page grain</button></p>
     <table class="t"><thead><tr><th>Column</th><th>Assessment</th><th>Why / evidence</th><th>Pages</th></tr></thead><tbody>${rows.map(r=>{
       const pages=DATA.columns.rows.filter(x=>x.table===r.table&&x.column===r.column&&x.pageId);
-      return `<tr><th><button class="xl" onclick="${action('inspectNode',nodeId('c',r.table,r.column),'*')}">${esc(r.table)}[${esc(r.column)}]</button></th><td>${esc(r.decision)}</td><td>${esc(r.reason)}<details><summary>Dependencies and review notes</summary><p>${listText(r.modelDependencies)}</p><p>${listText(r.reviewNotes)}</p></details></td><td>${pages.map(p=>esc(pageLabel(p))).join('<br>')||esc(r.pageScope)}</td></tr>`;
+      return `<tr><th><button class="xl" onclick="${action('inspectNode',nodeId('c',r.table,r.column),'*')}">${esc(r.table)}[${esc(r.column)}]</button>${fx(r.table,r.column)}</th><td>${esc(r.decision)}</td><td>${esc(r.reason)}<details><summary>Dependencies and review notes</summary><p>${listText(r.modelDependencies)}</p><p>${listText(r.reviewNotes)}</p></details></td><td>${pages.map(p=>esc(pageLabel(p))).join('<br>')||esc(r.pageScope)}</td></tr>`;
     }).join('')||'<tr><td colspan="4">No columns have this assessment.</td></tr>'}</tbody></table>${rCleanupMeasures()}${rDuplicateMeasures()}`;
 }
 function rDuplicateMeasures(){
@@ -380,7 +380,7 @@ function rCompare(){
     ${!comparison.model?.expressions&&comparison.model?'<p class="mut">The baseline may omit shared expressions and other executable definitions; some additions may reflect improved extraction coverage.</p>':''}
     ${!comparison.columns?.tablePages?'<p class="mut">The baseline lacks page-level model usage; affected pages for removed model objects may be incomplete.</p>':''}
     <p>${rows.length} changes in this scope · <button class="xl" onclick="exportComparison()">Export changes by page</button></p>
-    <table class="t"><thead><tr><th>Change</th><th>Object</th><th>Affected report pages</th><th>Definition</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.change)}</td><th>${esc(r.kind)}<br>${esc(r.item)}</th><td>${r.pages.filter(inPageScope).map(p=>esc(pageLabel(p))).join('<br>')||'No resolved page / model scope'}</td><td><details><summary>Before / after</summary><b>Before</b><pre class="code">${esc(r.before)||'Absent'}</pre><b>After</b><pre class="code">${esc(r.after)||'Absent'}</pre></details></td></tr>`).join('')||'<tr><td colspan="4">No definition changes detected in this scope.</td></tr>'}</tbody></table>`:''}`;
+    <table class="t"><thead><tr><th>Change</th><th>Object</th><th>Affected report pages</th><th>Definition</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.change)}</td><th>${esc(r.kind)}<br>${esc(r.item)}${r.kind==='Column'?fxOfRef(r.item):''}</th><td>${r.pages.filter(inPageScope).map(p=>esc(pageLabel(p))).join('<br>')||'No resolved page / model scope'}</td><td><details><summary>Before / after</summary><b>Before</b><pre class="code">${esc(r.before)||'Absent'}</pre><b>After</b><pre class="code">${esc(r.after)||'Absent'}</pre></details></td></tr>`).join('')||'<tr><td colspan="4">No definition changes detected in this scope.</td></tr>'}</tbody></table>`:''}`;
 }
 function exportComparison(){
   const rows=comparisonRows().flatMap(r=>(r.pages.length?r.pages.filter(inPageScope):[{report:R?.name||'Not supplied',page:'',pageId:''}]).map(p=>({...r,...p})));

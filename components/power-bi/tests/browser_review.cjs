@@ -20,10 +20,10 @@ const {execFileSync}=require('node:child_process');
   assert.equal(await page.evaluate(()=>activeTab),'overview');
   assert.equal(await page.locator('nav .nav-btn').count(),6);
   for(const id of await page.evaluate(()=>TABS.filter(t=>t.avail&&!t.hidden).map(t=>t.id))){await openTab(id);}
-  await openTab('columns');await page.locator('#column-search').fill('Amount');
+  await openTab('columns');await page.locator('#column-search').fill('NetAmount');
   await page.locator('#global-page').selectOption('p2');await openTab('tables');
   assert.equal(await page.locator('#global-page').inputValue(),'p2');
-  await openTab('columns');assert.equal(await page.locator('#column-search').inputValue(),'Amount');
+  await openTab('columns');assert.equal(await page.locator('#column-search').inputValue(),'NetAmount');
   assert.equal(await page.locator('#column-rows tr').count(),1);
   await page.locator('#global-page').selectOption('*');
   await openTab('impact');

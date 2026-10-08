@@ -15,11 +15,13 @@ from __future__ import annotations
 import hashlib
 import json
 
-INDEX_VERSION = 1
+from .table_kinds import defined_by
+
+INDEX_VERSION = 2
 
 # Kinds in the order the document is read: sources, queries, the model, then the report.
-KINDS = ("data source", "query", "table", "calculated table", "calculation group", "column", "calculated column",
-         "measure", "security role", "page", "visual")
+KINDS = ("data source", "query", "table", "calculated table", "automatic date table", "calculation group", "column",
+         "calculated column", "measure", "security role", "page", "visual")
 
 SOURCE_FIELDS = ("sourceType", "server", "database", "schema", "object", "location")
 
@@ -69,14 +71,15 @@ def source_id(fields: list[str]) -> str:
 LIVE_SOURCE_ID = "pbi:datasource:live"
 
 
+_TABLE_KINDS = {"Calculation group": "calculation group", "Calculated table": "calculated table",
+                "Automatic date table": "automatic date table"}
+
+
 def table_kind(table: dict) -> str:
-    """From the table's own metadata: a calculation group definition, or a calculated (DAX) partition."""
-    if table.get("calculationGroup") is not None or table.get("calculationGroupDefinition") is not None:
-        return "calculation group"
-    partitions = table.get("partitions") or []
-    if partitions and all(p.get("type") == "calculated" for p in partitions):
-        return "calculated table"
-    return "table"
+    """The kind a table is listed under, from how it is defined (`table_kinds.defined_by`): a calculation group,
+    a calculated table, an automatic date table, or a table."""
+    defined = table.get("definedBy") if isinstance(table.get("definedBy"), dict) else defined_by(table)
+    return _TABLE_KINDS.get(defined.get("kind"), "table")
 
 
 def _entries(payload: dict):

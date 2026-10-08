@@ -40,6 +40,34 @@ def build(folder):
          'expression': '(t as table) as table =>\nlet\n    Trimmed = Table.TransformColumns(t, {}),\n'
                        '    #"Kept Rows" = Table.SelectRows(Trimmed, each [Region] = Region)\nin\n    #"Kept Rows"'},
         {'name': 'Cut off', 'kind': 'm', 'expression': 'let\n    Source = Sql.Database("server", "db'}]
+    # One table of every kind a table can be defined by, each recognisable only from its own metadata.
+    calculated = lambda dax: [{'name': 'p', 'source': {'type': 'calculated', 'expression': dax}}]   # noqa: E731
+    raw['model']['tables'] += [
+        {'name': 'Calendar', 'dataCategory': 'Time', 'partitions': calculated('CALENDAR(DATE(2024, 1, 1), DATE(2024, 12, 31))'),
+         'columns': [{'name': 'Date', 'type': 'calculatedTableColumn', 'sourceColumn': '[Date]', 'dataType': 'dateTime'},
+                     {'name': 'Year', 'type': 'calculated', 'expression': 'YEAR(Calendar[Date])', 'dataType': 'int64'}]},
+        {'name': 'LocalDateTable_1f', 'isHidden': True, 'partitions': calculated('Calendar(Date(2020, 1, 1), Date(2020, 12, 31))'),
+         'annotations': [{'name': '__PBI_LocalDateTable', 'value': 'true'}],
+         'columns': [{'name': 'Date', 'type': 'calculatedTableColumn', 'sourceColumn': '[Date]', 'dataType': 'dateTime'}]},
+        # Named like an automatic date table, but the file does not mark it as one.
+        {'name': 'LocalDateTable_lookalike', 'partitions': calculated('{1, 2, 3}'),
+         'columns': [{'name': 'Value', 'type': 'calculatedTableColumn', 'sourceColumn': '[Value]', 'dataType': 'int64'}]},
+        {'name': 'Time Intelligence', 'columns': [{'name': 'Calculation', 'dataType': 'string', 'sourceColumn': 'Name'}],
+         'partitions': [{'name': 'p', 'source': {'type': 'calculationGroup'}}],
+         'calculationGroup': {'precedence': 10, 'calculationItems': [
+             {'name': 'PY', 'ordinal': 1, 'expression': 'CALCULATE(SELECTEDMEASURE(), SAMEPERIODLASTYEAR(Calendar[Date]))'},
+             {'name': 'YTD', 'ordinal': 0, 'expression': 'CALCULATE(SELECTEDMEASURE(), DATESYTD(Calendar[Date]))',
+              'formatStringDefinition': {'expression': '"#,0"'}}]}},
+        {'name': 'Budget', 'columns': [{'name': 'Budgeted'}],
+         'partitions': [{'name': 'Budget', 'source': {'query': 'SELECT Budgeted FROM dbo.Budget', 'dataSource': 'dw'}}]},
+        {'name': 'Lake', 'columns': [{'name': 'Qty'}], 'partitions': [{'name': 'Lake', 'mode': 'directLake', 'source': {
+            'type': 'entity', 'entityName': 'lake_sales', 'schemaName': 'dbo', 'expressionSource': 'Stage'}}]}]
+    # ...and in the model: a hierarchy level, a measure's dependency and both ends of a relationship.
+    raw['model']['tables'][0]['hierarchies'][0]['levels'].append({'name': 'Twice', 'column': 'Double'})
+    raw['model']['tables'][0]['measures'].append({'name': 'Doubled', 'expression': 'SUM(Sales[Double])'})
+    raw['model']['relationships'].append({'name': 'by year', 'fromTable': 'Sales', 'fromColumn': 'Double',
+                                          'toTable': 'Calendar', 'toColumn': 'Year'})
+    raw['model']['dataSources'] = [{'name': 'dw', 'connectionString': 'Provider=SQLNCLI11;Data Source=server;Initial Catalog=db'}]
     raw['model']['queryGroups'] = [
         {'folder': 'Staging', 'description': 'Queries other queries start from.',
          'annotations': [{'name': 'PBI_QueryGroupOrder', 'value': '0'}]},
@@ -55,6 +83,13 @@ def build(folder):
         path.write_text(json.dumps(raw))
         m = parse_model(path)
     r = report_fixture()
+    # The calculated column Sales[Double] in every place a column can be named: a visual, a visual filter, a page
+    # filter; the calculated column Calendar[Year] in a report filter.
+    double = lambda **more: dict(table='Sales', field='Double', kind='column', **more)   # noqa: E731
+    r['pages'][1]['visuals'][0]['fields'].append(double())
+    r['pages'][1]['visuals'][0]['filters'] = [double(level='visual', filterType='Advanced', raw='> 10', target='Table')]
+    r['pages'][1]['filters'] = [double(level='page', filterType='Basic', raw='', target='Same / page')]
+    r['reportFilters'] = [dict(table='Calendar', field='Year', kind='column', level='report', filterType='Basic', raw='2024', target='All pages')]
     for page in r['pages']:
         page.update(width=1280, height=720)
         for visual in page['visuals']:
