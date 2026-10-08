@@ -47,8 +47,9 @@ assert.match(text(section(main)),/Drillthrough page · 0 data visuals A drillthr
 assert.match(text(section(main)),/^Order details drillthrough page /);
 // ...and the Filters pane: on this visual, on this page, on all pages
 let p=panel(main);
-assert.match(p,/Select a visual in the list below for its fields and the filters on it\. Filters /);
-assert.match(p,/Filters on this visual 0 No visual on this page has a filter of its own\./);
+assert.match(p,/This page has no visuals; its filters are below\. Filters /);
+assert.match(text(section(main)),/This page has no visuals\./);assert.doesNotMatch(text(section(main)),/Every visual is listed below/);
+assert.match(p,/Filters on this visual No visual on this page has a filter of its own\./,'with nothing selected the group gives no count of its own');
 assert.match(p,/Filters on this page 2 Region filter Dim \[Region\] basic hidden from readers locked Dim \[Name\] basic/);
 assert.ok(!/Filters on this page[^]*Dim \[ID\][^]*Filters on all pages/.test(p),'a drillthrough field is not a filter in the Filters pane');
 assert.match(p,/Filters on all pages 1 Sales \[Year\] basic$/);
@@ -68,7 +69,7 @@ run("R.pages.forEach(p=>{delete p.pageType;delete p.pageTypeRaw;})");
 main=show('pages');
 same(strip(main).map(s=>/page type not recorded/.test(s.text)),[true,true,true,true,true,true]);
 assert.match(strip(main)[1].text,/page type not recorded · hidden$/);
-assert.equal(run("pageFlagsText(R.pages[1])"),' (hidden)','where markup cannot go, only what is known');
+assert.equal(run("pageFlagsText(R.pages[1])"),' (page type not recorded, hidden)','where markup cannot go, the same words as text');
 
 // ---- the page list follows the Report page selection of the usage views, and goes back to it on return
 run("setPageScope('detail');switchTab('manifest');switchTab('pages')");
@@ -82,8 +83,14 @@ assert.equal(node('visual-count').textContent,'0 visuals');assert.match(node('vi
 // ---- Filters: the flat list with its scope column, for searching
 show('filters');run('filterFilterList()');
 const rows=()=>node('filter-list-rows').innerHTML.split('</tr>').filter(r=>r.includes('<tr')).map(text);
-const total=run('allFilters().length');
+const total=run('filterList().length');
 assert.equal(rows().length,total);assert.equal(node('filter-count').textContent,total+' filters');
+// a filter on all pages is one filter: the analysis keeps a row per page, the list shows it once
+assert.equal(run("R.filterRows.filter(f=>f.level==='report').length"),6);
+assert.equal(rows().filter(r=>r.startsWith('All pages ')).length,1);
+assert.ok(rows().some(r=>/^All pages Every page Sales \[Year\]/.test(r)));
+assert.equal(run("OVERVIEW_COUNTS.find(c=>c.id==='filters').n()"),total);
+assert.equal(run("TABS.find(t=>t.id==='filters').count()"),total);
 assert.ok(rows().some(r=>/^Page drillthrough field Sales \/ Order details \[detail\] Order details Dim \[ID\]/.test(r)),'a drillthrough field is named as such');
 assert.ok(rows().some(r=>/^Page .* Region filter Dim \[Region\] hidden from readers locked basic/.test(r)));
 assert.ok(rows().every(r=>/^(All pages|Page|Visual) /.test(r)),'the scope is in words: all pages, page or visual');

@@ -49,4 +49,4 @@
 
 @media(max-width:1100px){.rel-surface{grid-template-columns:1fr}.rel-panel{border-left:0;border-top:1px solid var(--line);max-height:none}.rel-viewport{max-height:56vh;min-height:220px}}
 @media(prefers-reduced-motion:no-preference){.rel-edge,.rel-box{transition:opacity .15s}}
-@media print{.rel-surface{display:block}.rel-viewport{max-height:none;overflow:visible}.rel-panel{border-left:0;border-top:1px solid var(--line);max-height:none}}
+@media print{.rel-surface{display:block;overflow:visible}.rel-viewport{max-height:none;overflow:visible}#rel-canvas{width:auto;min-width:0}#rel-canvas svg{width:100%!important;height:auto!important}.rel-panel{border-left:0;border-top:1px solid var(--line);max-height:none}}

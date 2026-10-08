@@ -33,6 +33,14 @@ def producer(bidoc_version: str | None = None) -> dict:
     return {"engine": ENGINE_NAME, "engineVersion": __version__, "bidoc": bidoc_version or None}
 
 
+def producer_line(payload: dict) -> str:
+    """bidoc and engine versions, as the documents state them beside the generation time; "not recorded" when the
+    payload does not say (generated before versions were recorded, or by the engine on its own for bidoc)."""
+    p = payload.get("producer") if isinstance(payload.get("producer"), dict) else {}
+    known = lambda v: v.strip() if isinstance(v, str) and v.strip() else "not recorded"   # noqa: E731
+    return f"bidoc {known(p.get('bidoc'))} · {p.get('engine') or ENGINE_NAME} {known(p.get('engineVersion'))}"
+
+
 def build_payload(model: dict | None, report: dict | None,
                   linked: dict | None, title: str) -> dict:
     mode = ("combined" if model and report

@@ -167,6 +167,8 @@ function routeReport() {
   }
   const wanted = TAB_ALIASES[raw] || raw;
   const tab = TABS.find(t => t.id === wanted && t.avail);
+  // A chosen page has its own address (#o/...); #pages itself is Pages as it first opens.
+  if (tab && tab.id === 'pages') setReportPage('');
   switchTab(tab ? tab.id : 'overview', false);
 }
 

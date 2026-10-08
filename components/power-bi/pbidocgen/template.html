@@ -285,7 +285,7 @@ const TABS = [
   {id:"calc-groups", label:"Calculation Groups", avail:has.model, count:()=>tablesDefinedBy('Calculation group').length},
   {id:"pages",    label:"Pages", avail:has.report, count:()=>R?.pages.length},
   {id:"visuals",  label:"Visuals", avail:has.report, count:()=>scopedPages().reduce((n,p)=>n+p.visuals.length,0)},
-  {id:"filters",  label:"Filters", avail:has.report, count:()=>allFilters().length},
+  {id:"filters",  label:"Filters", avail:has.report, count:()=>filterList().length},
   {id:"manifest", label:"Field manifest", avail:has.report, count:()=>reportManifest().length},
   {id:"bookmarks", label:"Bookmarks", avail:has.report, count:()=>(R?.bookmarks||[]).length},
 ];
@@ -532,7 +532,7 @@ const OVERVIEW_COUNTS = [
   {id:"roles", label:"Security roles", when:()=>has.model&&M.roles.length>0, n:()=>M.roles.length, open:()=>switchTab("security")},
   {id:"pages", label:"Pages", when:()=>has.report, n:()=>R.pages.length, open:()=>switchTab("pages",true,true)},
   {id:"visuals", label:"Visuals", when:()=>has.report, n:()=>R.pages.reduce((a,p)=>a+p.visuals.length,0), open:()=>switchTab("visuals",true,true)},
-  {id:"filters", label:"Filters", when:()=>has.report, n:()=>(R.filterRows||[]).length, open:()=>switchTab("filters",true,true)},
+  {id:"filters", label:"Filters", when:()=>has.report, n:()=>filterList(R.filterRows||[]).length, open:()=>switchTab("filters",true,true)},
   {id:"bookmarks", label:"Bookmarks", when:()=>has.report, n:()=>(R.bookmarks||[]).length, open:()=>switchTab("bookmarks")},
   {id:"warnings", label:"Warnings", when:()=>true, n:()=>allWarnings().length, open:()=>switchTab("warnings")},
 ];

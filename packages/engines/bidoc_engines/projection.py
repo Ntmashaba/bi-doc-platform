@@ -36,16 +36,24 @@ DATA_MARKER = "[entered data withheld]"
 # detail) are classified by content instead: DAX is documentation, not query code.
 PBI_CODE_KEYS = {"originalM", "mCode", "referencedM", "sql"}
 PBI_CODE_PATHS = [("model", "expressions", "*", "expression")]      # shared M queries and parameters
+# A `query` beside a `queryKind` says what it holds: "SQL" or "Power Query (M)" is code, "DAX" is documentation.
+# The kind decides, not the text: a select list such as `select market BU, REGIONTITLE Region from hr.bu` reads
+# like prose to a pattern (it published SQL in shared documents until 2026-10-08).
+PBI_DOCUMENTATION_KINDS = {"DAX"}
 ADF_CODE_KEYS = {"query", "sqlReaderQuery", "script", "preCopyScript"}
 MACHINE_PATHS = {"power_bi": [("model", "sourcePath")], "adf": []}
 # Human-written prose: never withheld as code by pattern (credentials are still cleaned).
 PROSE_KEYS = {"description", "title", "name", "label", "message", "notes", "runbook", "displayFolder"}
 
 _IDENT = r'(?:[\w@#]+|\[[^\]]+\]|"[^"]+")(?:\.(?:[\w@#]+|\[[^\]]+\]|"[^"]+"))*'
+_QUALIFIED = r'(?:[\w@#]+|\[[^\]]+\]|"[^"]+")(?:\.(?:[\w@#]+|\[[^\]]+\]|"[^"]+"))+'
+_ITEM = r'[\w\[\]"@#.]+(?:\s+(?:as\s+)?[\w\[\]"]+)?'
 _SQL = re.compile(
     # a select list is either code-like (*, commas, calls, qualified names) or one identifier
     r"(?is)\bselect\s+(?:top\s+\d+\s+)?(?:distinct\s+)?(?:[^\s,]*[*(),.\[\]@][^;]*?|"
     + _IDENT + r"(?:\s+as\s+\w+)?)\s+from\s+" + _IDENT +
+    # a list of plain columns, each perhaps with an alias, from a schema-qualified table: prose has no "x.y"
+    r"|\bselect\s+(?:top\s+\d+\s+)?(?:distinct\s+)?" + _ITEM + r"(?:\s*,\s*" + _ITEM + r")+\s+from\s+" + _QUALIFIED +
     r"|\binsert\s+into\s+" + _IDENT + r"\s*(?:\(|values\b|select\b)"
     r"|\bupdate\s+" + _IDENT + r"\s+set\b"
     r"|\bdelete\s+from\s+" + _IDENT + r"\s*(?:where\b|;|$)"
@@ -292,9 +300,12 @@ def withhold_personal_paths(text: str) -> str:
     return "".join(out) + text[pos:]
 
 
-def _is_code_field(document_type: str, path) -> bool:
+def _is_code_field(document_type: str, path, parent=None) -> bool:
     key = path[-1] if path else None
     if document_type == "power_bi":
+        if key == "query" and isinstance(parent, dict) and parent.get("queryKind") \
+                and parent["queryKind"] not in PBI_DOCUMENTATION_KINDS:
+            return True
         return key in PBI_CODE_KEYS or any(_matches(path, p) for p in PBI_CODE_PATHS)
     return key in ADF_CODE_KEYS
 
@@ -309,10 +320,10 @@ def project(document_type: str, payload: dict, *, query_code: str = "withheld"):
     def omit(path, reason, effect):
         omissions.setdefault((_pointer(path), reason), {"path": _pointer(path), "reason": reason, "effect": effect})
 
-    def visit(node, path):
+    def visit(node, path, parent=None):
         if isinstance(node, dict):
             for k in list(node):
-                node[k] = visit(node[k], path + [k])
+                node[k] = visit(node[k], path + [k], node)
             return node
         if isinstance(node, list):
             return [visit(v, path + [i]) for i, v in enumerate(node)]
@@ -332,13 +343,14 @@ def project(document_type: str, payload: dict, *, query_code: str = "withheld"):
             if stripped != node:
                 omit(path, "query_code_withheld", "Data-flow query options not published.")
                 node = stripped
-        code = _is_code_field(document_type, path) or (key not in PROSE_KEYS and looks_like_code(node))
+        by_field = _is_code_field(document_type, path, parent)
+        code = by_field or (key not in PROSE_KEYS and looks_like_code(node))
         if code and query_code == "withheld":
             omit(path, "query_code_withheld", "Query code not published.")
             # Only a Data Factory detail joins labels and code with " | ". Power Query and SQL in a Power BI
             # payload go whole: a filter such as [Status] = "A | B" must not leave its second half behind.
             labelled = document_type == "adf" and key == "detail"
-            return _withhold_code_spans(node) if labelled and not _is_code_field(document_type, path) else CODE_MARKER
+            return _withhold_code_spans(node) if labelled and not by_field else CODE_MARKER
         cleaned, reasons = clean_string(node)
         for r in reasons:
             omit(path, r, "Value replaced by the shared-publication cleaner (best effort).")

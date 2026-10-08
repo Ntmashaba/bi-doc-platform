@@ -158,4 +158,13 @@ run('clearRelSelection()');
 // An unrecognised cross-filter value is shown as written, not as a direction.
 run("M.relationships[0].crossFilteringBehavior='sideways';drawRelSurface()");
 assert.ok(edges()[0].open&&edges()[0].cls.includes('filter-other'));assert.match(edges()[0].title,/Cross-filter value "sideways", shown as the file writes it$/);
+// The legend names the hollow marker when a line has one; a model whose only relationships go to automatic date
+// tables says so instead of "no relationships".
+run("M.relationships[0].crossFilteringBehavior='oneDirection';switchTab('rels')");
+assert.match(text(node('main').innerHTML),/Direction automatic or not recognised/);
+run("savedRels=M.relationships;M.relationships=M.relationships.filter(autoDateRelationship);switchTab('rels')");
+assert.equal(text(node('rel-canvas').innerHTML),"No relationships to draw: the model's only relationship is to automatic date tables, listed in the Relationships list.");
+assert.ok(!/Direction automatic or not recognised/.test(node('main').innerHTML),'no hollow marker, no legend entry for it');
+run("M.relationships=[];switchTab('rels')");assert.equal(text(node('rel-canvas').innerHTML),'No relationships in this model.');
+run("M.relationships=savedRels");
 console.log('Relationship surface, panel and list checks passed.');

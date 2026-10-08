@@ -165,7 +165,7 @@ function impactDetails(id,scope=pageScope){
     ${col?`<h3>Other dependencies and uncertainty</h3><p>${listText(col.modelDependencies)}</p><p>${listText(col.reviewNotes)}</p>`:''}
     ${expression?`<h3>Expression</h3><pre class="code">${esc(expression)}</pre>`:''}
     <h3>Home table sources</h3><p class="mut">For measures, the home table is organisational. Follow “Reads these fields” above to trace data sources.</p>
-    ${sources.map(r=>`<p>${esc([r.server,r.database,r.object||r.partition].filter(Boolean).join(' / '))}</p>${r.query?`<details><summary>${esc(r.queryKind)} query</summary><pre class="code">${esc(r.query)}</pre></details>`:''}`).join('')}
+    ${sources.map(r=>`<p>${esc([r.server,r.database,r.object||r.partition].filter(Boolean).join(' / '))}</p>${r.query==='[query code withheld]'?`<p><span class="badge b-hidden">Query code withheld</span> <span class="mut">Not part of this shared document.</span></p>`:r.query?`<details><summary>${esc(r.queryKind)} query</summary><pre class="code">${esc(r.query)}</pre></details>`:''}`).join('')}
     ${col?`<p>Model input column: ${esc(col.sourceColumn)||'Unknown'}</p>`:''}<p class="mut">${esc(DATA.columns.sourceNote)}</p>`;
 }
 function inspectNode(id,scope=pageScope){impactNode=id;if(!graphNodes.get(id)?.label.toLowerCase().includes(impactQuery.toLowerCase())) impactQuery='';openInspector(graphNodes.get(id)?.label||'Field details',impactDetails(id,scope));}

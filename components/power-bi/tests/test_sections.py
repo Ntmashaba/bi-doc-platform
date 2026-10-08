@@ -81,6 +81,22 @@ class Producer(Base):
         self.assertEqual(recorded, {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": None})
 
 
+class OtherOutputs(Base):
+    def test_the_word_and_agent_outputs_state_the_versions_too(self):
+        from pbidocgen.agent_writer import build_agent_md
+        from pbidocgen.word_writer import render_docx
+        payload = build_payload(self.model(), None, None, "Sections")
+        payload["producer"]["bidoc"] = "1.2.3"
+        self.assertIn(f"(bidoc 1.2.3 · pbi-doc-gen {pbidocgen.__version__})", build_agent_md(payload))
+        docx = render_docx(payload, self.tmp / "s.docx")
+        import zipfile
+        with zipfile.ZipFile(docx) as z:
+            body = z.read("word/document.xml").decode("utf-8")
+        self.assertIn(f"bidoc 1.2.3 · pbi-doc-gen {pbidocgen.__version__}", body)
+        del payload["producer"]
+        self.assertIn("(bidoc not recorded · pbi-doc-gen not recorded)", build_agent_md(payload))
+
+
 class Authentication(Base):
     def test_only_the_type_and_only_when_the_file_says(self):
         says = data_sources.authentication

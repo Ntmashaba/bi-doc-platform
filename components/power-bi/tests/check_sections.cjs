@@ -132,4 +132,8 @@ assert.match(rows,/Source expression \(M\)/);
 const auth=run('sourceGroups().map(g=>[g.tables.join(),sourceAuthentication(g)])');
 same(auth.sort(),[['Budget','Windows integrated security'],['Orders','User name and password'],['Sales','Not available from this file']]);
 assert.equal(run('NO_AUTHENTICATION'),'Not available from this file');
+// A shared document without query code says so where a table's source query would be, in the Impact inspector too.
+run("DATA.tableSources.filter(r=>r.table==='Budget').forEach(r=>{r.query='[query code withheld]';})");
+const impact=run("impactDetails(nodeId('c','Budget','Amount'))");
+assert.match(text(impact),/Query code withheld Not part of this shared document\./);assert.ok(!impact.includes('<pre class="code">[query code withheld]'));
 console.log('Section, migration map, Overview count and Data Sources checks passed.');

@@ -20,15 +20,34 @@ class Classification(unittest.TestCase):
         for text in ("SELECT MAX(x) AS m FROM etl.Watermark", "select count(*) from t", "select Region from dbo.Sales",
                      "DELETE FROM dbo.FactSales WHERE d > 1", "EXEC dbo.usp_Load", "exec usp_LoadFact",
                      "insert into dbo.T (a) values (1)", "TRUNCATE TABLE stage.Orders", "let S = 1 in S",
-                     'Excel.Workbook(File.Contents("x.xlsx"))', 'Sql.Database("s","d")', '#"Changed Type"'):
+                     'Excel.Workbook(File.Contents("x.xlsx"))', 'Sql.Database("s","d")', '#"Changed Type"',
+                     # plain columns with aliases (from the Human Resources sample; published until 2026-10-08)
+                     "select distinct market BU,\n  REGIONTITLE Region,\n  MARKETDIRECTOR VP\nfrom hr.bu",
+                     "select Name Customer, City as Town from dbo.Customers"):
             self.assertTrue(looks_like_code(text), text)
 
     def test_not_code(self):
         for text in ("Select a value from the slicer", "Delete from the list when done", "Execute the pipeline daily",
                      "SUM(Sales[Amount])", DAX_TABLE, "CALENDARAUTO()", "Generated date table (CALENDAR/CALENDARAUTO)",
                      "http://services.odata.org/V3/Northwind/Northwind.svc/", r"C:\Data\Sales.xlsx",
-                     "See Finance.Policy (v2) for details"):
+                     "See Finance.Policy (v2) for details", "Select the region, country from the list",
+                     "Choose a region, a country from Finance.Policy"):
             self.assertFalse(looks_like_code(text), text)
+
+    def test_a_query_is_withheld_by_its_kind_whatever_its_text(self):
+        """queryKind says what a query holds: SQL and M are withheld even when no pattern recognises them."""
+        payload = {"tableSources": [{"query": "market BU, REGIONTITLE Region", "queryKind": "SQL"},
+                                    {"query": "Source", "queryKind": "Power Query (M)"},
+                                    {"query": "CALENDAR(DATE(2024,1,1), DATE(2024,12,31))", "queryKind": "DAX"},
+                                    {"query": "a description, not code", "queryKind": ""}],
+                   "model": {"tables": [{"partitions": [{"source": {"query": "market BU from hr", "queryKind": "SQL"}}]}]}}
+        data, omissions = project("power_bi", payload, query_code="withheld")
+        self.assertEqual([r["query"] for r in data["tableSources"]],
+                         [CODE_MARKER, CODE_MARKER, "CALENDAR(DATE(2024,1,1), DATE(2024,12,31))", "a description, not code"])
+        self.assertEqual(data["model"]["tables"][0]["partitions"][0]["source"]["query"], CODE_MARKER)
+        self.assertIn({"path": "/tableSources/0/query", "reason": "query_code_withheld", "effect": "Query code not published."}, omissions)
+        included, _ = project("power_bi", payload, query_code="included")
+        self.assertEqual(included["tableSources"][0]["query"], "market BU, REGIONTITLE Region")
 
     def test_cleaning(self):
         cleaned, reasons = clean_string('Server=x;Password=Secr3t;Uid=a https://h/p?sig=ABC&x=1 '

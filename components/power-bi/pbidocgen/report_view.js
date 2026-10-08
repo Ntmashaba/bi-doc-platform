@@ -31,7 +31,7 @@ function pageBadges(p, {landing = true} = {}){
     landing && p.isActive ? '<span class="badge b-other">landing page</span>' : ''].filter(Boolean).join(' ');
 }
 // The same, as text where markup cannot go (a drop-down): only what sets the page apart, and only when recorded.
-const pageFlagsText = p => { const f = [PAGE_TYPES[p.pageType]?.badge, p.hidden ? 'hidden' : ''].filter(Boolean); return f.length ? ` (${f.join(', ')})` : ''; };
+const pageFlagsText = p => { const t = pageType(p), f = [t.badge, p.hidden ? 'hidden' : ''].filter(Boolean); return f.length ? ` (${f.join(', ')})` : ''; };
 // Its drillthrough fields: on a tooltip page these are its tooltip fields.
 const drillFields = p => (p.filters || []).filter(f => f.drillthrough && (f.level || 'page') === 'page');
 const fieldRef = f => `${f.table && has.model ? tblLink(f.table) : `<span class="ref">${esc(f.table || '?')}</span>`}<span class="ref">[${esc(f.field || '?')}]</span>${fx(f.table, f.field)}`;
@@ -54,10 +54,21 @@ function shownPage(){
 }
 // Set the page (and visual) the view shows, without drawing it: navigation draws once.
 function setReportPage(pageId, visualId = ''){ reportPageSel = pageId; reportVisualSel = visualId || ''; }
+// Choosing a page is a step in history (Back and Forward move between pages) and its link opens it after a reload.
 function showReportPage(pageId){
   setReportPage(pageId);
-  switchTab('pages');
+  const o = objectFor('page', pageId);
+  switchTab('pages', !o);
+  if(o) recordObject(o.id);
   nextFrame(() => { const strip = document.getElementById('page-strip'); strip?.querySelector('[aria-current="page"]')?.focus?.({preventScroll: true}); });
+}
+// The address names the page and the selected visual, so a reload or a copied link opens the same; selecting a
+// visual replaces the entry rather than adding one.
+function noteReportPlace(){
+  const p = shownPage();
+  if(!p || !window.location || !window.history) return;
+  const o = (reportVisualSel && objectFor('visual', p.id, reportVisualSel)) || objectFor('page', p.id);
+  if(o && window.location.hash !== objectHash(o.id)) window.history.replaceState(null, '', objectHash(o.id));
 }
 // The Report page selection of the usage views follows into Pages, so a reader who chose a page sees it there.
 function notePageScope(id){ if((R?.pages || []).some(p => p.id === id) && id !== reportPageSel) setReportPage(id); }
@@ -90,7 +101,7 @@ function rPages(){
         ${g.placed.length ? `<div class="erd-toolbar layout-toolbar"><span class="mut">Select a visual for its fields and filters.</span><div class="erd-zoom" role="group" aria-label="Zoom ${esc(p.name)}"><button type="button" aria-label="Zoom out ${esc(p.name)}" onclick="${action('zoomPageLayout', p.id, -.25)}">−</button><output id="layout-zoom-${pageKey(p.id)}" aria-live="polite">${Math.round((layoutZooms.get(p.id) || 1) * 100)}%</output><button type="button" aria-label="Zoom in ${esc(p.name)}" onclick="${action('zoomPageLayout', p.id, .25)}">+</button><button type="button" onclick="${action('zoomPageLayout', p.id, 0)}">Fit width</button></div></div>
         <div class="layout-viewport page-viewport" id="page-viewport" tabindex="0" role="region" aria-label="${esc(p.name)} visual layout" onclick="pageCanvasClick(event)"><div id="layout-canvas-${pageKey(p.id)}" class="page-canvas" style="width:${(layoutZooms.get(p.id) || 1) * 100}%;aspect-ratio:${g.width}/${g.height}">${g.placed.map(v => visualBox(p, v, g)).join('')}</div></div>
         <div class="legend layout-legend">${legend}<span><span class="dot" style="border:1px dashed var(--ink3);background:transparent"></span>Hidden</span><span><span class="badge b-warn">!</span> Unresolved binding</span></div>`
-        : '<p class="mut page-no-layout">No visual on this page has usable coordinates, so there is no layout to draw. Every visual is listed below.</p>'}
+        : `<p class="mut page-no-layout">${p.visuals.length ? 'No visual on this page has usable coordinates, so there is no layout to draw. Every visual is listed below.' : 'This page has no visuals.'}</p>`}
         ${g.unplaced.length && g.placed.length ? `<p class="mut page-unplaced">${plural(g.unplaced.length, 'visual')} without usable coordinates ${g.unplaced.length === 1 ? 'is' : 'are'} listed below, not drawn.</p>` : ''}
       </div>
       <aside class="page-panel" id="page-panel" aria-live="polite" aria-label="Fields and filters of the selection">${pagePanel(p)}</aside>
@@ -137,7 +148,7 @@ function filtersPane(p, v){
     ? filterGroup('fp-visual', 'Filters on this visual', v.filters || [], 'None on this visual.')
     : (() => {
         const withFilters = p.visuals.filter(x => (x.filters || []).length);
-        return `<section class="fp-group" id="fp-visual"><h4>Filters on this visual <span class="n">${withFilters.reduce((n, x) => n + x.filters.length, 0)}</span></h4>${withFilters.length
+        return `<section class="fp-group" id="fp-visual"><h4>Filters on this visual</h4>${withFilters.length
           ? `<p class="mut">Select a visual to see its own. ${withFilters.length === 1 ? 'One visual has' : withFilters.length + ' visuals have'} filters on this page:</p><ul class="fp-list">${withFilters.map(x => `<li><button class="xl" onclick="${action('pickVisual', p.id, x.id)}">${esc(visualName(p.id, x))}</button> <span class="mut">${plural(x.filters.length, 'filter')}</span></li>`).join('')}</ul>`
           : '<p class="mut">No visual on this page has a filter of its own.</p>'}</section>`;
       })();
@@ -147,7 +158,7 @@ function filtersPane(p, v){
 }
 function pagePanel(p){
   const v = reportVisualSel && p.visuals.find(x => x.id === reportVisualSel);
-  if(!v) return `<p class="mut panel-hint">Select a visual ${layoutGeometry(p).placed.length ? 'in the layout or the list' : 'in the list below'} for its fields and the filters on it.</p>${filtersPane(p, null)}`;
+  if(!v) return `<p class="mut panel-hint">${!p.visuals.length ? 'This page has no visuals; its filters are below.' : `Select a visual ${layoutGeometry(p).placed.length ? 'in the layout or the list' : 'in the list below'} for its fields and the filters on it.`}</p>${filtersPane(p, null)}`;
   const f = visualFields(p.id, v), roots = (graph.consumers || []).filter(c => c.pageId === p.id && c.visualId === v.id);
   const resolved = [...new Set(roots.map(c => c.node))].map(id => graphNodes.get(id)).filter(Boolean);
   const role = c => !c || /^visual\b|^bookmark$/.test(c) ? '' : c === 'formatting' ? 'formatting rule' : c;
@@ -166,6 +177,7 @@ function pickVisual(pageId, visualId, {toggle = true, reveal = true} = {}){
   document.querySelectorAll('#page-surface .visual-box').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.visualId === reportVisualSel)));
   document.querySelectorAll('#page-visuals tr[id]').forEach(r => r.classList.toggle('is-selected', r.id === visualAnchor(p.id, reportVisualSel)));
   const panel = document.getElementById('page-panel'); if(panel) panel.innerHTML = pagePanel(p);
+  noteReportPlace();
   if(reveal && reportVisualSel){
     // From the list below or another view, bring the layout and its panel into view; from the layout, it is there.
     const surface = document.getElementById('page-surface'), box = document.getElementById(visualBoxId(p.id, reportVisualSel));
@@ -219,12 +231,23 @@ function filterVisualList(){
 }
 
 /* ------------------------------------------------------------ Filters: the flat list, for searching */
+// The analysis keeps one row per page for a filter on all pages; the list shows it once, as the report declares it.
+function filterList(rows = allFilters()){
+  const seen = new Set();
+  return rows.filter(f => {
+    if(f.level !== 'report') return true;
+    const key = JSON.stringify([f.name || '', f.table, f.field, f.filterType, f.raw]);
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(f => f.level === 'report' ? {...f, pageLabel: 'Every page', target: ''} : f);
+}
 const FILTER_SCOPES = {report: 'All pages', page: 'Page', visual: 'Visual'};
 // A field the page is reached through: a drillthrough field, or on a tooltip page a tooltip field.
 const fieldWell = f => !f.drillthrough ? '' : (R.pages || []).find(p => p.id === f.pageId)?.pageType === 'tooltip' ? 'tooltip field' : 'drillthrough field';
 function filterRowText(f){ return [FILTER_SCOPES[f.level] || f.level, f.pageLabel, f.target, f.displayName, `${f.table || ''}[${f.field || ''}]`, f.filterType, f.raw, fieldWell(f), f.isHidden ? 'hidden' : ''].join(' ').toLowerCase(); }
 function rFilters(){
-  const fs = allFilters();
+  const fs = filterList();
   if(!fs.length) return `${coupler()}<h1>Filters</h1><div class="empty"><b>No filters found</b> at report, page, or visual level.</div>`;
   return `${coupler()}<h1>Filters</h1>
   <p class="sub">Every filter the report declares, one row each, with the scope it applies at: all pages, one page or one visual. The same filters are grouped as the Filters pane groups them on each page in <button class="xl" onclick="switchTab('pages')">Pages</button>.</p>
@@ -234,7 +257,7 @@ function rFilters(){
 }
 function filterFilterList(){
   const body = document.getElementById('filter-list-rows'); if(!body) return;
-  const q = (document.getElementById('filter-search')?.value || '').trim().toLowerCase(), all = allFilters();
+  const q = (document.getElementById('filter-search')?.value || '').trim().toLowerCase(), all = filterList();
   const rows = all.filter(f => !q || filterRowText(f).includes(q));
   document.getElementById('filter-count').textContent = rows.length === all.length ? plural(all.length, 'filter') : `${rows.length} of ${plural(all.length, 'filter')}`;
   body.innerHTML = rows.map(f => `<tr>
@@ -253,7 +276,7 @@ function bookmarkPage(b){
 }
 function rBookmarks(){
   const all = R.bookmarks || [];
-  const head = `${coupler()}<h1>Bookmarks</h1><p class="sub">Every bookmark read from the report, in the order the file gives them, with the page it opens and the fields its saved state refers to.</p>`;
+  const head = `${coupler()}<h1>Bookmarks</h1><p class="sub">Every bookmark read from the report, with its group, the page it opens and the fields its saved state refers to. A PBIR report and the legacy layout keep the bookmarks' order; a pbi-tools extract does not, so its bookmarks are listed by folder name.</p>`;
   if(!all.length) return `${head}<div class="empty"><b>No bookmarks were found in this report.</b></div>`;
   return `${head}<table class="t" id="bookmark-list"><thead><tr><th>Bookmark</th><th>Opens page</th><th>Fields its saved state refers to</th></tr></thead><tbody>${all.map(b => {
     const fields = (b.fields || []).filter((f, i, a) => a.findIndex(g => g.table === f.table && g.field === f.field) === i);

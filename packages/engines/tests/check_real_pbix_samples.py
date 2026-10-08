@@ -26,8 +26,11 @@ PAGE_TYPES = {"page": 218, "tooltip": 31, "drillthrough": 14}
 MIN_BOOKMARK_PAGES = 51
 # Queries that exist only in the Power Query package of a pre-2019 file (not loaded, read by no loaded query).
 PACKAGE_ONLY = {"2019SU01 Blog Demo - February": {"FileLocation", "Order Details"}}
+# A select statement as the document holds it: inside a JSON string a line break is the two characters \\n.
+_GAP = r"(?:\s|\\[nrt])+"
 CODE = [re.compile(p) for p in (r"let\\n\s+Source\s*=", r"Sql\.Database\(", r"Excel\.Workbook\(",
-                                 r'Binary\.FromText\(\\?"[A-Za-z0-9+/=]{8}', r"Web\.Contents\(", r"(?i)select [^<]{0,80} from ")]
+                                 r'Binary\.FromText\(\\?"[A-Za-z0-9+/=]{8}', r"Web\.Contents\(",
+                                 r"(?i)\bselect" + _GAP + r"[^<]{0,200}?" + _GAP + r"from" + _GAP + r"[\w\[\]\".]+")]
 
 
 def power_query(text):
@@ -86,8 +89,13 @@ def main(samples, out_dir):
                     leaks = [p.pattern for p in CODE if p.search(text)]
                     if leaks:
                         failures.append(f"{folder.name}: query code in shared artifact: {leaks}")
-                    kept_dax += sum(1 for t in manifest["native_payload"]["data"].get("tableSources", [])
-                                    if t.get("query") and t["query"] != "[query code withheld]")
+                    kept = [t for t in manifest["native_payload"]["data"].get("tableSources", [])
+                            if t.get("query") and t["query"] != "[query code withheld]"]
+                    kept_dax += sum(1 for t in kept if t.get("queryKind") == "DAX")
+                    # what a query is comes from its kind, not from how its text looks: only DAX may stay
+                    shown = sorted({t.get("queryKind") or "no kind" for t in kept if t.get("queryKind") != "DAX"})
+                    if shown:
+                        failures.append(f"{folder.name}: shared artifact keeps {', '.join(shown)} query text")
     for profile, s in sizes.items():
         if s:
             print(f"{profile}: {len(s)} artifacts; HTML median {statistics.median(x for x, _ in s):,.0f} B, "

@@ -287,7 +287,7 @@ Highlights:
   cardinality, status and direction. Selecting a line shows that relationship alone. Escape, the same table
   again, *Clear selection* or a click on the empty canvas clears it. The diagram opens as large as fits without
   shrinking names past reading; a wider model scrolls inside its frame, and *Fit* shows all of it. On a narrow
-  screen the panel moves under the diagram.
+  screen the panel moves under the diagram; printed, the diagram is scaled to the page.
 - **Relationships list** keeps every relationship as one row (searchable), with **Show** to open that
   relationship on the diagram. Relationships to automatic date tables are in a closed block below it and are
   never drawn.
@@ -304,9 +304,12 @@ Highlights:
   and filters, for scanning and printing, then what feeds the page. Untitled visuals are named by type and first
   field ("Card · Revenue"); custom visuals by their package name ("Mapbox Visual (custom)"); buttons, shapes and
   images without data are folded into one "decorative visuals" row. Any visual anywhere in the document (a
-  measure's *Used by* line, the Impact inspector, the finder) opens on its page, selected.
-- **Visuals** lists every visual of every page, searchable; **Filters** lists every filter with its scope (all
-  pages, page or visual), searchable, naming drillthrough and tooltip fields and filters hidden from readers;
+  measure's *Used by* line, the Impact inspector, the finder) opens on its page, selected. Choosing a page is a
+  step in the browser's history, so Back and Forward move between pages, and the address names the page and
+  the selected visual: a reload or a copied link opens the same.
+- **Visuals** lists every visual of every page, searchable; **Filters** lists every filter once with its scope
+  (all pages, page or visual), searchable, naming drillthrough and tooltip fields and filters hidden from readers
+  (the Overview's Filters number counts the same rows);
   **Bookmarks** lists every bookmark in the file's order, with its group and the page it opens.
 - **Measures** are grouped by display folder, with DAX, format string and dependencies. Each has a short
   **Used by** line naming the pages and visuals that use it (the first four, then a count) and a link,

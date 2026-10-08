@@ -58,7 +58,7 @@ const step=name=>console.log('  ok '+name);
   const hidden=await page.evaluate(()=>[...document.querySelectorAll('#rel-canvas .rel-card')].filter(t=>{const r=t.getBoundingClientRect();
    return [...document.querySelectorAll('#rel-canvas .rel-box rect')].some(b=>{const q=b.getBoundingClientRect();return r.left+r.width/2>q.left&&r.left+r.width/2<q.right&&r.top+r.height/2>q.top&&r.top+r.height/2<q.bottom;});}).length);
   assert.equal(hidden,0);
-  assert.equal((await page.locator('#rel-legend').innerText()).replace(/\s+/g,' ').trim(),'Active Inactive Filters one way Filters both ways 1 one · * many');
+  assert.equal((await page.locator('#rel-legend').innerText()).replace(/\s+/g,' ').trim(),'Active Inactive Filters one way Filters both ways Direction automatic or not recognised 1 one · * many');
   step('lines carry cardinality and direction; inactive, single and both are told apart without colour');
   // ---- selecting a table: its relationships stay, the rest fades, the panel opens; nothing has to be scrolled
   await box('Dim').click();
@@ -183,6 +183,15 @@ const step=name=>console.log('  ok '+name);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),'no sideways page scroll on a phone');
   assert.match(await panel(),/^Sales Clear selection/);
   step('a wide model scrolls inside its frame and opens on the fact table; a phone stacks the panel');
+  // printed, the diagram is scaled to the page instead of cut off at the edges
+  await page.setViewportSize({width:1440,height:900});
+  await page.evaluate(()=>{relZoom=0;switchTab('rels',true,true);});
+  await page.emulateMedia({media:'print'});
+  const printed=await page.evaluate(()=>{const main=document.getElementById('main').getBoundingClientRect();
+   return [...document.querySelectorAll('#rel-canvas .rel-box rect')].filter(r=>{const b=r.getBoundingClientRect();return b.left<main.left-1||b.right>main.right+1;}).length;});
+  assert.equal(printed,0,'every table box is inside the printed page');
+  await page.emulateMedia({media:'screen'});
+  step('printing fits the diagram to the page');
   assert.deepEqual(requests,[],'nothing is fetched: no library, font or image');
   assert.deepEqual(errors,[]);
   console.log('Relationship surface checks passed in Chromium.');

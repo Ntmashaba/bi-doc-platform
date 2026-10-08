@@ -139,6 +139,13 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
   if(r.profile==='local'&&(r.sample.includes('Tabular.abf')||r.sample.includes('11 Dual')||r.synthetic)){
    await page.screenshot({path:path.join(out,r.sample.replace(/[^a-z0-9]/gi,'_')+'.png'),fullPage:true});
   }
+  // Every view fits a phone: a wide table or a long name scrolls or wraps inside the page, never the page itself.
+  if(pbi){
+   await page.setViewportSize({width:390,height:844});
+   const wide=await page.evaluate(()=>TABS.filter(t=>t.avail).filter(t=>{switchTab(t.id);return document.documentElement.scrollWidth>document.documentElement.clientWidth+1;}).map(t=>t.id));
+   await page.setViewportSize({width:1440,height:1000});
+   expect(!wide.length,r.file+': views wider than a phone: '+wide.join(', '));
+  }
   checks.push({file:r.file,passed:true});console.log('Browser passed',r.file);
  }
  fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify(checks,null,2));

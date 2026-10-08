@@ -174,7 +174,10 @@ function drawRelSurface(){
   for(const e of L.edges) for(const n of new Set([e.r.fromTable, e.r.toTable])) degree.set(n, (degree.get(n) || 0) + 1);
   const fit = room ? Math.min(1, (room - 2) / L.W) : 1, zoom = relZoom || Math.max(REL_READABLE, fit);
   if(!L.edges.length){
-    host.innerHTML = '<div class="empty">No relationships in this model.</div>';
+    const auto = (M.relationships || []).filter(autoDateRelationship).length;
+    host.innerHTML = auto
+      ? `<div class="empty">No relationships to draw: the model's only ${auto === 1 ? 'relationship is' : 'relationships are'} to automatic date tables, listed in the Relationships list.</div>`
+      : '<div class="empty">No relationships in this model.</div>';
   } else {
     // Lines first, boxes after: a line never paints over a table's name.
     host.innerHTML = `<svg width="${relRound(L.W * zoom)}" height="${relRound(L.H * zoom)}" viewBox="0 0 ${relRound(L.W)} ${relRound(L.H)}" role="group" aria-label="Tables and their relationships">
@@ -300,6 +303,7 @@ function rRels(){
         <span><svg width="34" height="12" aria-hidden="true"><path class="rel-line" d="M1,6 H33" stroke-width="1.75" stroke-dasharray="7 5"/></svg>Inactive</span>
         <span><svg width="34" height="12" aria-hidden="true"><path class="rel-line" d="M1,6 H33" stroke-width="1.75"/><path class="rel-arrow" d="M-7,-5.5 L5,0 L-7,5.5 Z" transform="translate(17,6)"/></svg>Filters one way</span>
         <span class="filter-both"><svg width="34" height="12" aria-hidden="true"><path class="rel-line" d="M1,6 H33" stroke-width="1.75"/><path class="rel-arrow" d="M2,-5.5 L12,0 L2,5.5 Z M-2,-5.5 L-12,0 L-2,5.5 Z" transform="translate(17,6)"/></svg>Filters both ways</span>
+        ${countedRelationships().some(r => ['automatic', 'other'].includes(relFilter(r).kind)) ? `<span><svg width="34" height="12" aria-hidden="true"><path class="rel-line" d="M1,6 H33" stroke-width="1.75"/><circle class="rel-arrow rel-open" cx="17" cy="6" r="4.5"/></svg>Direction automatic or not recognised</span>` : ''}
         <span><b>1</b> one · <b>*</b> many</span></div>
     </div>
     <aside id="rel-panel" class="rel-panel" aria-live="polite" aria-label="Details of the selection"></aside>

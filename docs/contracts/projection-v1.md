@@ -79,6 +79,7 @@ These rules are a safety net over every string in the payload, including when `q
 |---|---|---|
 | Power BI | `/sourceObjects/*/originalM`, `/sourceObjects/*/referencedM`, `/sourceQueries/*/mCode` | M |
 | Power BI | `/sourceObjects/*/sql` | native SQL |
+| Power BI | any `query` beside a `queryKind` other than `DAX` (`SQL`, `Power Query (M)`): `/tableSources/*/query`, `/model/tables/*/partitions/*/source/query` | native SQL or M, whatever the text looks like. Until 2026-10-08 these were classified by content only, and a select list of plain columns with aliases (`select distinct market BU, REGIONTITLE Region, MARKETDIRECTOR VP from hr.bu`, Human Resources sample) was published |
 | Power BI | `/model/expressions/*/expression` | shared M queries and parameters |
 | Power BI | every other field of a `/sourceQueries/*` row (`kind`, `origin`, `table`, `usedBy`, `upstream`, `sources`, `group`, `load`, `extraction`, `steps.status` …) | facts about the query, never its text: published in both modes. Step names and step descriptions are read from `mCode` when the page is rendered, so they exist only where the code does |
 | ADF | any `query`, `sqlReaderQuery`, `script`, `preCopyScript` field | SQL / scripts |
@@ -87,15 +88,15 @@ These rules are a safety net over every string in the payload, including when `q
 
 | Field | Observed | Rule |
 |---|---|---|
-| `/tableSources/*/query` | 394 M/SQL, **557 DAX** calculated tables (`CALENDAR(...)`) | withheld only if it is M or SQL |
-| `/tableSources/*/expression`, `/model/tables/*/partitions/*/expression`, `…/source/query` | M, SQL or DAX | withheld only if it is M or SQL |
+| `/tableSources/*/query` | 394 M/SQL, **553 DAX** calculated tables (`CALENDAR(...)`) | by `queryKind` (above); by content when the row has no kind |
+| `/tableSources/*/expression`, `/model/tables/*/partitions/*/expression`, `…/source/query` | M, SQL or DAX | `…/source/query` by `queryKind` (above); otherwise withheld only if it is M or SQL |
 | `/model/tables/*/partitions/*/source/detail` | **0 code**; 175 descriptions and source locations | kept; code inside would be caught |
 | ADF `/pipelines/*/activities/*/detail`, `/lineageEdges/*/detail` | labels plus embedded SQL (`… \| pre-copy: DELETE FROM …`) | only the SQL segment is withheld; labels are kept |
 | Any other Power BI string that is M or SQL | code | withheld whole. Only a Data Factory `detail` joins labels and code with ` \| `; an M filter such as `[Status] = "A \| B"` is one piece of code (before 2026-10-08 its second half was left in the shared payload) |
 | ADF data-flow `steps/*/config` | options, including `query:` / `preSQLs:` / `postSQLs:` | only those option values are withheld |
 
 Content detection recognises:
-- SQL statements (a select list with a table name, `INSERT INTO`, `UPDATE … SET`, `DELETE FROM`, `MERGE`, `TRUNCATE`, qualified `EXEC`, `CREATE`);
+- SQL statements (a select list with a table name, a list of plain columns with aliases from a schema-qualified table, `INSERT INTO`, `UPDATE … SET`, `DELETE FROM`, `MERGE`, `TRUNCATE`, qualified `EXEC`, `CREATE`);
 - SQL assembled in ADF expressions (`@concat('SELECT … FROM ', …)`);
 - M (`let … in`, `#"…"`, namespace-qualified calls such as `Excel.Workbook(`).
 
