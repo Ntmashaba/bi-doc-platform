@@ -249,7 +249,7 @@ function relReveal(){
   const viewport = document.getElementById('rel-viewport'); if(!viewport || !viewport.scrollWidth) return;
   const target = relSel.rel >= 0 ? document.getElementById('rel-edge-' + relSel.rel)
     : relSel.table ? document.getElementById('rel-box-' + M.tables.findIndex(t => t.name === relSel.table)) : null;
-  if(target?.scrollIntoView){ target.scrollIntoView({block: 'nearest', inline: 'center'}); return; }
+  if(target?.scrollIntoView){ target.scrollIntoView({block: 'nearest', inline: 'center', behavior: 'instant'}); return; }
   const middle = [...document.querySelectorAll('#rel-canvas .rel-box.role-fact')][0] || document.querySelector('#rel-canvas .rel-box:not(.no-rel)');
   if(!middle?.getBoundingClientRect) return;
   const box = middle.getBoundingClientRect(), frame = viewport.getBoundingClientRect();
@@ -261,7 +261,7 @@ function selectRelTable(name, reveal = false){
   relRedraw(name);
   if(reveal && relSel.table){
     const index = M.tables.findIndex(t => t.name === name);
-    document.getElementById('rel-box-' + index)?.scrollIntoView?.({block: 'nearest', inline: 'nearest'});
+    document.getElementById('rel-box-' + index)?.scrollIntoView?.({block: 'nearest', inline: 'nearest', behavior: 'instant'});
   }
 }
 function selectRelationship(index){

@@ -97,9 +97,36 @@ def build(folder):
     r['pages'][1]['filters'] = [double(level='page', filterType='Basic', raw='', target='Same / page')]
     r['reportFilters'] = [dict(table='Calendar', field='Year', kind='column', level='report', filterType='Basic', raw='2024', target='All pages')]
     for page in r['pages']:
-        page.update(width=1280, height=720)
+        page.update(width=1280, height=720, pageType='page')
         for visual in page['visuals']:
             visual.update(x=20, y=20, width=300, height=150)
+    # Every kind of page the Report view tells apart: a drillthrough page with its drillthrough field, a hidden
+    # tooltip page with its tooltip field, and a page whose type the document does not record.
+    measure = dict(table='Sales', field='Total', kind='measure', context='Values')
+    r['pages'] += [
+        {'id': 'p3', 'name': 'Order details', 'pageType': 'drillthrough', 'width': 1280, 'height': 720,
+         'filters': [dict(table='Dim', field='ID', kind='column', level='page', filterType='Basic', raw='',
+                          target='Order details', drillthrough=True),
+                     dict(table='Sales', field='Amount', kind='column', level='page', filterType='Advanced', raw='> 0',
+                          target='Order details', isHidden=True, displayName='Positive amounts')],
+         'visuals': [{'id': 'd1', 'type': 'card', 'title': 'Order total', 'fields': [measure], 'filters': [],
+                      'x': 40, 'y': 40, 'width': 360, 'height': 180},
+                     {'id': 'd2', 'type': 'tableEx', 'title': None, 'fields': [dict(table='Dim', field='ID', kind='column', context='Values')],
+                      'filters': [dict(table='Dim', field='ID', kind='column', level='visual', filterType='TopN', raw='10',
+                                       target='Order details / tableEx')], 'x': 440, 'y': 40, 'width': 600, 'height': 400},
+                     {'id': 'd3', 'type': 'shape', 'title': None, 'fields': [], 'filters': [], 'x': 0, 'y': 680, 'width': 1280, 'height': 40}]},
+        {'id': 'p4', 'name': 'Sales tooltip', 'pageType': 'tooltip', 'hidden': True, 'width': 320, 'height': 240,
+         'filters': [dict(table='Sales', field='Amount', kind='column', level='page', filterType='Basic', raw='',
+                          target='Sales tooltip', drillthrough=True)],
+         'visuals': [{'id': 't1', 'type': 'card', 'title': None, 'fields': [measure], 'filters': [],
+                      'x': 10, 'y': 10, 'width': 300, 'height': 120, 'hidden': True}]},
+        {'id': 'p5', 'name': 'Imported page', 'width': 1280, 'height': 720, 'filters': [],
+         'visuals': [{'id': 'u1', 'type': 'slicer', 'title': 'Region slicer', 'fields': [dict(table='Dim', field='ID', kind='column')],
+                      'filters': []}]}]
+    # as the readers write it: a page's filters include its visuals' own filters, at visual level
+    r['pages'][2]['filters'] += r['pages'][2]['visuals'][1]['filters']
+    r['bookmarks'] = [dict(r['bookmarks'][0], page='p2'), {'name': 'Tooltip state', 'fields': [], 'page': 'p4', 'group': 'Saved views'},
+                      {'name': 'Gone', 'fields': [], 'page': 'ReportSectionGone'}, {'name': 'Unplaced', 'fields': []}]
     payload = build_payload(m, r, link(m, r), 'Browser regression fixture')
     html = render_html(payload, folder / 'pbidocgen-browser.html')
     (folder / 'pbidocgen-browser.json').write_text(json.dumps(payload))

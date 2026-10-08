@@ -3,7 +3,7 @@ const {chromium}=require('playwright');
 const fs=require('fs'),path=require('path');
 const {pathToFileURL}=require('url');
 const {checkOverviewCounts}=require('../components/power-bi/tests/overview_counts.cjs');
-const {surfaceProblems}=require('../components/power-bi/tests/relationship_surface.cjs');
+const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view_geometry.cjs');
 (async()=>{
  const out=path.resolve(__dirname,'../samples/output');
  const results=JSON.parse(fs.readFileSync(path.join(out,'results.json'),'utf8'));
@@ -91,6 +91,9 @@ const {surfaceProblems}=require('../components/power-bi/tests/relationship_surfa
    // Model view: the relationship surface keeps every table, overlaps nothing and joins each line to its tables.
    const surface=await surfaceProblems(page);
    expect(!surface.length,r.file+': relationship surface: '+surface.slice(0,5).join('; '));
+   // Report view: every page opens on its own with its layout, its visuals and its type.
+   const pages=await pagesProblems(page);
+   expect(!pages.length,r.file+': Report view: '+pages.slice(0,5).join('; '));
    await page.evaluate(()=>switchTab('overview'));
    const auto=await page.evaluate(()=>has.model?M.tables.filter(isAutoDate).length:0);
    if(auto){

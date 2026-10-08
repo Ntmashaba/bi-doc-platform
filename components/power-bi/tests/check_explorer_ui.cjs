@@ -28,7 +28,7 @@ const browserWindow={scrollTo(){},location:{hash:''},addEventListener(name,fn){l
  pushState(_state,_title,hash){historyEntries.push(hash);browserWindow.location.hash=hash;},
  replaceState(_state,_title,hash){browserWindow.location.hash=hash;}
 }};
-const context=vm.createContext({console,setTimeout,document:{getElementById:node,
+const context=vm.createContext({console,setTimeout,clearTimeout,document:{getElementById:node,
  querySelectorAll:s=>s.startsWith('#main input')?mounted.filter(e=>['INPUT','SELECT'].includes(e.tagName)):[],
  createElement:()=>({}),body:{appendChild(){}}},window:browserWindow});
 vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);
@@ -117,12 +117,21 @@ same(run(`impactConsumers(${JSON.stringify(amount)}).map(c=>c.pageId)`),['p2']);
 same(run(`impactConsumers(${JSON.stringify(amount)})[0].path.map(id=>graphNodes.get(id).name)`),['Amount','Base','Total']);
 run(`inspectNode(${JSON.stringify(amount)})`);assert.match(node('inspector').innerHTML,/Amount.*→.*Base.*→.*Total/);
 run("inspectNode(nodeId('m','Sales','Total'))");assert.match(node('inspector').innerHTML,/Reads these fields/);assert.match(node('inspector').innerHTML,/Sales\[Base\]/);
-run("inspectVisual('p2','v1')");assert.match(node('inspector').innerHTML,/p2/);assert.match(node('inspector').innerHTML,/Resolved fields/);
+// A visual, from anywhere: its page in Pages, the visual selected and its fields and filters in the panel beside the layout.
+run("inspectVisual('p2','v1')");assert.equal(run('activeTab'),'pages');assert.equal(run('shownPage().id'),'p2');
+{const panel=node('main').innerHTML.split('id="page-panel"')[1]||'';
+ assert.match(panel,/Clear selection/);assert.match(panel,/<h4>In the model<\/h4>/);
+ assert.match(panel,/<h4>Filters on this visual <span class="n">\d+<\/span><\/h4>/);
+ assert.match(node('main').innerHTML,/<tr id="vis-[^"]+" tabindex="-1" class="is-selected">/);}
 // A graph cycle must terminate and preserve shortest paths.
 run("reverseGraph.set(nodeId('m','Sales','Total'),[nodeId('m','Sales','Base')])");assert.equal(run(`downstreamPaths(${JSON.stringify(amount)}).size`),4);
 run("switchTab('cleanup')");assert.match(node('main').innerHTML,/3 distinct columns/);assert.equal(run('cleanupRows().length'),3);assert.match(node('main').innerHTML,/<h2>Measures<\/h2>/);assert.ok(run("cleanupMeasureRows().every(r=>r.decision==='Deletion candidate')"));
 run("setPageScope('');switchTab('columns')");node('column-search').value='';run('filterColumns()');assert.ok(run("visibleColumns.every(r=>r.pageId==='')"));
-run("setPageScope('*');switchTab('layout')");assert.match(node('main').innerHTML,/without usable coordinates/);
+// An old link to Page layout opens Pages; a page whose visuals have no coordinates says so and lists them.
+run("setPageScope('*');switchTab('layout')");assert.equal(run('activeTab'),'pages');
+run("R.pages[0].visuals.forEach(v=>{v.saved=[v.x,v.y];v.x=null;});setReportPage(R.pages[0].id);switchTab('pages')");
+assert.match(node('main').innerHTML,/No visual on this page has usable coordinates/);
+run("R.pages[0].visuals.forEach(v=>{[v.x,v.y]=v.saved;delete v.saved;});switchTab('pages')");
 same(run("layoutGeometry({width:100,height:100,visuals:[{x:-10,y:0,width:20,height:30},{x:null,y:0,width:20,height:30}]}).unplaced.length"),1);
 // Same extract produces no changes even if generated time or JSON key order differs.
 run("comparison=JSON.parse(JSON.stringify(DATA));comparison.generated='earlier';comparisonName='baseline.json'");assert.equal(run('comparisonRows().length'),0);

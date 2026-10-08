@@ -59,8 +59,10 @@ function homeOf(o) {
     // The query is picked in the queries pane; what the reader is taken to is the query itself, beside it.
     case 'query': return {tab: 'power-query', el: pqItemId(o.id), then: () => selectQuery(o.id, false), show: 'pq-title'};
     case 'security role': return {tab: 'security', el: 'role-' + slug(o.name)};
-    case 'page': return {tab: 'pages', el: 'pg-' + pageKey(o.a)};
-    case 'visual': return {tab: 'pages', el: visualAnchor(o.a, o.b)};
+    // Pages shows one page at a time: the page is chosen before the view is drawn, and a visual is selected on it.
+    case 'page': return {tab: 'pages', el: 'pg-' + pageKey(o.a), before: () => setReportPage(o.a)};
+    case 'visual': return {tab: 'pages', el: visualAnchor(o.a, o.b), before: () => setReportPage(o.a, o.b),
+                           show: visualBoxId(o.a, o.b)};
     case 'data source':
       return o.a === 'live' ? {tab: 'sources', el: 'src-live'}
         : {tab: 'sources', el: sourceAnchor(o.key), then: () => inspectSource(o.key)};
@@ -112,17 +114,19 @@ function goObject(id, {history = true} = {}) {
   const o = OBJECT_BY_ID.get(id), home = o && homeOf(o);
   if (!home || !TABS.some(t => t.id === home.tab && t.avail)) return false;
   const find = () => { const el = document.getElementById(home.el); if (el) openContainers(el); return el; };
-  if (activeTab !== home.tab) switchTab(home.tab, false);
+  // A view that shows one thing at a time (Pages) is told what to show before it is drawn.
+  const open = fresh => { if (home.before) home.before(); switchTab(home.tab, false, fresh); };
+  if (activeTab !== home.tab || home.before) open(false);
   let el = find();
   const undone = [];
   if (!onScreen(el) && viewFiltered()) {       // a search box or drop-down in this view hides it
-    switchTab(home.tab, false, true);
+    open(true);
     el = find();
     undone.push('the filter in this view');
   }
   if (!onScreen(el) && pageScope !== '*') {    // so does the report page selection
     pageScope = '*';
-    switchTab(home.tab, false, true);
+    open(true);
     el = find();
     undone.push('the report page selection');
   }
@@ -150,7 +154,7 @@ function goRef(family, ...rest) {
   return !!o && goObject(o.id, options);
 }
 // Tab ids that an older link may still carry.
-const TAB_ALIASES = {'src-objects': 'source-objects', 'src-queries': 'power-query'};
+const TAB_ALIASES = {'src-objects': 'source-objects', 'src-queries': 'power-query', 'layout': 'pages'};
 function routeReport() {
   const raw = (window.location && window.location.hash || '').slice(1);
   if (raw.startsWith('o/')) {

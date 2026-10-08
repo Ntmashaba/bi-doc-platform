@@ -106,16 +106,22 @@ if(run('has.model')){
  run('zoomRel(-10)');checkSurface(expected,'');run('zoomRel(10)');checkSurface(expected,'');run('fitRel()');
 }
 if(run('has.report')){
- run("pageScope='*';switchTab('layout')");
+ // Pages draws one page at a time: every page's layout keeps every visual, inside the picture, at every zoom.
+ let boxes=0;
  for(const page of run('R.pages')){
-  run(`zoomPageLayout(${JSON.stringify(page.id)},10)`);
-  assert.equal(node('layout-zoom-'+run(`pageKey(${JSON.stringify(page.id)})`)).textContent,'300%');
-  run(`zoomPageLayout(${JSON.stringify(page.id)},0)`);
-  assert.equal(node('layout-canvas-'+run(`pageKey(${JSON.stringify(page.id)})`)).style.width,'100%');
+  run(`pageScope='*';setReportPage(${JSON.stringify(page.id)});switchTab('pages')`);
   const geometry=run(`layoutGeometry(R.pages.find(p=>p.id===${JSON.stringify(page.id)}))`);
+  assert.equal((node('main').innerHTML.match(/class="visual-box /g)||[]).length,geometry.placed.length,'every placed visual of '+page.id+' is drawn');
+  boxes+=geometry.placed.length;
+  if(geometry.placed.length){
+   run(`zoomPageLayout(${JSON.stringify(page.id)},10)`);
+   assert.equal(node('layout-zoom-'+run(`pageKey(${JSON.stringify(page.id)})`)).textContent,'300%');
+   run(`zoomPageLayout(${JSON.stringify(page.id)},0)`);
+   assert.equal(node('layout-canvas-'+run(`pageKey(${JSON.stringify(page.id)})`)).style.width,'100%');
+  }
   assert.equal(geometry.placed.length+geometry.unplaced.length,page.visuals.length);
   for(const v of geometry.placed){assert.ok(v.x>=geometry.left&&v.y>=geometry.top);assert.ok(v.x+v.width<=geometry.left+geometry.width+.001&&v.y+v.height<=geometry.top+geometry.height+.001);}
  }
- assert.equal((node('main').innerHTML.match(/class="visual-box /g)||[]).length,run('R.pages.reduce((n,p)=>n+layoutGeometry(p).placed.length,0)'));
+ assert.equal(boxes,run('R.pages.reduce((n,p)=>n+layoutGeometry(p).placed.length,0)'));
 }
 console.log(run('DATA.title')+': '+checked+' diagram states checked; page-layout inventory and bounds verified.');

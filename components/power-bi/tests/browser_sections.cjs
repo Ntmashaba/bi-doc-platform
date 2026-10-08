@@ -18,7 +18,7 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
  'power-query':'power-query',tables:'table',columns:'table',
  rels:'model','rel-list':'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
  measures:'dax','calc-columns':'dax','calc-tables':'dax','calc-groups':'dax',
- pages:'report',layout:'report',filters:'report',manifest:'report',bookmarks:'report',
+ pages:'report',visuals:'report',filters:'report',manifest:'report',bookmarks:'report',
  compare:'utility','report-details':'utility'};
 (async()=>{
  const browser=await chromium.launch(process.env.CHROMIUM_PATH?{headless:true,executablePath:process.env.CHROMIUM_PATH}:{headless:true});
@@ -58,7 +58,7 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
    await page.goto(url+'#'+tab);
    assert.equal(await page.evaluate(()=>activeTab),tab,'#'+tab+' still opens it');
   }
-  for(const [old,now] of [['src-objects','source-objects'],['src-queries','power-query']]){
+  for(const [old,now] of [['src-objects','source-objects'],['src-queries','power-query'],['layout','pages']]){
    await page.goto(url+'#'+old);await page.evaluate(()=>routeReport());
    assert.equal(await page.evaluate(()=>activeTab),now,'the old link #'+old+' opens '+now);
   }
@@ -176,7 +176,7 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   await page.evaluate(()=>{pageScope='*';switchTab('measures',true,true);});
   const totalMeasure=page.locator('#mea-list details.measure',{has:page.locator('.mea-name',{hasText:/^Total$/})});
   await totalMeasure.locator('summary').click();
-  assert.match((await totalMeasure.locator('.used-by').innerText()).replace(/\s+/g,' '),/^2 visuals on 2 pages: .+ · .+, .+ · .+\. Dependency and page-usage analysis$/);
+  assert.match((await totalMeasure.locator('.used-by').innerText()).replace(/\s+/g,' '),/^4 visuals on 4 pages: Same \/ page · Table · Total, Same \/ page · Table · Total, Order details · Order total, Sales tooltip · Card · Total\. Dependency and page-usage analysis$/);
   const unused=page.locator('#mea-list details.measure',{has:page.locator('.mea-name',{hasText:/^Doubled$/})});
   await unused.locator('summary').click();
   assert.match(await unused.locator('.used-by').innerText(),/^No visual in this report uses it\. Dependency and page-usage analysis$/);

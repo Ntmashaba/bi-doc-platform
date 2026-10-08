@@ -3,7 +3,7 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict'),path=require('node:path');
 const {pathToFileURL}=require('node:url');
-const {surfaceProblems}=require('./relationship_surface.cjs');
+const {surfaceProblems}=require('./view_geometry.cjs');
 const step=name=>console.log('  ok '+name);
 (async()=>{
  const browser=await chromium.launch(process.env.CHROMIUM_PATH?{headless:true,executablePath:process.env.CHROMIUM_PATH}:{headless:true});

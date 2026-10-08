@@ -47,9 +47,12 @@ const {execFileSync}=require('node:child_process');
   assert.equal(await page.evaluate(()=>globalThis.reviewMarker),undefined);
   await openTab('rels');
   const names=await page.evaluate(()=>[slug('Sales-US'),slug('Sales US')]);assert.notEqual(names[0],names[1]);
-  await openTab('layout');await page.locator('.visual-box').first().click();
-  assert.ok(await page.locator('#inspector').isVisible());await page.keyboard.press('Tab');
-  await page.locator('#inspector').getByRole('button',{name:'Close details',exact:true}).click();
+  // Page layout is part of Pages now: a visual box opens its fields and filters in the panel beside the layout.
+  await openTab('pages');await page.locator('#page-strip .page-tab').first().click();
+  await page.locator('.visual-box').first().click();
+  assert.match(await page.locator('#page-panel').innerText(),/Clear selection/);await page.keyboard.press('Tab');
+  await page.locator('#visual-clear').click();
+  assert.doesNotMatch(await page.locator('#page-panel').innerText(),/Clear selection/);
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'pbi-browser-'));
   const exports=[['columns','Export filtered CSV','column-page-usage.csv'],['table-sources','Export source summary CSV','report-table-sources.csv'],['power-query','Export all M queries CSV','source-queries.csv'],['source-objects','Export source objects CSV (with code)','source-objects.csv'],['source-objects','Export source objects CSV (no code)','source-objects-no-code.csv'],['primary-sources','Export primary sources CSV','primary-sources.csv'],['cleanup','Export evidence at column/page grain','cleanup-column-page-usage.csv']];
   for(const [tab,label,suffix] of exports){

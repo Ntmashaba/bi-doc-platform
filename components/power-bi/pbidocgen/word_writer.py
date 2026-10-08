@@ -21,6 +21,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from .model_parser import cross_filter_label
 from .page_references import page_label
+from . import page_types
 
 # --------------------------------------------------------------------------
 # Page geometry (A4, 2 cm margins) — all values in DXA (1440 = 1 inch)
@@ -368,9 +369,7 @@ def build_docx_body(payload: dict) -> str:
         parts.append(page_break())
         parts.append(heading("Report pages — what feeds each page", 1))
         for pg in report["pages"]:
-            flags = []
-            if pg["hidden"]:
-                flags.append("hidden")
+            flags = page_types.flags(pg)
             if pg.get("isActive"):
                 flags.append("landing page")
             suffix = f"  ({', '.join(flags)})" if flags else ""

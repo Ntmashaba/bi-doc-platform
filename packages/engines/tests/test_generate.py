@@ -304,6 +304,33 @@ class PowerBIGeneration(Base):
             sources = {d["name"]: d.get("authentication") for d in m["native_payload"]["data"]["model"]["dataSources"]}
             self.assertEqual(sources, {"dw": "User name and password", "SQL/srv2;db2": "Windows"}, profile)
 
+    def test_page_types_reach_both_profiles(self):
+        """The Report view says what kind of page each page is: local and shared documents carry the same facts."""
+        definition = self.tmp / "Pages.Report" / "definition"
+        pages = {"home": {"name": "home", "displayName": "Home"},
+                 "tip": {"name": "tip", "displayName": "Tip", "type": "Tooltip", "visibility": "HiddenInViewMode"},
+                 "detail": {"name": "detail", "displayName": "Detail", "pageBinding": {"name": "b", "type": "Drillthrough"},
+                            "filterConfig": {"filters": [{"name": "f", "howCreated": "Drillthrough", "field": {"Column": {
+                                "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "Region"}}}]}}}
+        for pid, page in pages.items():
+            (definition / "pages" / pid).mkdir(parents=True)
+            (definition / "pages" / pid / "page.json").write_text(json.dumps(page), encoding="utf-8")
+        (definition / "pages" / "pages.json").write_text(json.dumps({"pageOrder": list(pages)}), encoding="utf-8")
+        (definition / "report.json").write_text("{}", encoding="utf-8")
+        (definition / "bookmarks").mkdir()
+        (definition / "bookmarks" / "bookmarks.json").write_text(json.dumps({"items": [{"name": "b1"}]}), encoding="utf-8")
+        (definition / "bookmarks" / "b1.bookmark.json").write_text(json.dumps({"name": "b1", "displayName": "Saved",
+            "explorationState": {"version": "1.3", "activeSection": "detail", "sections": {}}}), encoding="utf-8")
+        for profile in ("local", "shared"):
+            r = generate(GenerateRequest(engine="power_bi", source_path=str(definition.parent), source_kind="pbir",
+                                         output_dir=str(self.out), profile=profile))
+            _, m = self.artifact(r, power_bi.VIEW_IDS)
+            report = m["native_payload"]["data"]["report"]
+            self.assertEqual([(p["id"], p.get("pageType"), p["hidden"]) for p in report["pages"]],
+                             [("home", "page", False), ("tip", "tooltip", True), ("detail", "drillthrough", False)], profile)
+            self.assertEqual([(b["name"], b.get("page")) for b in report["bookmarks"]], [("Saved", "detail")], profile)
+            self.assertTrue(report["pages"][2]["filters"][0]["drillthrough"], profile)
+
     def test_include_query_code_is_explicit(self):
         _, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)
         self.assertEqual(m["projection"]["options"], {"query_code": "included"})

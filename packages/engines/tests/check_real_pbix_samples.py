@@ -21,6 +21,9 @@ EXPECTED = 29
 # Power Query over the same reports (measured 2026-10-08): every query of every report is read completely and
 # its steps are parsed. A drop in these numbers means a reader or the step parser lost something.
 MIN_QUERIES, MIN_STEPS, MIN_DESCRIBED = 179, 922, 0.90
+# Page types as the 29 reports record them (measured 8 October 2026): every page's settings are in the file.
+PAGE_TYPES = {"page": 218, "tooltip": 31, "drillthrough": 14}
+MIN_BOOKMARK_PAGES = 51
 # Queries that exist only in the Power Query package of a pre-2019 file (not loaded, read by no loaded query).
 PACKAGE_ONLY = {"2019SU01 Blog Demo - February": {"FileLocation", "Order Details"}}
 CODE = [re.compile(p) for p in (r"let\\n\s+Source\s*=", r"Sql\.Database\(", r"Excel\.Workbook\(",
@@ -37,6 +40,7 @@ def main(samples, out_dir):
     folders = sorted(p for p in Path(samples, "powerbi-desktop-samples").glob("*/*") if (p / "Model").is_dir())
     failures, sizes, kept_dax = [], {"local": [], "shared": []}, 0
     totals = {"queries": 0, "steps": 0, "described": 0, "folders": 0}
+    page_types, bookmark_pages = {}, 0
     with tempfile.TemporaryDirectory() as tmp:
         for folder in folders:
             work = Path(tmp) / folder.name
@@ -52,6 +56,12 @@ def main(samples, out_dir):
                 sizes[profile].append((len(data), sum(len(s["text"].encode()) for s in manifest["sections"])))
                 view = power_query(data.decode("utf-8"))
                 if profile == "local":
+                    report = manifest["native_payload"]["data"].get("report") or {}
+                    for page in report.get("pages", []):
+                        kind = page.get("pageType", "not recorded")
+                        page_types[kind] = page_types.get(kind, 0) + 1
+                    ids = {page["id"] for page in report.get("pages", [])}
+                    bookmark_pages += sum(1 for b in report.get("bookmarks", []) if b.get("page") in ids)
                     names = [q["name"] for q in view["queries"]]
                     if len(names) != len(set(names)):
                         failures.append(f"{folder.name}: a query is listed twice: {sorted(n for n in names if names.count(n) > 1)}")
@@ -87,6 +97,12 @@ def main(samples, out_dir):
     share = totals["described"] / totals["steps"] if totals["steps"] else 0
     print(f"Power Query: {totals['queries']} queries, {totals['folders']} query folders, {totals['steps']} Applied Steps, "
           f"{share:.0%} of them described in words")
+    print("Pages: " + ", ".join(f"{n} {kind}" for kind, n in sorted(page_types.items())) +
+          f"; {bookmark_pages} bookmarks open a page of their report")
+    if page_types != PAGE_TYPES:
+        failures.append(f"page types changed: {page_types}, measured {PAGE_TYPES}")
+    if bookmark_pages < MIN_BOOKMARK_PAGES:
+        failures.append(f"only {bookmark_pages} bookmarks name a page of their report; measured {MIN_BOOKMARK_PAGES}")
     if totals["queries"] < MIN_QUERIES or totals["steps"] < MIN_STEPS or share < MIN_DESCRIBED:
         failures.append(f"Power Query coverage fell below the measured floor ({MIN_QUERIES} queries, {MIN_STEPS} steps, "
                         f"{MIN_DESCRIBED:.0%} described)")

@@ -120,18 +120,32 @@ const step=name=>console.log('  ok '+name);
   await visit('server','data source',await page.evaluate(()=>'#'+sourceAnchor(searchObjects('server').groups.find(g=>g.kind==='data source').items[0].key)),'sources');
   assert.ok(await page.locator('#inspector').isVisible(),'a source opens with its details');
   await page.evaluate(()=>closeInspector());
-  // a page selection that excludes the object is undone
-  await page.evaluate(()=>{switchTab('pages');setPageScope('p2');});
+  // a page selection that excludes the object is undone: Doubled is used on no page, so page p2 hides it
+  await page.evaluate(()=>{switchTab('measures');setPageScope('p2');});
   assert.equal(await page.locator('#global-page').inputValue(),'p2');
-  const visual=await page.evaluate(()=>'#'+visualAnchor('p1','v1'));
-  await finder.fill('Table');
-  await page.locator('#finder-list [role=option][data-object="pbi:visual:p1/v1"]').click();
-  await landed(visual,'pages');
+  await finder.fill('Doubled');
+  await page.locator('#finder-list [role=option][aria-label="Doubled, measure, Sales"]').click();
+  await landed(await page.evaluate(()=>'#mea-'+slug('Doubled')),'measures');
   assert.equal(await page.locator('#global-page').inputValue(),'*');
   assert.match(await page.locator('#finder-note').innerText(),/Cleared the report page selection/);
+  // a visual opens on its own page, selected, with its fields and filters beside the layout
+  await page.evaluate(()=>showReportPage('p4'));
+  await finder.fill('Table');
+  await page.locator('#finder-list [role=option][data-object="pbi:visual:p1/v1"]').click();
+  await landed(await page.evaluate(()=>'#'+visualBoxId('p1','v1')),'pages');
+  assert.equal(await page.evaluate(()=>shownPage().id),'p1');
+  assert.equal(await page.locator('#page-strip [aria-current="page"]').getAttribute('data-page'),'p1');
+  assert.equal(await page.locator('#'+await page.evaluate(()=>visualBoxId('p1','v1'))).getAttribute('aria-pressed'),'true');
+  assert.match(await page.locator('#page-panel').innerText(),/Clear selection/);
+  // ...and one without coordinates lands on its row in the list of the page's visuals
+  await finder.fill('Region slicer');
+  await page.locator('#finder-list [role=option][data-object="pbi:visual:p5/u1"]').click();
+  await landed(await page.evaluate(()=>'#'+visualAnchor('p5','u1')),'pages');
+  assert.equal(await page.locator('#panel-visual').innerText(),'Region slicer');
   await finder.fill('Same');
   await page.locator('#finder-list [role=option][data-object="pbi:page:p2"]').click();
   await landed(await page.evaluate(()=>'#pg-'+pageKey('p2')),'pages');
+  assert.equal(await page.locator('#page-strip [aria-current="page"]').getAttribute('data-page'),'p2');
   step('tables, columns, measures, queries, roles, sources, pages and visuals each land on their element');
   // ---- object links: a direct link after a reload, Back and Forward
   await page.evaluate(()=>switchTab('overview'));

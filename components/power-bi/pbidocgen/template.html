@@ -284,6 +284,7 @@ const TABS = [
   {id:"calc-tables", label:"Calculated Tables", avail:has.model, count:()=>tablesDefinedBy('Calculated table').length},
   {id:"calc-groups", label:"Calculation Groups", avail:has.model, count:()=>tablesDefinedBy('Calculation group').length},
   {id:"pages",    label:"Pages", avail:has.report, count:()=>R?.pages.length},
+  {id:"visuals",  label:"Visuals", avail:has.report, count:()=>scopedPages().reduce((n,p)=>n+p.visuals.length,0)},
   {id:"filters",  label:"Filters", avail:has.report, count:()=>allFilters().length},
   {id:"manifest", label:"Field manifest", avail:has.report, count:()=>reportManifest().length},
   {id:"bookmarks", label:"Bookmarks", avail:has.report, count:()=>(R?.bookmarks||[]).length},
@@ -310,7 +311,7 @@ const SECTIONS = [
    view:"Model view in Power BI Desktop: how the tables relate, who may see which rows, and what depends on what."},
   {id:"dax", label:"DAX query view", tabs:["measures","calc-columns","calc-tables","calc-groups"],
    view:"DAX definitions for this model: measures, calculated columns, calculated tables and calculation items. DAX query view in Power BI Desktop is an editor for queries that return data; saved queries and their results are not part of this document."},
-  {id:"report", label:"Report view", tabs:["pages","layout","filters","manifest","bookmarks"],
+  {id:"report", label:"Report view", tabs:["pages","visuals","filters","manifest","bookmarks"],
    view:"Report view in Power BI Desktop: the report's pages, visuals, filters and bookmarks."},
 ];
 /* Actions on the document itself rather than views of the file: reached from the sidebar and the Overview. */
@@ -403,6 +404,8 @@ function switchTab(id, recordHistory=true, fresh=false){
   window.scrollTo(0,0);
   if(id==="rels"){ drawRelSurface(); relReveal(); }
   if(id==="rel-list") filterRelList();
+  if(id==="visuals") filterVisualList();
+  if(id==="filters") filterFilterList();
   if(id==="lineage") drawLineage();
   if(id==="columns") filterColumns();
   if(id==="tables") fTbl(document.getElementById("table-search").value);
@@ -528,7 +531,7 @@ const OVERVIEW_COUNTS = [
   {id:"sources", label:"Data sources", when:()=>has.model, n:()=>sourceGroups().length, open:()=>switchTab("sources",true,true)},
   {id:"roles", label:"Security roles", when:()=>has.model&&M.roles.length>0, n:()=>M.roles.length, open:()=>switchTab("security")},
   {id:"pages", label:"Pages", when:()=>has.report, n:()=>R.pages.length, open:()=>switchTab("pages",true,true)},
-  {id:"visuals", label:"Visuals", when:()=>has.report, n:()=>R.pages.reduce((a,p)=>a+p.visuals.length,0), open:()=>switchTab("pages",true,true)},
+  {id:"visuals", label:"Visuals", when:()=>has.report, n:()=>R.pages.reduce((a,p)=>a+p.visuals.length,0), open:()=>switchTab("visuals",true,true)},
   {id:"filters", label:"Filters", when:()=>has.report, n:()=>(R.filterRows||[]).length, open:()=>switchTab("filters",true,true)},
   {id:"bookmarks", label:"Bookmarks", when:()=>has.report, n:()=>(R.bookmarks||[]).length, open:()=>switchTab("bookmarks")},
   {id:"warnings", label:"Warnings", when:()=>true, n:()=>allWarnings().length, open:()=>switchTab("warnings")},
@@ -688,54 +691,6 @@ const DECORATIVE_TYPES=new Set(['actionButton','shape','basicShape','image','gro
 const isDecorative=v=>DECORATIVE_TYPES.has(v.type)&&!(v.fields||[]).length&&!(v.filters||[]).length;
 // Page name alone, unless another page shares it (then the full label with its id).
 const pageTitle=p=>p.name&&(R?.pages||[]).filter(q=>q.name===p.name).length===1?p.name:(p.label||p.name);
-function rPages(){
-  if(!R.pages.length) return `${coupler()}<div class="empty"><b>No pages found.</b><br>Check that the .Report folder contains definition/pages/.</div>`;
-  const cards = scopedPages().map(p=>{
-    const feedRows = (p.feeds||[]).map(({table:t,fields,usage})=>{
-      return `<tr><td>${has.model?tblLink(t):`<span class="ref">${esc(t)}</span>`}<div class="mut">${esc(usage)}</div></td><td class="mut">${fields.map(f=>`<span class="ref">${esc(f)}</span>${fx(t,f)}`).join(" ")}</td></tr>`;
-    }).join("");
-    const deco = p.visuals.filter(isDecorative);
-    const visRows = p.visuals.filter(v=>!isDecorative(v)).map(v=>`
-      <tr id="${visualAnchor(p.id,v.id)}" tabindex="-1"><td title="${esc(v.type)}"><b>${esc(visualName(p.id,v))}</b><div class="mut">${esc(visualTypeName(v.type))}</div></td>
-      <td class="mut">${v.fields.filter((f,i,a)=>a.findIndex(g=>g.table===f.table&&g.field===f.field&&g.kind===f.kind)===i).map(f=>{
-        const label = f.table?`${f.table}[${f.field}]`:`[${f.field}]`;
-        const kind = f.kind==="measure"?" (m)":"";
-        return `<span class="ref" title="${esc(f.context)}">${esc(label)}${kind}</span>${fx(f.table,f.field)}`;
-      }).join(" ")||"—"}</td>
-      <td class="mut">${v.filters.length? v.filters.map(f=>esc(f.field||"?")+fx(f.table,f.field)).join(", "):"—"}</td></tr>`).join("");
-    return `<details id="pg-${pageKey(p.id)}">
-      <summary title="${esc(p.id)}">${esc(pageTitle(p))} ${p.hidden?'<span class="badge b-hidden">hidden</span>':""} ${p.isActive?'<span class="badge b-other">landing page</span>':""}
-        <span class="mut" style="font-weight:400;margin-left:auto">${p.visuals.length-p.visuals.filter(isDecorative).length} data visuals${p.visuals.some(isDecorative)?` · ${p.visuals.filter(isDecorative).length} decorative`:''}</span></summary>
-      <div class="body">
-        <h2 style="margin-top: .6rem">What feeds this page</h2>
-        ${feedRows?`<table class="t"><thead><tr><th>Table</th><th>Fields used</th></tr></thead><tbody>${feedRows}</tbody></table>`:`<p class="mut">No field bindings detected on this page.</p>`}
-        <h2>Visuals</h2>
-        <table class="t"><thead><tr><th>Visual</th><th>Field bindings</th><th>Visual filters</th></tr></thead><tbody>${visRows||'<tr><td colspan="3" class="mut">No data visuals on this page.</td></tr>'}</tbody></table>
-        ${deco.length?`<details><summary>${deco.length} decorative visual${deco.length===1?'':'s'} without data <span class="mut" style="font-weight:400">${esc(Object.entries(deco.reduce((a,v)=>(a[visualTypeName(v.type)]=(a[visualTypeName(v.type)]||0)+1,a),{})).map(([k,n])=>n>1?k+' ×'+n:k).join(', '))}</span></summary><div class="body"><p class="mut">${deco.map(v=>`<span id="${visualAnchor(p.id,v.id)}" tabindex="-1">${esc(visualName(p.id,v))}</span>`).join(' · ')}</p></div></details>`:''}
-        ${p.filters.filter(f=>f.level==="page").length?`<h2>Page-level filters</h2><div class="pill-list">${p.filters.filter(f=>f.level==="page").map(f=>`<span class="ref">${esc(f.table||"?")}[${esc(f.field||"?")}]${fx(f.table,f.field)} — ${esc(f.filterType)}${f.raw?`: ${esc(f.raw)}`:""}</span>`).join("")}</div>`:""}
-      </div>
-    </details>`;
-  }).join("");
-  return `${coupler()}<h1>Report pages</h1>
-  <p class="sub">Every page with its visuals, their field bindings, and a rolled-up "what feeds this page" table.${has.model?"":" Field references are unresolved (report-only mode): they name what the report expects, not what a model confirms."}</p>${cards}`;
-}
-
-/* ============================================================ filters */
-function rFilters(){
-  const fs = allFilters();
-  if(!fs.length) return `${coupler()}<h1>Filters</h1><div class="empty"><b>No filters found</b> at report, page, or visual level.</div>`;
-  const row = f=>`<tr>
-    <td><span class="badge b-other">${esc(f.level)}</span></td>
-    <td class="mut">${esc(f.pageLabel)}<div>${esc(f.target)}</div></td>
-    <td>${f.table&&has.model?tblLink(f.table):`<span class="ref">${esc(f.table||"?")}</span>`}<span class="ref">[${esc(f.field||"?")}]</span>${fx(f.table,f.field)}</td>
-    <td class="mut">${esc(f.filterType)}</td>
-    <td class="mut">${f.raw?esc(f.raw):"—"}</td></tr>`;
-  return `${coupler()}<h1>Filters</h1>
-  <p class="sub">Every filter the report declares, at all three scopes. Report-level filters apply everywhere; page filters apply to one page; visual filters to a single visual.</p>
-  <table class="t"><thead><tr><th>Scope</th><th>Applies to</th><th>Field</th><th>Type</th><th>Condition hint</th></tr></thead>
-  <tbody>${fs.map(row).join("")}</tbody></table>`;
-}
-
 /* ============================================================ manifest */
 function rManifest(){
   const man = reportManifest();
@@ -1059,16 +1014,6 @@ function sourceAuthentication(g){
   const through = new Set((M?.tables||[]).filter(t=>g.tables.includes(t.name)).flatMap(t=>t.partitions.flatMap(p=>p.dataSources||[])));
   const found = (M?.dataSources||[]).filter(d=>d.authentication && through.has(d.name));
   return [...new Set(found.map(d=>d.authentication))].join("; ") || NO_AUTHENTICATION;
-}
-
-/* ============================================================ bookmarks */
-function rBookmarks(){
-  const all = R.bookmarks||[];
-  const head = `${coupler()}<h1>Bookmarks</h1><p class="sub">Every bookmark read from the report, with the fields its saved state refers to.</p>`;
-  if(!all.length) return `${head}<div class="empty"><b>No bookmarks were found in this report.</b></div>`;
-  return `${head}<table class="t" id="bookmark-list"><thead><tr><th>Bookmark</th><th>Fields its saved state refers to</th></tr></thead><tbody>${all.map(b=>{
-    const fields = (b.fields||[]).filter((f,i,a)=>a.findIndex(g=>g.table===f.table&&g.field===f.field)===i);
-    return `<tr><th scope="row">${esc(b.name)}</th><td class="mut">${fields.map(f=>`<span class="ref">${esc(f.table?`${f.table}[${f.field}]`:`[${f.field}]`)}</span>${fx(f.table,f.field)}`).join(" ")||"No field references"}</td></tr>`;}).join("")}</tbody></table>`;
 }
 
 /* ============================================================ security */

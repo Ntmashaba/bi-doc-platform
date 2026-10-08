@@ -146,8 +146,8 @@ def table_kinds_view(payload: dict) -> dict:
 # name in the payload that spells a slot is inert.
 _SLOTS = re.compile(r"<!--__DOCUMENTATION_METADATA__-->|/\*__DOCUMENTATION_JS__\*/|__TITLE__|/\*__EXPLORER_CSS__\*/"
                     r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null")
-SCRIPTS = ("explorer.js", "model_kinds.js", "power_query.js", "relationships.js", "navigation.js")
-STYLES = ("explorer.css", "navigation.css", "power_query.css", "model_kinds.css", "relationships.css")
+SCRIPTS = ("explorer.js", "model_kinds.js", "power_query.js", "relationships.js", "report_view.js", "navigation.js")
+STYLES = ("explorer.css", "navigation.css", "power_query.css", "model_kinds.css", "relationships.css", "report_view.css")
 
 
 def _part(name: str) -> str:

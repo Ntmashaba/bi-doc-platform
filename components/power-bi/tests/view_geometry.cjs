@@ -1,4 +1,5 @@
-// Geometry of the Model view relationship surface in a real browser, for any document (UI rework, Change 7).
+// View checks in a real browser, for any document: the Model view relationship surface (Change 7) and the
+// Report view pages (Change 4, Report view).
 // Shared by the fixture checks (browser_relationships.cjs) and the sample checks (scripts/check_sample_html.cjs).
 // Returns a list of problems; empty when every counted table is a box, no two boxes overlap, every line starts
 // and ends on the edge of its own two tables, and selecting each table presses that box alone and fills the panel.
@@ -39,4 +40,28 @@ async function surfaceProblems(page){
   return problems;
  });
 }
-module.exports={surfaceProblems};
+// Report view › Pages, for any document: every page opens on its own, in report order, with every placed visual
+// drawn and every visual listed, and says what kind of page it is (or that the type is not recorded).
+async function pagesProblems(page){
+ return page.evaluate(()=>{
+  const problems=[];
+  if(!has.report||!R.pages.length) return problems;
+  switchTab('pages',false,true);
+  const strip=[...document.querySelectorAll('#page-strip .page-tab')].map(b=>b.dataset.page);
+  if(strip.join('\u0001')!==R.pages.map(p=>p.id).join('\u0001')) problems.push('the page list is not every page in report order');
+  for(const p of R.pages){
+   showReportPage(p.id);
+   if(!document.getElementById('pg-'+pageKey(p.id))) { problems.push('page '+p.id+' does not open'); continue; }
+   const placed=layoutGeometry(p).placed.length;
+   if(document.querySelectorAll('#page-surface .visual-box').length!==placed) problems.push(p.id+': '+placed+' placed visuals, '+document.querySelectorAll('#page-surface .visual-box').length+' drawn');
+   const listed=document.querySelectorAll('#page-visuals tbody tr[id]').length+document.querySelectorAll('#page-decorative [id^="vis-"]').length;
+   if(listed!==p.visuals.length) problems.push(p.id+': '+p.visuals.length+' visuals, '+listed+' listed');
+   const facts=document.querySelector('.page-facts')?.textContent||'';
+   if(!facts.startsWith(pageType(p).label)) problems.push(p.id+': the page type is not stated');
+   const v=p.visuals[0];
+   if(v){ pickVisual(p.id,v.id,{reveal:false}); if(!document.getElementById('visual-clear')) problems.push(p.id+': selecting '+v.id+' does not fill the panel'); }
+  }
+  return problems;
+ });
+}
+module.exports={surfaceProblems,pagesProblems};

@@ -12,14 +12,14 @@ const SHOWN_IN={
  'queries':()=>document.querySelectorAll('.pq-item').length,
  'sources':()=>document.querySelectorAll('#source-list-rows tr').length,
  'roles':()=>document.querySelectorAll('#main [id^="role-"]').length,
- 'pages':()=>document.querySelectorAll('#main details[id^="pg-"]').length,
- 'visuals':()=>document.querySelectorAll('#main [id^="vis-"]').length,
- 'filters':()=>document.querySelectorAll('#main table.t tbody tr').length,
+ 'pages':()=>document.querySelectorAll('#page-strip .page-tab').length,
+ 'visuals':()=>document.querySelectorAll('#visual-list-rows tr:not(.none)').length,
+ 'filters':()=>document.querySelectorAll('#filter-list-rows tr:not(.none)').length,
  'bookmarks':()=>document.querySelectorAll('#bookmark-list tbody tr').length,
  'warnings':()=>document.querySelectorAll('#main table.t tbody tr').length};
 const OPENS={'source-tables':'tables','calc-tables':'calc-tables','calc-groups':'calc-groups','other-tables':'tables',columns:'columns',
  'calc-columns':'calc-columns',measures:'measures',relationships:'rel-list',queries:'power-query',sources:'sources',roles:'security',
- pages:'pages',visuals:'pages',filters:'filters',bookmarks:'bookmarks',warnings:'warnings'};
+ pages:'pages',visuals:'visuals',filters:'filters',bookmarks:'bookmarks',warnings:'warnings'};
 // Returns the ids checked. `before` runs ahead of each count (for example to select a report page).
 async function checkOverviewCounts(page,{before}={}){
  await page.evaluate(()=>switchTab('overview'));

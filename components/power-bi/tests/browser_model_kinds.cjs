@@ -127,23 +127,25 @@ const step=name=>console.log('  ok '+name);
   counts.rels=await open('rels',()=>page.evaluate(()=>selectRelTable('Sales')));   // the panel beside the diagram
   counts['rel-list']=await open('rel-list');
   counts.usage=await open('usage');
-  counts.pages=await open('pages',()=>page.evaluate(()=>document.querySelectorAll('#main details').forEach(d=>d.open=true)));
+  // Pages shows one page at a time: page p2 holds the calculated column in a visual, a visual filter and a page filter.
+  counts.pages=await open('pages',()=>page.evaluate(()=>{showReportPage('p2');document.querySelectorAll('#main details').forEach(d=>d.open=true);}));
+  counts.panel=await open('pages',()=>page.evaluate(()=>{showReportPage('p2');pickVisual('p2','v1');}));
+  counts.visuals=await open('visuals');
   counts.filters=await open('filters');
   counts.manifest=await open('manifest');
   counts.matrix=await open('matrix',()=>page.evaluate(()=>{expandedTables.add('Sales');switchTab('matrix');}));
   counts.cleanup=await open('cleanup',()=>page.evaluate(()=>{cleanupDecision='';switchTab('cleanup');}));
-  counts.layout=await open('layout');
   counts.impact=await open('impact',()=>page.evaluate(()=>{impactNode=nodeId('m','Sales','Doubled');renderImpactOptions();impactNode=nodeId('m','Sales','Doubled');renderImpactDetails();}));
   counts['calc-columns']=await open('calc-columns');
   for(const tab of ['overview','warnings','sources','primary-sources','security','lineage','power-query','calc-tables','calc-groups']) await open(tab);
-  for(const [tab,n] of Object.entries(counts)) if(tab!=='layout') assert.ok(n>=1,'the marker is shown in '+tab+' ('+n+')');
+  for(const [tab,n] of Object.entries(counts)) assert.ok(n>=1,'the marker is shown in '+tab+' ('+n+')');
   // places where markup cannot go use the same marker as text
   await page.evaluate(()=>switchTab('impact'));
   assert.ok((await page.locator('#impact-field option').allInnerTexts()).some(t=>t==='Sales[Double] (fx) · column'),'a drop-down names it with (fx)');
-  await page.evaluate(()=>switchTab('layout'));
+  await page.evaluate(()=>showReportPage('p2'));
   assert.ok((await page.locator('.visual-box .vb-fields').allInnerTexts()).some(t=>/Double \(fx\)/.test(t)),'a layout box names it with (fx)');
   await page.evaluate(()=>inspectVisual('p2','v1'));
-  assert.ok(await page.locator('#inspector .fx').count()>=2,'the visual inspector marks the binding and the filter');
+  assert.ok(await page.locator('#page-panel .fx').count()>=3,'the panel marks the binding, the visual filter and the page filter');
   await page.evaluate(()=>{closeInspector();inspectNode(nodeId('c','Sales','Double'),'*');});
   assert.match(await page.locator('#inspector').innerText(),/^Close\s*Sales\[Double\]\s*calculated column · Sales\[Double\] fx/);
   await page.evaluate(()=>closeInspector());

@@ -8,8 +8,9 @@ is best-effort and explicitly prevents automatic deletion recommendations.
 """
 import json
 from pathlib import Path
-from .report_parser import _SUBQUERY, _collect_aliases, _collect_field_refs, _collect_filters
+from .report_parser import _SUBQUERY, _bookmark_place, _collect_aliases, _collect_field_refs, _collect_filters
 from .page_references import attach_report_locations
+from . import page_types
 
 
 def read_json(path, default=None):
@@ -122,10 +123,12 @@ def _build(report, sections, bookmarks, name, warning):
             raise ValueError(f'Duplicate extracted page identity: {pid}')
         page_ids.add(pid)
         label = str(page.get('displayName') or pid)
-        pc = page.get('config') or {}
+        recorded = page.get('config')            # None when the file holds no settings for this page
+        pc = recorded or {}
         if not isinstance(pc, dict):
             raise ValueError(f'Page config must be an object: {label}')
         page_filters = filters(page, 'page', label)
+        page_type = page_types.legacy(pc if recorded is not None else None, page_filters)
         visuals, visual_ids = [], set()
         for visual, vfallback in visual_items:
             vf, v = _visual(visual, label, vfallback)
@@ -135,7 +138,7 @@ def _build(report, sections, bookmarks, name, warning):
             page_filters.extend(vf)
             visuals.append(v)
         pages.append(dict(id=pid, name=label, hidden=pc.get('visibility') in (1, 'HiddenInViewMode', 'hidden')
-                          or page.get('visibility') in (1, 'HiddenInViewMode', 'hidden'),
+                          or page.get('visibility') in (1, 'HiddenInViewMode', 'hidden'), **page_type,
                           isActive=index == config.get('activeSectionIndex', 0), width=page.get('width'),
                           height=page.get('height'), visuals=visuals, filters=page_filters,
                           otherFields=refs({k: v for k, v in page.items() if k != 'visualContainers'}, 'page expression')))
@@ -181,20 +184,22 @@ def parse_extracted_report(folder, name):
             for f in refs(decode_embedded(read_json(path)), 'bookmark'):
                 fields[json.dumps(f, sort_keys=True)] = f
         bname = head.get('displayName') if isinstance(head, dict) else None
-        bookmarks.append(dict(name=str(bname or folder.relative_to(bookmark_dir)), fields=list(fields.values())))
+        bookmarks.append(dict(name=str(bname or folder.relative_to(bookmark_dir)), fields=list(fields.values()),
+                              **(_bookmark_place(head) if isinstance(head, dict) else {})))
     return _build(report, items, bookmarks, name, PBIX_WARNING)
 
 
 def _layout_bookmarks(config):
     out = []
-    def walk(items):
+    def walk(items, group=None):
         for b in items or []:
             if not isinstance(b, dict):
                 continue
             if b.get('children'):
-                walk(b['children'])  # a bookmark group
+                walk(b['children'], str(b.get('displayName') or b.get('name') or ''))  # a bookmark group
             else:
-                out.append(dict(name=str(b.get('displayName') or b.get('name') or 'Bookmark'), fields=refs(b, 'bookmark')))
+                out.append(dict(name=str(b.get('displayName') or b.get('name') or 'Bookmark'), fields=refs(b, 'bookmark'),
+                                **_bookmark_place(b, group)))
     walk(config.get('bookmarks') if isinstance(config, dict) else [])
     return out
 

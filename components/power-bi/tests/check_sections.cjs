@@ -30,7 +30,7 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   'power-query':'power-query',tables:'table',columns:'table',
   rels:'model','rel-list':'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
   measures:'dax','calc-columns':'dax','calc-tables':'dax','calc-groups':'dax',
-  pages:'report',layout:'report',filters:'report',manifest:'report',bookmarks:'report',
+  pages:'report',visuals:'report',filters:'report',manifest:'report',bookmarks:'report',
   compare:'utility','report-details':'utility'};
 for(const [tab,section] of Object.entries(MIGRATION)){
   assert.ok(run(`TABS.some(t=>t.id===${JSON.stringify(tab)})`),tab+' is still a view');
@@ -39,7 +39,9 @@ for(const [tab,section] of Object.entries(MIGRATION)){
 // ...and nothing exists outside the map.
 same(run('TABS.map(t=>t.id).sort()'),Object.keys(MIGRATION).sort());
 // Addresses saved before the rework still open the view that took the content over.
-for(const [old,now] of [['src-objects','source-objects'],['src-queries','power-query']]){
+for(const [old,now] of [['src-objects','source-objects'],['src-queries','power-query'],['layout','pages']]){
+  assert.equal(run(`TAB_ALIASES[${JSON.stringify(old)}]`),now,old+' is an alias of '+now);
+  if(!run(`TABS.find(t=>t.id===${JSON.stringify(now)}).avail`)) continue;   // this fixture has no report
   run(`switchTab(${JSON.stringify(old)})`);assert.equal(run('activeTab'),now,old+' opens '+now);
 }
 

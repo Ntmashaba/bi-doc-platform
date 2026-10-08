@@ -150,7 +150,8 @@ const step=name=>console.log('  ok '+name);
   await page.setViewportSize({width:390,height:844});
   await page.goto(link);await shown('Sales');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'the view fits a phone without sideways scrolling');
-  const pane=await page.locator('.pq-pane').boundingBox(),body=await detail.boundingBox();
+  // Both boxes in one measurement: the view may still be scrolling to the query between two separate reads.
+  const [pane,body]=await page.evaluate(()=>[document.querySelector('.pq-pane'),document.getElementById('pq-detail')].map(el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top,width:r.width,height:r.height};}));
   assert.ok(pane.y+pane.height<=body.y+1,'the queries pane sits above the query on a phone');
   await page.waitForFunction(()=>document.getElementById('pq-title').classList.contains('obj-hit'));
   const box=await title.boundingBox();

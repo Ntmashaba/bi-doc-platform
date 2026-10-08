@@ -134,15 +134,14 @@ one page.
 
 ### 5. What is on each page?
 
-- **Corporate Spend → Pages & visuals → Page layout**: each page drawn from its
-  saved layout, visuals named by type and first field ("Card · Var to Plan %"),
-  with the measures (Σ) and columns each uses. Select a visual for its bindings
-  and filters.
-- **Sales & Returns Sample v201912 → Pages**: dozens of buttons, shapes and images
-  are folded into one "decorative visuals" row per page, so the data visuals stand
+- **Corporate Spend → Report view → Pages**: one page at a time, chosen from the page list, drawn from its
+  saved layout, visuals named by type and first field ("Card · Var to Plan %"), with the measures (Σ) and
+  columns each uses. Select a visual for its fields and its filters in the panel beside the layout.
+- **Sales & Returns Sample v201912 → Pages**: the tooltip pages say so ("tooltip page · hidden"), and dozens of
+  buttons, shapes and images are folded into one "decorative visuals" row per page, so the data visuals stand
   out. Custom visuals show their real names ("Mapbox Visual (custom)").
-- **Filters** and **Field manifest** list every filter and every field the report
-  uses, and where.
+- **Visuals**, **Filters** and **Field manifest** list every visual, every filter and every field the report
+  uses, and where; **Bookmarks** lists every bookmark with the page it opens.
 
 ### 6. What is wrong with this report?
 
@@ -225,7 +224,7 @@ Power BI Desktop. Every view opens with one line saying which Power BI view it s
 | Table view | Table view | Tables, Columns |
 | Model view | Model view | Relationships, Relationships list, Security, Lineage, Impact inspector, Usage matrix, Table usage |
 | DAX query view | DAX query view | Measures, Calculated Columns, Calculated Tables, Calculation Groups |
-| Report view | Report view | Pages, Page layout, Filters, Field manifest, Bookmarks |
+| Report view | Report view | Pages, Visuals, Filters, Field manifest, Bookmarks |
 
 A section the file has nothing for stays in the rail, disabled, and says why (for example, no report was
 supplied). Below the sections, under the label *Document actions*, are two actions on the document itself:
@@ -248,7 +247,9 @@ Where each earlier view went (links and bookmarks to any of them still open the 
 | Data & sources › Security, Lineage | Model view › Security, Lineage |
 | Impact & usage › Impact inspector, Usage matrix, Usage | Model view › Impact inspector, Usage matrix, Table usage |
 | Data & sources › Measures, Calculated Columns, Calculated Tables, Calculation Groups | DAX query view, same names |
-| Pages & visuals › Page layout, Pages, Filters, Field manifest | Report view, same names |
+| Pages & visuals › Page layout and Pages (all pages, one below the other) | Report view › Pages: one page at a time, its layout, panel and visuals; the old `#layout` link opens it |
+| Pages & visuals › Pages (every visual of every page) | Report view › Visuals, a searchable list |
+| Pages & visuals › Filters, Field manifest | Report view › Filters (now searchable), Field manifest; each page's filters also in Pages, grouped as the Filters pane groups them |
 | Bookmarks (only a count on the Overview) | Report view › Bookmarks, a list the count opens |
 | Impact & usage › Compare extracts | Document action: Compare extracts |
 | Report details | Document action: Documentation details |
@@ -291,12 +292,22 @@ Highlights:
   relationship on the diagram. Relationships to automatic date tables are in a closed block below it and are
   never drawn.
 - **Lineage** shows sources → model tables → report pages; select a node to highlight its paths.
-- **Page layout** draws each page from saved visual positions (not rendered charts),
-  colours visuals by kind and lists the measures (Σ) and columns each one uses.
-  Untitled visuals are named by type and first field ("Card · Revenue"); custom
-  visuals by their package name ("Mapbox Visual (custom)").
-- **Pages** lists each page's data visuals with their fields; buttons, shapes and
-  images without data are folded into one "decorative visuals" row.
+- **Pages** shows one page at a time, as Power BI does. The page list names every page in report order and
+  labels each hidden page, tooltip page and drillthrough page; a page whose type the document does not record
+  says **page type not recorded** and is never shown as an ordinary page. The page's layout is drawn from saved
+  visual positions (not rendered charts), coloured by kind, with the measures (Σ) and columns each visual uses.
+  Beside it, a panel follows the Filters pane: *Filters on this visual*, *Filters on this page* and *Filters on
+  all pages*. Select a visual (click, Enter or Space, or its name in the list) for its fields, the model fields
+  they resolve to, and its filters; Escape, the visual again, *Clear selection* or a click on the empty layout
+  clears it. A drillthrough page names the fields readers drill through on, and a tooltip page its tooltip
+  fields; neither is listed as a filter. Below the layout every visual of the page is listed with its fields
+  and filters, for scanning and printing, then what feeds the page. Untitled visuals are named by type and first
+  field ("Card · Revenue"); custom visuals by their package name ("Mapbox Visual (custom)"); buttons, shapes and
+  images without data are folded into one "decorative visuals" row. Any visual anywhere in the document (a
+  measure's *Used by* line, the Impact inspector, the finder) opens on its page, selected.
+- **Visuals** lists every visual of every page, searchable; **Filters** lists every filter with its scope (all
+  pages, page or visual), searchable, naming drillthrough and tooltip fields and filters hidden from readers;
+  **Bookmarks** lists every bookmark in the file's order, with its group and the page it opens.
 - **Measures** are grouped by display folder, with DAX, format string and dependencies. Each has a short
   **Used by** line naming the pages and visuals that use it (the first four, then a count) and a link,
   *Dependency and page-usage analysis*, that opens the measure in the Impact inspector in Model view, the one
@@ -308,6 +319,25 @@ Highlights:
 
 Raw page IDs (`ReportSection…`) appear only in tooltips and exports, unless two
 pages share a name.
+
+### How a page's type is read
+
+The page type comes from the page settings each format records, never from a page's name or size
+(`pbidocgen/page_types.py`):
+
+| Format | Tooltip page | Drillthrough page | Hidden |
+|---|---|---|---|
+| PBIR (`definition/pages/<page>/page.json`, also inside a PBIX) | `type: "Tooltip"` or `pageBinding.type: "Tooltip"` | `type: "Drillthrough"`, `pageBinding.type: "Drillthrough"`, or drillthrough fields | `visibility: "HiddenInViewMode"` |
+| Legacy layout (a PBIP `report.json`, a PBIX `Layout`, pbi-tools' `Report/sections/`) | the page config's `type: 1` | drillthrough fields: page filters with `howCreated: 5` | the page config's `visibility: 1` |
+
+A page with none of these is an ordinary report page: both formats write these settings only for pages that
+have them, and Power BI writes a config for every legacy page (all 263 pages of the 29 sample reports have one).
+A legacy page with no config at all, or a document generated before page types were recorded, says
+**page type not recorded**. A value the reader does not know is shown as the file writes it. Across the 29
+sample reports this finds 218 ordinary pages (19 hidden), 31 tooltip pages and 14 drillthrough pages.
+
+Filters keep how they were created: `howCreated` 1 means the author added the filter ("User"), not that it is
+hidden; a filter is hidden from readers only when `isHiddenInViewMode` says so.
 
 ## Sources
 
@@ -573,7 +603,7 @@ All renderings come from one analysis, so they cannot disagree.
   only. Other reports on the same dataset, Excel users and composite models are invisible.
 - **No live checks.** Sources are what the code names; the tool does not confirm
   that they exist or which view reads which table.
-- **Page layout** is a schematic from saved positions, not a rendering.
+- **Page layouts** are schematics from saved positions, not renderings.
 - **pbi-tools** needs Windows and Power BI Desktop. PBIP projects need neither.
 - **Not tested against real files:** DirectQuery against a live database and live
   connections to a published dataset. Synthetic samples cover their code patterns.
@@ -609,10 +639,13 @@ node tests/browser_catalog.cjs
 `check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
 `browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
 a framing page), `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
-links), `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs) and
+links), `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs),
 `browser_sections.cjs` (the seven sections, the migration map, Overview numbers against the lists they open,
-automatic date tables, the Data Sources query control and authentication type, the versions line). In this
-repository the `frontend` CI job runs it.
+automatic date tables, the Data Sources query control and authentication type, the versions line),
+`browser_relationships.cjs` (the Model view relationship surface and the Relationships list) and
+`browser_report_view.cjs` (the page list and page types, a page's layout, panel and Filters pane, Visuals,
+Filters and Bookmarks). `scripts/check_sample_html.cjs` runs the shared checks in `tests/view_geometry.cjs` and
+`tests/overview_counts.cjs` on every sample document. In this repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:
 

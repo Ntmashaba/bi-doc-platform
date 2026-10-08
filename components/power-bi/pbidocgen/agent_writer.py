@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from collections import deque
 from pathlib import Path
+from . import page_types
 from .model_parser import CROSS_FILTER_BOTH, CROSS_FILTER_ONE, cross_filter_label
 from .page_references import page_label
 
@@ -392,7 +393,8 @@ def build_agent_md(payload: dict) -> str:
                     for f in report["reportFilters"]))
             w("")
         for p in report["pages"]:
-            w(f"### Page: {p['label']}")
+            flags = page_types.flags(p)
+            w(f"### Page: {p['label']}" + (f" ({', '.join(flags)})" if flags else ""))
             if p.get("feeds"):
                 w(_tbl(["Model table", "Fields on this page", "Page usage"],
                        [[r["table"], _join(r["fields"]), r["usage"]] for r in p["feeds"]]))
