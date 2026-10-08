@@ -29,7 +29,8 @@ PR review at `1170f04` found three more, each fixed with a regression test that 
   dropping it from upstream and "used by". Names now resolve within their scopes (`m_steps.references`;
   `tests/test_m_steps.py`, `test_power_query.py`). A second review found a scope still ran past the enclosing
   `in`, `else` or `otherwise` when the function or nested let was the last binding; it now ends there, and at
-  a try's `catch` (third review).
+  a try's `catch` handler (third review). `catch` is not reserved in M: it marks a handler only as
+  `catch (e) => ...` after a try, and is an ordinary step or query name anywhere else (fourth review).
 - Step 1: a library target for a query carried only its name, so of two queries named alike the first opened and
   was reported exact. Targets now carry the query id; a name lookup after a missing id is not exact
   (`packages/engines/tests/test_generate.py`, `tests/check_query_cases.cjs`).

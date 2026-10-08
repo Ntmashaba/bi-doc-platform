@@ -95,6 +95,12 @@ class Structure(unittest.TestCase):
         for code, expected in cases.items():
             self.assertEqual(status(code)[1:], ("parsed", "query", expected), code)
 
+    def test_catch_is_an_ordinary_name_outside_a_handler(self):
+        # M does not reserve `catch`; only `try x catch (e) => ...` gives it a meaning
+        self.assertEqual(status("let catch = 1 in catch")[1:], ("parsed", "query", ["catch"]))
+        self.assertEqual(steps("let catch = 1, Doubled = catch * 2 in Doubled").names, ["catch", "Doubled"])
+        self.assertEqual(status('let Safe = try Source catch (e) => null in Safe')[1:], ("parsed", "query", ["Safe"]))
+
     def test_a_nested_let_never_adds_steps_to_the_query(self):
         code = "let Outer = let Inner1 = 1, Inner2 = let Deep = 2 in Deep in Inner1 + Inner2, Last = Outer in Last"
         self.assertEqual(status(code)[3], ["Outer", "Last"])
@@ -217,6 +223,15 @@ class Structure(unittest.TestCase):
         self.assertEqual(refs('let f = (Stage) => try let x = Stage in x catch () => Stage in f(Sales)'), ["Sales"])
         self.assertEqual(refs('let f = (x) => try let Stage = x in Stage catch () => Stage in f(1)'), ["Stage"])
         self.assertEqual(refs('let X = #"catch" in X'), [])                                  # a quoted name, not this one
+        # outside the handler position `catch` is a name like any other, and can be a query
+        catch = lambda code: m_steps.references(m_steps.read(code).tokens, {"catch", "Stage"})  # noqa: E731
+        self.assertEqual(catch('let Source = catch in Source'), ["catch"])
+        self.assertEqual(catch('let catch = 1 in catch'), [])                                 # a step of that name
+        self.assertEqual(catch('let x = catch(Stage) in x'), ["catch", "Stage"])              # a call, not a handler
+        self.assertEqual(catch('let x = try Stage otherwise catch in x'), ["Stage", "catch"])
+        self.assertEqual(catch('try Stage catch (e) => catch'), ["Stage", "catch"])           # the handler reads it
+        self.assertEqual(catch('try let Stage = 1 in Stage catch () => Stage'), ["Stage"])   # the keyword is not the query
+        self.assertEqual(catch('let x = try Stage catch (catch) => catch in x'), ["Stage"])   # a parameter named catch
         # ...and the body keeps its own keywords: the parameter still hides the query throughout it
         self.assertEqual(refs('let f = (Stage) => if Stage then Stage else Stage in f(Sales)'), ["Sales"])
         self.assertEqual(refs('let f = (Stage) => try Stage otherwise Stage in f(Sales)'), ["Sales"])

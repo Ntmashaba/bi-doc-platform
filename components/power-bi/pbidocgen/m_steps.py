@@ -35,7 +35,7 @@ _CUT_OFF = ("Unterminated M comment", "Unterminated M string/identifier", "Unbal
 _PARAMETER = re.compile(r"\bmeta\s*\[[^\]]*\bIsParameterQuery\s*=\s*true\b", re.I)
 _COMMENT = re.compile(r"//([^\n]*)|/\*(.*?)\*/", re.S)
 KEYWORDS = {"let", "in", "each", "if", "then", "else", "true", "false", "null", "and", "or", "not", "as", "is", "meta",
-            "type", "try", "otherwise", "catch", "error", "section", "shared", "optional", "nullable"}
+            "type", "try", "otherwise", "error", "section", "shared", "optional", "nullable"}
 
 
 @dataclass
@@ -256,12 +256,25 @@ def read(code: str | None, queries: dict | None = None) -> Reading:
     return reading
 
 
+def _catch_handler(ts, i) -> bool:
+    """`catch` at ts[i] begins a try's error handler: `catch (e) => ...` or `catch () => ...`.
+
+    `catch` is not reserved in M. It means a handler only in this position, after a try's protected expression,
+    and is otherwise an identifier like any other (a step or a query can be called catch)."""
+    if not keyword(ts[i], "catch") or i + 1 >= len(ts) or not _is(ts[i + 1], "("):
+        return False
+    j = i + 2
+    if j < len(ts) and ts[j].kind == "id" and not _is(ts[j], ")"):
+        j += 1                               # the one parameter a handler may name
+    return j + 2 < len(ts) and _is(ts[j], ")") and _is(ts[j + 1], "=") and _is(ts[j + 2], ">")
+
+
 def _expression_end(ts, start) -> int:
     """Index just past the expression that starts at ts[start].
 
     An expression runs until something that belongs to the construct around it: a comma or closing bracket at its
     own level, or the `in` of an enclosing let, the `then` or `else` of an enclosing if, the `otherwise` or `catch`
-    of an enclosing try. A let, if or try that starts inside it is followed to its own end, so its keywords and its
+    handler of an enclosing try. A let, if or try that starts inside it is followed to its own end, so its keywords and its
     bindings' commas do not end it."""
     depth, open_ = 0, []                     # constructs begun inside the expression, innermost last
     for i in range(start, len(ts)):
@@ -279,7 +292,9 @@ def _expression_end(ts, start) -> int:
         if keyword(t, "let") or keyword(t, "if") or keyword(t, "try"):
             open_.append(t.value)
             continue
-        closes = {"in": "let", "then": "if", "else": "then", "otherwise": "try", "catch": "try"}.get(t.value) if keyword(t, t.value) else None
+        closes = {"in": "let", "then": "if", "else": "then", "otherwise": "try"}.get(t.value) if keyword(t, t.value) else None
+        if keyword(t, "catch") and _catch_handler(ts, i):
+            closes = "try"
         if closes is None and not _is(t, ","):
             continue
         # a try without `otherwise` or `catch` ended where its operand did, so it cannot take anything after this point
@@ -355,7 +370,7 @@ def references(tokens, names) -> list[str]:
     for i, t in enumerate(tokens):
         if t.kind != "id" or t.value not in names or t.value in found:
             continue
-        if not t.quoted and t.value in KEYWORDS:
+        if not t.quoted and t.value in KEYWORDS or _catch_handler(tokens, i):
             continue
         if any(name == t.value and lo <= i <= hi for name, lo, hi in scopes):
             continue
