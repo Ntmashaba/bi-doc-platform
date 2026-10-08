@@ -12,8 +12,11 @@ Local output is never projected. The shared profile:
     digest; labels show its first 8 characters. UNC shares, URLs (SharePoint, Blob, ADLS) and relative
     repository paths are kept: they identify real shared dependencies;
   * applies best-effort credential, URL-token and entered-data cleaning to every string,
-    including included code.
-Cleaning is pattern-based and is not a guarantee; only withholding code is.
+    including included code: connection-string secrets, URL query tokens, the user and
+    password in a URL (scheme://user:password@host), and Authorization, bearer and API-key
+    header values.
+Cleaning is pattern-based and is not a guarantee; only withholding code is. A cleaned
+value is recognised when the projection runs again, so re-projecting changes nothing.
 Omissions record JSON Pointers and reasons, never values.
 """
 from __future__ import annotations
@@ -33,16 +36,24 @@ DATA_MARKER = "[entered data withheld]"
 # detail) are classified by content instead: DAX is documentation, not query code.
 PBI_CODE_KEYS = {"originalM", "mCode", "referencedM", "sql"}
 PBI_CODE_PATHS = [("model", "expressions", "*", "expression")]      # shared M queries and parameters
+# A `query` beside a `queryKind` says what it holds: "SQL" or "Power Query (M)" is code, "DAX" is documentation.
+# The kind decides, not the text: a select list such as `select market BU, REGIONTITLE Region from hr.bu` reads
+# like prose to a pattern (it published SQL in shared documents until 2026-10-08).
+PBI_DOCUMENTATION_KINDS = {"DAX"}
 ADF_CODE_KEYS = {"query", "sqlReaderQuery", "script", "preCopyScript"}
 MACHINE_PATHS = {"power_bi": [("model", "sourcePath")], "adf": []}
 # Human-written prose: never withheld as code by pattern (credentials are still cleaned).
 PROSE_KEYS = {"description", "title", "name", "label", "message", "notes", "runbook", "displayFolder"}
 
 _IDENT = r'(?:[\w@#]+|\[[^\]]+\]|"[^"]+")(?:\.(?:[\w@#]+|\[[^\]]+\]|"[^"]+"))*'
+_QUALIFIED = r'(?:[\w@#]+|\[[^\]]+\]|"[^"]+")(?:\.(?:[\w@#]+|\[[^\]]+\]|"[^"]+"))+'
+_ITEM = r'[\w\[\]"@#.]+(?:\s+(?:as\s+)?[\w\[\]"]+)?'
 _SQL = re.compile(
     # a select list is either code-like (*, commas, calls, qualified names) or one identifier
     r"(?is)\bselect\s+(?:top\s+\d+\s+)?(?:distinct\s+)?(?:[^\s,]*[*(),.\[\]@][^;]*?|"
     + _IDENT + r"(?:\s+as\s+\w+)?)\s+from\s+" + _IDENT +
+    # a list of plain columns, each perhaps with an alias, from a schema-qualified table: prose has no "x.y"
+    r"|\bselect\s+(?:top\s+\d+\s+)?(?:distinct\s+)?" + _ITEM + r"(?:\s*,\s*" + _ITEM + r")+\s+from\s+" + _QUALIFIED +
     r"|\binsert\s+into\s+" + _IDENT + r"\s*(?:\(|values\b|select\b)"
     r"|\bupdate\s+" + _IDENT + r"\s+set\b"
     r"|\bdelete\s+from\s+" + _IDENT + r"\s*(?:where\b|;|$)"
@@ -58,10 +69,30 @@ _EXPR_SQL = re.compile(r"(?is)(?:^\s*@|\bconcat\s*\().*?'[^']*\b(select|insert\s
                        r"merge\s+into|truncate\s+table|exec(?:ute)?)\b")
 # Data-flow script options that carry SQL: query: (...), preSQLs: [...], postSQLs: [...]
 _DF_SQL_OPTION = re.compile(r"(?i)\b(query|preSQLs|postSQLs)\s*:\s*(?=[('\[])")
+# A value that is already a marker is left alone (the (?!...) guards), so cleaning twice equals cleaning once.
+_MARKED = r"(?!\[credential withheld\])"
 _CREDENTIAL = re.compile(r"(?i)\b(password|pwd|accountkey|sharedaccesskey|sharedaccesssignature|"
-                         r"client_?secret)\s*=\s*('[^']*'|\"[^\"]*\"|[^;\"'\s]+)")
+                         r"client_?secret)\s*=\s*" + _MARKED + r"('[^']*'|\"[^\"]*\"|[^;\"'\s]+)")
 _URL_SECRET = re.compile(r"(?i)([?&](?:sig|token|access_token|code|key|apikey|api_key|password|secret|"
-                         r"client_secret)=)([^&#\s\"']+)")
+                         r"client_secret)=)" + _MARKED + r"([^&#\s\"']+)")
+# scheme://user:password@host. Everything before the last "@" of the authority goes: a password may hold "@",
+# and a token is sometimes passed as the user with no password at all. Data Lake and Blob driver addresses
+# (abfss://container@account..., wasbs://container@account...) put a container there, not a user, and are kept.
+_URL_USERINFO = re.compile(r"(?i)\b(?!(?:abfss?|wasbs?)://)([a-z][a-z0-9+.\-]{1,30}://)" + _MARKED
+                           + r"[^/\s'\"?#<>\\]+@(?=[^/\s'\"?#<>@])")
+# Header values that are credentials, as an M record field (Authorization="Bearer ..."), a quoted M or JSON
+# name (#"Authorization"="...", "Authorization": "...") or header text (Authorization: Bearer ...).
+_SECRET_HEADER = re.compile(
+    r"(?i)((?<![\w-])#?[\"']?(?:(?:proxy-)?authorization|x-api-key|api-key|apikey|x-functions-key|"
+    r"ocp-apim-subscription-key|x-auth-token)[\"']?\s*[=:]\s*)"
+    r"(\"(?:[^\"]|\"\")*\"|'[^']*'|[^\s,;&\]\[}{)(\"']+(?:[ \t]+" + _MARKED + r"[^\s,;&\]\[}{)(\"']+)?)")
+# A scheme on its own ("Bearer " & token) names no credential.
+_SCHEME_ONLY = re.compile(r"(?i)^\s*(?:bearer|basic|digest|negotiate|ntlm|token|apikey|sharedkey)?\s*$")
+# The scheme and a literal token joined in M: "Bearer " & "eyJ...".
+_SCHEME_JOIN = re.compile(r"(?i)(\"(?:bearer|basic|token)[ \t]*\"\s*&\s*\")" + _MARKED + r"((?:[^\"]|\"\")+)(\")")
+# A bearer token anywhere else. The token must look like one (a digit or token punctuation), so the phrase
+# "bearer authentication" in a description is left alone.
+_BEARER = re.compile(r"(?i)\b(bearer[ \t]+)" + _MARKED + r"(?=[A-Za-z0-9._~+/=\-]*[0-9._~+/=])[A-Za-z0-9._~+/=\-]{8,}")
 # Personal local paths: a drive letter, file:// URI or /home, /Users, /root path. The path
 # runs to the first file extension followed by a boundary (so "Budget 2024.xlsx" keeps its
 # space); without an extension it ends at the first whitespace after the last separator.
@@ -174,13 +205,31 @@ def _withhold_rows(text: str) -> str:
     return "".join(out) + text[i:]
 
 
+def _clean_header(match) -> str:
+    """Replace a credential header's value and keep its quotes, so retained M or JSON still reads as written."""
+    name, value = match.group(1), match.group(2)
+    quote = value[0] if value[0] in "\"'" else ""
+    inner = value[1:-1] if quote else value
+    if _SCHEME_ONLY.match(inner) or inner == CREDENTIAL_MARKER:
+        return match.group(0)
+    # Unquoted after "=" it is a reference in code (Authorization=Token), and "@..." is a Data Factory
+    # expression: both name a value held elsewhere. Unquoted after ":" it is header text.
+    if not quote and (name.rstrip().endswith("=") or inner.startswith("@")):
+        return match.group(0)
+    return f"{name}{quote}{CREDENTIAL_MARKER}{quote}"
+
+
 def clean_string(text: str) -> tuple[str, list[str]]:
     """Best-effort removal of credentials, URL secrets and entered data. Returns reasons applied."""
     reasons = []
     new = _CREDENTIAL.sub(lambda m: f"{m.group(1)}={CREDENTIAL_MARKER}", text)
+    new = _SECRET_HEADER.sub(_clean_header, new)
+    new = _SCHEME_JOIN.sub(lambda m: m.group(1) + CREDENTIAL_MARKER + m.group(3), new)
+    new = _BEARER.sub(lambda m: m.group(1) + CREDENTIAL_MARKER, new)
     if new != text:
         reasons.append("credential")
     text, new = new, _URL_SECRET.sub(lambda m: m.group(1) + CREDENTIAL_MARKER, new)
+    new = _URL_USERINFO.sub(lambda m: m.group(1) + CREDENTIAL_MARKER + "@", new)
     if new != text:
         reasons.append("secret_bearing_url")
     text = new
@@ -190,16 +239,28 @@ def clean_string(text: str) -> tuple[str, list[str]]:
     return new, reasons
 
 
+def _open_literal(text: str) -> bool:
+    """True when `text` ends inside a quoted literal (an odd number of ' or ")."""
+    return text.count("'") % 2 == 1 or text.count('"') % 2 == 1
+
+
 def _withhold_code_spans(text: str) -> str:
-    """Withhold code in a string; keep ' | '-separated labels that are not code (ADF details)."""
+    """Withhold code in a Data Factory detail and keep its ' | '-separated labels that are not code.
+
+    A ' | ' inside a quoted literal of the code is not a label boundary: what follows it is still code and is
+    withheld with it, until the literal closes."""
     parts = text.split(" | ")
     if len(parts) == 1:
         return CODE_MARKER
-    kept = []
+    kept, inside = [], False
     for part in parts:
+        if inside:                                   # the rest of a literal that held " | "
+            inside = _open_literal(part) != inside
+            continue
         if looks_like_code(part):
             label, sep, _ = part.partition(": ")
             kept.append(f"{label}: {CODE_MARKER}" if sep and not looks_like_code(label) else CODE_MARKER)
+            inside = _open_literal(part)
         else:
             kept.append(part)
     return " | ".join(kept)
@@ -239,9 +300,12 @@ def withhold_personal_paths(text: str) -> str:
     return "".join(out) + text[pos:]
 
 
-def _is_code_field(document_type: str, path) -> bool:
+def _is_code_field(document_type: str, path, parent=None) -> bool:
     key = path[-1] if path else None
     if document_type == "power_bi":
+        if key == "query" and isinstance(parent, dict) and parent.get("queryKind") \
+                and parent["queryKind"] not in PBI_DOCUMENTATION_KINDS:
+            return True
         return key in PBI_CODE_KEYS or any(_matches(path, p) for p in PBI_CODE_PATHS)
     return key in ADF_CODE_KEYS
 
@@ -256,10 +320,10 @@ def project(document_type: str, payload: dict, *, query_code: str = "withheld"):
     def omit(path, reason, effect):
         omissions.setdefault((_pointer(path), reason), {"path": _pointer(path), "reason": reason, "effect": effect})
 
-    def visit(node, path):
+    def visit(node, path, parent=None):
         if isinstance(node, dict):
             for k in list(node):
-                node[k] = visit(node[k], path + [k])
+                node[k] = visit(node[k], path + [k], node)
             return node
         if isinstance(node, list):
             return [visit(v, path + [i]) for i, v in enumerate(node)]
@@ -279,10 +343,14 @@ def project(document_type: str, payload: dict, *, query_code: str = "withheld"):
             if stripped != node:
                 omit(path, "query_code_withheld", "Data-flow query options not published.")
                 node = stripped
-        code = _is_code_field(document_type, path) or (key not in PROSE_KEYS and looks_like_code(node))
+        by_field = _is_code_field(document_type, path, parent)
+        code = by_field or (key not in PROSE_KEYS and looks_like_code(node))
         if code and query_code == "withheld":
             omit(path, "query_code_withheld", "Query code not published.")
-            return CODE_MARKER if _is_code_field(document_type, path) else _withhold_code_spans(node)
+            # Only a Data Factory detail joins labels and code with " | ". Power Query and SQL in a Power BI
+            # payload go whole: a filter such as [Status] = "A | B" must not leave its second half behind.
+            labelled = document_type == "adf" and key == "detail"
+            return _withhold_code_spans(node) if labelled and not by_field else CODE_MARKER
         cleaned, reasons = clean_string(node)
         for r in reasons:
             omit(path, r, "Value replaced by the shared-publication cleaner (best effort).")

@@ -36,6 +36,18 @@ class Legacy(unittest.TestCase):
             for value in markers.values():
                 self.assertNotIn(value.encode(), artifact, value)
 
+    def test_versions_are_kept_when_recorded_and_never_invented(self):
+        import pbidocgen
+        _, manifest = legacy.convert(self.pbi_html, {})
+        self.assertEqual(manifest["native_payload"]["data"]["producer"],
+                         {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": None})
+        # a page written before versions were recorded: the converted document shows "not recorded"
+        payload = power_bi.load(pbi_model(self.tmp / "older"), "bim")
+        del payload["producer"]
+        artifact, manifest = legacy.convert(power_bi.render(payload).encode(), {})
+        self.assertNotIn("producer", manifest["native_payload"]["data"])
+        self.assertNotIn(b'"producer"', artifact)
+
     def test_identity_is_new_unless_given(self):
         _, a = legacy.convert(self.adf_html, {})
         _, b = legacy.convert(self.adf_html, {})

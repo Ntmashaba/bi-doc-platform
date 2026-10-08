@@ -110,12 +110,48 @@ def equivalent_m(ds: dict) -> str | None:
     return f'// Structured data source (protocol {protocol}), shown as the Power Query it stands for\n{call}'
 
 
+_AUTHENTICATION_KINDS = {
+    'usernamepassword': 'User name and password', 'windows': 'Windows', 'serviceaccount': 'Service account',
+    'oauth2': 'OAuth2 (organisational account)', 'key': 'Account key', 'anonymous': 'Anonymous', 'implicit': 'Implicit',
+    'webapi': 'Web API key', 'parameterized': 'Parameterised'}
+_IMPERSONATION = {
+    'impersonateserviceaccount': 'Service account (impersonation)', 'impersonateaccount': 'A named Windows account (impersonation)',
+    'impersonatecurrentuser': 'The current user (impersonation)', 'impersonateanonymous': 'Anonymous (impersonation)',
+    'impersonateunattendedaccount': 'Unattended account (impersonation)'}
+# TOM ImpersonationMode as the metadata database numbers it.
+_IMPERSONATION_NUMBERS = {2: 'impersonateaccount', 3: 'impersonateanonymous', 4: 'impersonatecurrentuser',
+                          5: 'impersonateserviceaccount', 6: 'impersonateunattendedaccount'}
+_KIND_NAME = __import__('re').compile(r'[A-Za-z][A-Za-z0-9 _-]{0,40}')
+
+
+def authentication(ds: dict) -> str | None:
+    """How the data source authenticates, when the file says so; None when it does not.
+
+    Only the type is read: the authentication kind of a structured data source's credential, integrated security
+    in a provider connection string, or the impersonation mode. An account name, a password or a key is never
+    read. A file made by Power BI Desktop normally records none of this (credentials are kept outside the file)."""
+    credential = ds.get('credential') if isinstance(ds.get('credential'), dict) else {}
+    kind = credential.get('AuthenticationKind') or credential.get('authenticationKind')
+    if isinstance(kind, str) and _KIND_NAME.fullmatch(kind.strip()):
+        return _AUTHENTICATION_KINDS.get(kind.strip().lower(), kind.strip())
+    named = cs.values(ds.get('connectionString'))
+    integrated = (named.get('integrated security') or named.get('trusted_connection') or '').strip().lower()
+    if integrated in ('sspi', 'true', 'yes'):
+        return 'Windows integrated security'
+    if named.get('user id') or named.get('uid') or ds.get('signsInWithAccount'):
+        return 'User name and password'
+    mode = ds.get('impersonationMode')
+    if isinstance(mode, int) and not isinstance(mode, bool):
+        mode = _IMPERSONATION_NUMBERS.get(mode)
+    return _IMPERSONATION.get(str(mode).strip().lower()) if mode else None
+
+
 def describe(ds: dict) -> dict:
     """Identity of one data source for the normalised model. Never includes credentials."""
     structured = is_structured(ds)
     out = {'name': ds.get('name') or '', 'kind': 'structured' if structured else 'provider',
            'sourceType': source_type(ds), 'server': None, 'database': None, 'location': None,
-           'protocol': None, 'provider': None, 'expression': None}
+           'protocol': None, 'provider': None, 'expression': None, 'authentication': authentication(ds)}
     if structured:
         protocol, address = _details(ds)
         out.update(protocol=protocol or None, server=_text(address.get('server')) or None,

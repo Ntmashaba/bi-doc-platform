@@ -19,7 +19,7 @@ works offline and can be emailed, put on SharePoint or committed to a repo.
 5. [Sources](#sources)
 6. [Cleanup: which columns and measures can be removed](#cleanup-which-columns-and-measures-can-be-removed)
 7. [Warnings](#warnings)
-8. [The report library and report details](#the-report-library-and-report-details)
+8. [The report library and documentation details](#the-report-library-and-report-details)
 9. [Other outputs: CSV, JSON, Word, agent context](#other-outputs-csv-json-word-agent-context)
 10. [Command-line reference](#command-line-reference)
 11. [Limitations](#limitations)
@@ -134,15 +134,14 @@ one page.
 
 ### 5. What is on each page?
 
-- **Corporate Spend → Pages & visuals → Page layout**: each page drawn from its
-  saved layout, visuals named by type and first field ("Card · Var to Plan %"),
-  with the measures (Σ) and columns each uses. Select a visual for its bindings
-  and filters.
-- **Sales & Returns Sample v201912 → Pages**: dozens of buttons, shapes and images
-  are folded into one "decorative visuals" row per page, so the data visuals stand
+- **Corporate Spend → Report view → Pages**: one page at a time, chosen from the page list, drawn from its
+  saved layout, visuals named by type and first field ("Card · Var to Plan %"), with the measures (Σ) and
+  columns each uses. Select a visual for its fields and its filters in the panel beside the layout.
+- **Sales & Returns Sample v201912 → Pages**: the tooltip pages say so ("tooltip page · hidden"), and dozens of
+  buttons, shapes and images are folded into one "decorative visuals" row per page, so the data visuals stand
   out. Custom visuals show their real names ("Mapbox Visual (custom)").
-- **Filters** and **Field manifest** list every filter and every field the report
-  uses, and where.
+- **Visuals**, **Filters** and **Field manifest** list every visual, every filter and every field the report
+  uses, and where; **Bookmarks** lists every bookmark with the page it opens.
 
 ### 6. What is wrong with this report?
 
@@ -158,7 +157,7 @@ Open **Review issues → Warnings**:
 
 ### 7. Record where a report lives and who connects
 
-In any report, open **Report details**: set the original location (for example
+In any report, open **Documentation details** (below the sections in the left rail): set the original location (for example
 `\\fileserver\Reports\Finance\Corporate Spend.pbix`), a library folder
 (`Finance / Monthly`) and connection notes such as the service account. Choose
 **Download updated HTML** and replace the file. The library groups the report
@@ -214,16 +213,60 @@ report only.
 
 ## What is in a report page
 
-The page opens on **Overview**. The left rail has six sections:
+The page opens on **Overview**. The left rail has seven sections, in this order, named after the views of
+Power BI Desktop. Every view opens with one line saying which Power BI view it stands for.
 
-| Section | Views |
+| Section | Power BI view it stands for | Views |
+|---|---|---|
+| Overview | none: a summary of the file | Overview, Warnings, Cleanup review |
+| Data Sources | Data source settings | Sources, Sources by table, Primary sources, Source objects |
+| Power Query | Power Query Editor | Power Query (queries pane, Applied Steps, script) |
+| Table view | Table view | Tables, Columns |
+| Model view | Model view | Relationships, Relationships list, Security, Lineage, Impact inspector, Usage matrix, Table usage |
+| DAX query view | DAX query view | Measures, Calculated Columns, Calculated Tables, Calculation Groups |
+| Report view | Report view | Pages, Visuals, Filters, Field manifest, Bookmarks |
+
+A section the file has nothing for stays in the rail, disabled, and says why (for example, no report was
+supplied). Below the sections, under the label *Document actions*, are two actions on the document itself:
+**Compare extracts** and **Documentation details** (report location, library folder and connection notes, see
+[below](#the-report-library-and-report-details)).
+
+Where each earlier view went (links and bookmarks to any of them still open the same view):
+
+| Before | Now |
 |---|---|
-| Overview | Counts, sources at a glance, usage summary, documentation coverage (measures, columns and tables described) and duplicate measures |
-| Data & sources | Tables, Columns, Measures, Relationships, Lineage, Sources, Primary sources, Security |
-| Pages & visuals | Page layout, Pages, Filters, Field manifest |
-| Impact & usage | Impact inspector, Usage matrix, Usage |
-| Review issues | Cleanup review, Warnings |
-| Report details | Report location, library folder and connection notes (see [below](#the-report-library-and-report-details)) |
+| Overview | Overview › Overview |
+| Review issues › Warnings, Cleanup review | Overview › Warnings, Cleanup review |
+| Data & sources › Sources (source list) | Data Sources › Sources |
+| Data & sources › Sources (table and page summary) | Data Sources › Sources by table |
+| Data & sources › Sources (source objects) | Data Sources › Source objects |
+| Data & sources › Primary sources | Data Sources › Primary sources |
+| Data & sources › Power Query | Power Query |
+| Data & sources › Tables, Columns | Table view › Tables, Columns |
+| Data & sources › Relationships (diagram above a table) | Model view › Relationships (one surface: diagram and panel) and Relationships list |
+| Data & sources › Security, Lineage | Model view › Security, Lineage |
+| Impact & usage › Impact inspector, Usage matrix, Usage | Model view › Impact inspector, Usage matrix, Table usage |
+| Data & sources › Measures, Calculated Columns, Calculated Tables, Calculation Groups | DAX query view, same names |
+| Pages & visuals › Page layout and Pages (all pages, one below the other) | Report view › Pages: one page at a time, its layout, panel and visuals; the old `#layout` link opens it |
+| Pages & visuals › Pages (every visual of every page) | Report view › Visuals, a searchable list |
+| Pages & visuals › Filters, Field manifest | Report view › Filters (now searchable), Field manifest; each page's filters also in Pages, grouped as the Filters pane groups them |
+| Bookmarks (only a count on the Overview) | Report view › Bookmarks, a list the count opens |
+| Impact & usage › Compare extracts | Document action: Compare extracts |
+| Report details | Document action: Documentation details |
+
+**Overview numbers.** Every number under *What this file contains* is a link, and equals the number of items in
+the list it opens: Source tables, Calculated tables, Calculation groups, Other tables, Columns, Calculated
+columns, Measures, Relationships, Power Query queries, Data sources, Security roles, Pages, Visuals, Filters,
+Bookmarks, Warnings. The numbers count the whole file, whatever report page is selected. **Automatic date
+tables** (the hidden tables Power BI adds for date columns) are in none of them, nor are their columns and
+relationships: they are listed, closed, at the end of Table view, and their relationships in a closed block
+under Relationships list. The Relationships number opens the Relationships list. The coverage ratios under *Documentation and quality* are shares of the visible objects,
+as their note says.
+
+**Versions.** Beside the generation time the Overview names what generated the document: the `bidoc` version
+and the engine version (`pbi-doc-gen 0.5.0`). A value the document does not hold reads *not recorded*: the
+`bidoc` version when the engine was run on its own (`pbi-doc-gen`, `generate_docs.py`), and both for a page
+generated before versions were recorded.
 
 A bar above each view holds the **Report page** selector, which filters usage views
 and exports to one page, and an analysis-coverage badge; select the badge to see
@@ -232,20 +275,72 @@ always cover the whole report.
 
 Highlights:
 
-- **Relationships** draws the model as a diagram with zoom and a focus-table picker.
+- **Relationships** is one interactive surface, drawn as plain SVG inside the file (no library is loaded).
+  Tables are boxes, tinted by role; relationships are lines. Each line carries the cardinality at both ends
+  (`1` one, `*` many) and, at its middle, the cross-filter direction: one arrowhead pointing the way filters
+  flow, two arrowheads for both directions, a hollow dot when the file leaves the direction to Power BI
+  (`automatic`). An inactive relationship is dashed; filtering both ways also takes the warning colour, so the
+  kinds are told apart without relying on colour. Fact tables stand in the middle; what hangs off them is placed
+  whole on one side, one lane per step, and tables with no relationships wait at the foot. Selecting a table
+  (click, Enter or Space, or the *Table* picker) keeps its relationships, fades the rest and opens the panel
+  beside the diagram: the table's role and kind, a link to its columns, and each relationship with its columns,
+  cardinality, status and direction. Selecting a line shows that relationship alone. Escape, the same table
+  again, *Clear selection* or a click on the empty canvas clears it. The diagram opens as large as fits without
+  shrinking names past reading; a wider model scrolls inside its frame, and *Fit* shows all of it. On a narrow
+  screen the panel moves under the diagram; printed, the diagram is scaled to the page.
+- **Relationships list** keeps every relationship as one row (searchable), with **Show** to open that
+  relationship on the diagram. Relationships to automatic date tables are in a closed block below it and are
+  never drawn.
 - **Lineage** shows sources → model tables → report pages; select a node to highlight its paths.
-- **Page layout** draws each page from saved visual positions (not rendered charts),
-  colours visuals by kind and lists the measures (Σ) and columns each one uses.
-  Untitled visuals are named by type and first field ("Card · Revenue"); custom
-  visuals by their package name ("Mapbox Visual (custom)").
-- **Pages** lists each page's data visuals with their fields; buttons, shapes and
-  images without data are folded into one "decorative visuals" row.
-- **Measures** are grouped by display folder, with DAX, format string, the pages
-  that use them and their dependencies.
+- **Pages** shows one page at a time, as Power BI does. The page list names every page in report order and
+  labels each hidden page, tooltip page and drillthrough page; a page whose type the document does not record
+  says **page type not recorded** and is never shown as an ordinary page. The page's layout is drawn from saved
+  visual positions (not rendered charts), coloured by kind, with the measures (Σ) and columns each visual uses.
+  Beside it, a panel follows the Filters pane: *Filters on this visual*, *Filters on this page* and *Filters on
+  all pages*. Select a visual (click, Enter or Space, or its name in the list) for its fields, the model fields
+  they resolve to, and its filters; Escape, the visual again, *Clear selection* or a click on the empty layout
+  clears it. A drillthrough page names the fields readers drill through on, and a tooltip page its tooltip
+  fields; neither is listed as a filter. Below the layout every visual of the page is listed with its fields
+  and filters, for scanning and printing, then what feeds the page. Untitled visuals are named by type and first
+  field ("Card · Revenue"); custom visuals by their package name ("Mapbox Visual (custom)"); buttons, shapes and
+  images without data are folded into one "decorative visuals" row. Any visual anywhere in the document (a
+  measure's *Used by* line, the Impact inspector, the finder) opens on its page, selected. Choosing a page is a
+  step in the browser's history, so Back and Forward move between pages, and the address names the page and
+  the selected visual: a reload or a copied link opens the same.
+- **Visuals** lists every visual of every page, searchable; **Filters** lists every filter once with its scope
+  (all pages, page or visual), searchable, naming drillthrough and tooltip fields and filters hidden from readers
+  (the Overview's Filters number counts the same rows);
+  **Bookmarks** lists every bookmark in the file's order, with its group and the page it opens.
+- **Measures** are grouped by display folder, with DAX, format string and dependencies. Each has a short
+  **Used by** line naming the pages and visuals that use it (the first four, then a count) and a link,
+  *Dependency and page-usage analysis*, that opens the measure in the Impact inspector in Model view, the one
+  home of that analysis.
+- **DAX query view** holds DAX definitions for this model: measures, calculated columns, calculated tables and
+  calculation items. Power BI's own DAX query view is an editor for queries that return data; saved DAX queries
+  and their results are not part of the document.
 - **Impact inspector** shows everything downstream of a column or measure, down to the visuals.
 
 Raw page IDs (`ReportSection…`) appear only in tooltips and exports, unless two
 pages share a name.
+
+### How a page's type is read
+
+The page type comes from the page settings each format records, never from a page's name or size
+(`pbidocgen/page_types.py`):
+
+| Format | Tooltip page | Drillthrough page | Hidden |
+|---|---|---|---|
+| PBIR (`definition/pages/<page>/page.json`, also inside a PBIX) | `type: "Tooltip"` or `pageBinding.type: "Tooltip"` | `type: "Drillthrough"`, `pageBinding.type: "Drillthrough"`, or drillthrough fields | `visibility: "HiddenInViewMode"` |
+| Legacy layout (a PBIP `report.json`, a PBIX `Layout`, pbi-tools' `Report/sections/`) | the page config's `type: 1` | drillthrough fields: page filters with `howCreated: 5` | the page config's `visibility: 1` |
+
+A page with none of these is an ordinary report page: both formats write these settings only for pages that
+have them, and Power BI writes a config for every legacy page (all 263 pages of the 29 sample reports have one).
+A legacy page with no config at all, or a document generated before page types were recorded, says
+**page type not recorded**. A value the reader does not know is shown as the file writes it. Across the 29
+sample reports this finds 218 ordinary pages (19 hidden), 31 tooltip pages and 14 drillthrough pages.
+
+Filters keep how they were created: `howCreated` 1 means the author added the filter ("User"), not that it is
+hidden; a filter is hidden from readers only when `isHiddenInViewMode` says so.
 
 ## Sources
 
@@ -254,8 +349,26 @@ shared queries, parameters, custom functions and "Combine files" helper queries.
 Nothing is executed and no connection is made.
 
 **Sources** lists one row per external source with its model tables, report pages,
-reporting usage and identification status. **Primary sources** lists each external
-input per report page and exports it as CSV.
+reporting usage and identification status. **Sources by table** has one row per report page and table
+partition. **Primary sources** lists each external input per report page and exports it as CSV.
+**Source objects** lists every traced object with its extraction evidence.
+
+Wherever a source's query is offered, the control says which of three things the file holds, and links to the
+whole script in the Power Query view (**Full M script**):
+
+| Label | Meaning |
+|---|---|
+| Native SQL from the file | The SQL statement is written in the file (a SQL partition, or a native query whose text the tracer could read, including through parameters). It opens in place. |
+| Source expression (M) | There is no native SQL. The M step that names the source opens in place. |
+| Native query unavailable | A native query is run, but its text is built when the query runs, so it is not in the file. |
+
+In a shared document without query code the control says *Query code withheld* instead.
+
+**Authentication type.** A source shows how it authenticates only when the file says so: the authentication
+kind of a structured data source's credential, integrated security or a named login in a provider connection
+string, or the impersonation mode of an Analysis Services data source. Only the type is read, never an account
+name, password or key. It is shown for the tables that read through that data source. A file made by Power BI
+Desktop keeps credentials outside the file, so its sources read **Not available from this file**.
 
 | Kind | Connectors |
 |---|---|
@@ -274,6 +387,112 @@ input per report page and exports it as CSV.
 Unquoted Oracle names are folded to upper case, so `billing.tariff` and
 `BILLING.TARIFF` are one source. Credentials in connection strings and URLs are
 never copied into source identities.
+
+## How a table is defined, and the DAX tabs
+
+Every table shows two labels that answer different questions. Its **role** (fact, dimension, date dimension,
+…) is unchanged. Beside it, **defined by** says where the table's rows come from, exactly one kind per table,
+read from the table's own metadata (`pbidocgen/table_kinds.py`):
+
+| Defined by | When |
+|---|---|
+| Power Query | every partition is an M query (or the placeholder a pre-2019 file stores for one) |
+| SQL query | every partition is a statement against a provider data source |
+| Entity | every partition names an entity (Direct Lake, DirectQuery to another model) |
+| Calculated table | every partition is a DAX expression |
+| Automatic date table | the file marks the table with `__PBI_LocalDateTable` or `__PBI_TemplateDateTable`. Only the marker counts: a table merely named `LocalDateTable_…` is a calculated table |
+| Calculation group | the table carries a calculation group |
+| Other | anything else, with the partition types as the file gives them, for example `Other (m, calculated)` |
+
+Columns are classified one by one from their own metadata, not from their table: a calculated table can hold
+calculated columns, and an imported table can too. A **calculated column** (a DAX expression per row) carries
+the **fx** marker wherever its name is shown: in table and column lists, visual bindings, filters, the field
+manifest, relationships, hierarchies, measure dependencies, the usage matrix, impact and cleanup views and the
+finder. Where markup cannot go (a drop-down, a tooltip, a layout box) the marker is the text `(fx)`. A column
+that a calculated table's expression produces is labelled *from the table expression* and has no fx.
+
+Four tabs list the model's DAX by kind, and each tab's count is the number of entries it lists:
+**Measures**, **Calculated Columns** (expression, table, what it reads), **Calculated Tables** (expression,
+columns it produces) and **Calculation Groups** (items in their order, with format string expressions).
+Automatic date tables are not calculated tables and are not listed there.
+
+## Power Query
+
+**Power Query** lists the queries of the file the way the Power Query Editor does: a queries pane on the
+left, the selected query on the right. There is one entry per query, including shared queries, functions and
+parameters, whichever file format supplied it.
+
+- **Queries pane.** Query folders are recreated when the file records them (TMDL, model.bim, PBIX and ABF
+  metadata, pbi-tools extracts), in the file's order, with the rest under *Other Queries*. A file with no
+  folders gives a flat list. A query that is not loaded to the model is in italics; functions and parameters
+  are marked.
+- **Header.** The table a query loads (and its partitions when there are several), the tables that use it
+  directly or through other queries, its load status, the queries it reads and the external sources it reaches.
+  A query used by several tables is listed once.
+- **Applied Steps**, in source order and under the names the author gave them, and the **full M script** in
+  a block that opens on request. Each step opens to its own expression, exactly as written.
+- **Three statuses**, reported separately because they answer different questions:
+
+| Status | Values | Says |
+|---|---|---|
+| Expression extraction | complete, known partial, unavailable | whether the file held the whole expression. *Known partial*: the text stops inside a string, comment or bracket. *Unavailable*: the file names the query but holds no text for it |
+| Applied Steps | parsed, No top-level Applied Steps, unsupported syntax | whether the steps could be read. A literal, a parameter or a single call has no steps, which is a normal result |
+| Publication | included, cleaned, withheld | whether the script is in this copy of the document (see `docs/contracts/projection-v1.md`) |
+
+Load status is **loaded** (the query is a table's partition), **not loaded** (a shared expression) or
+**unknown** (a pre-2019 file whose table could not be matched to its query).
+
+### How Applied Steps are read
+
+The steps are the bindings of the query's top-level `let`, which is what the editor lists. They are found by
+tokenizing the script (the tokenizer the source tracer already uses), not by searching its text, so a comma, a
+bracket or the word `in` inside a string, a comment, a quoted name such as `#"in"` or a nested `let` is never
+taken for the end of a step. A `let` nested inside a step belongs to that step. A function whose body is a
+`let` shows the steps of its body. A comment written above a step, or after it on the same line, is shown with
+that step.
+
+A step is put into words only when both its operation and its arguments are recognised: a known function
+called with the literal forms the editor writes.
+
+| Written in the script | Shown |
+|---|---|
+| `Table.RemoveColumns(Source,{"A", "B"})` | Removes 2 columns: A, B |
+| `Table.TransformColumnTypes(Source,{{"Amount", Currency.Type}})` | Sets the data type of 1 column: Amount (fixed decimal number) |
+| `Table.SelectRows(Source, each [Region] = "West")` | Keeps rows where [Region] = "West" |
+| `Source{[Schema="dbo",Item="Orders"]}[Data]` | Navigates to dbo.Orders |
+| `Sql.Database("srv", "dw", [Query="SELECT …"])` | Connects to SQL Server: server srv, database dw; runs a native query (the statement is in the script) |
+| `Table.RemoveColumns(Source, ColumnsToDrop)` | no sentence: which columns is decided elsewhere. The step keeps its name and shows the function it calls |
+
+- A description says what a step is **written** to do. It never says what happened when the query ran: no
+  row counts, no claim that a step succeeded or folded to the source.
+- A description never repeats a connection string, a native SQL statement, the user and password of a URL or a
+  URL's query string. Those stay in the script.
+- Descriptions and step names are read from the script in the copy being rendered. A shared document that
+  withholds query code has neither; one that includes cleaned code shows steps read from the cleaned text.
+- The list of described functions is `DESCRIBERS` in `pbidocgen/m_steps.py`. On the 29 real reports in
+  pbi-tools/pbix-samples, every one of 179 queries is read completely and 98% of 922 steps are described.
+
+**Limits.** A missing comma between two steps is reported as unsupported syntax when the next step starts with
+a name (`A = 1 B = 2`); other malformed M is reported by the first rule it breaks, and the script is shown as
+written. M is never evaluated, so a step built at run time (`Expression.Evaluate`, a function returned by
+another query) is listed by name only.
+
+### Queries of files saved before 2019
+
+Older PBIX files keep Power Query in a package (the `DataMashup` part) and store only a placeholder per table in
+the model (`SELECT * FROM [Sales]`). The generator reads the package from the PBIX itself, or from the `Mashup/`
+folder a pbi-tools extract writes (`Package/Formulas/Section1.m` as one file or as a folder of one file per
+query). That is the only place a query that no table reads is recorded, so before this such queries were
+missing from the documentation. The package layout is the documented one ([MS-QDEFF] 2.2) and was checked
+against the DataMashup of real PBIX files; query folders in the package metadata are read in the documented
+form, but no real pre-2019 sample with folders was available to confirm it, so a package in any other form
+gives a flat list rather than a guess.
+
+Where a file supplies the same query twice, one rule decides what is listed (`pbidocgen/source_queries.py`):
+a table's partition expression is the query of record; a shared expression with the same name and text is the
+same query; the same name with different text is two queries, both listed; partitions of one table with
+identical text are one query. Tables that are not defined by Power Query (calculated tables, SQL partitions,
+Direct Lake entities) have no entry here.
 
 ## Cleanup: which columns and measures can be removed
 
@@ -328,7 +547,7 @@ without reading any Power BI files:
 python generate_docs.py --catalog "C:\Documentation"
 ```
 
-In a report page, **Report details** records the original report location, a
+In a report page, **Documentation details** records the original report location, a
 library folder (such as `Finance / Monthly`) and connection notes (connection name,
 authentication, username or service account). These are notes you maintain, never
 passwords, so don't put secrets in them. To keep your edits, choose **Download
@@ -387,7 +606,7 @@ All renderings come from one analysis, so they cannot disagree.
   only. Other reports on the same dataset, Excel users and composite models are invisible.
 - **No live checks.** Sources are what the code names; the tool does not confirm
   that they exist or which view reads which table.
-- **Page layout** is a schematic from saved positions, not a rendering.
+- **Page layouts** are schematics from saved positions, not renderings.
 - **pbi-tools** needs Windows and Power BI Desktop. PBIP projects need neither.
 - **Not tested against real files:** DirectQuery against a live database and live
   connections to a published dataset. Synthetic samples cover their code patterns.
@@ -416,10 +635,20 @@ Browser checks (Playwright and Chromium):
 
 ```
 npm install --no-save playwright@1.62.1 && npx playwright install chromium
-python tests/build_browser_fixture.py
-node tests/browser_review.cjs /tmp/pbidocgen-browser.html
+python tests/check_browser.py
 node tests/browser_catalog.cjs
 ```
+
+`check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
+`browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
+a framing page), `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
+links), `browser_model_kinds.cjs` (table kinds, the fx marker in every view, the calculation tabs),
+`browser_sections.cjs` (the seven sections, the migration map, Overview numbers against the lists they open,
+automatic date tables, the Data Sources query control and authentication type, the versions line),
+`browser_relationships.cjs` (the Model view relationship surface and the Relationships list) and
+`browser_report_view.cjs` (the page list and page types, a page's layout, panel and Filters pane, Visuals,
+Filters and Bookmarks). `scripts/check_sample_html.cjs` runs the shared checks in `tests/view_geometry.cjs` and
+`tests/overview_counts.cjs` on every sample document. In this repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:
 

@@ -224,7 +224,7 @@ def _generate(args) -> int:
         document_id=args.document_id, identity_choice=args.identity, title=args.title,
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
-        extracted_path=str(extracted) if extracted else None, model_path=paired)
+        extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__)
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",
               file=sys.stderr)

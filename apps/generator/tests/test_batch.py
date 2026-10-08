@@ -67,6 +67,10 @@ class BatchTest(unittest.TestCase):
         for it in (items[0], items[2]):
             validate_artifact(Path(it["artifact_path"]).read_bytes())
         self.assertEqual(items[1]["errors"][0]["code"], "INVALID_INPUT")
+        # a batch document says which bidoc generated it, like one from `bidoc generate`
+        from bidoc_generator import __version__
+        produced = validate_artifact(Path(items[2]["artifact_path"]).read_bytes())["native_payload"]["data"]["producer"]
+        self.assertEqual((produced["engine"], produced["bidoc"]), ("pbi-doc-gen", __version__))
         adf_factory(missing)                                      # fix the input, then retry that item only
         with self.assertRaises(ValueError):
             r.retry(items[0]["item_id"])                          # completed items are not retried

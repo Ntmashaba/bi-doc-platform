@@ -42,6 +42,7 @@ class GenerateRequest:
     mapping_dir: str = ""                  # local identity mapping when the source is read-only
     model_path: str | None = None           # explicit external model pairing
     extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
+    bidoc_version: str | None = None       # the bidoc generator running this request; shown in the document
 
 
 PUBLICATION_LIMITS = Limits()      # what the library accepts by default; checked after the document is written
@@ -123,6 +124,9 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         else:
             payload = (adapter.load(source, request.source_kind, request.title, model_path=request.model_path)
                        if request.engine == "power_bi" else adapter.load(source, request.source_kind, request.title))
+        if isinstance(payload.get("producer"), dict):
+            # The document says what generated it, beside its generation time.
+            payload["producer"]["bidoc"] = request.bidoc_version or None
         stage("analysing")
         descriptor, complete, _ = adapter.scope(payload)
         out_dir = Path(request.output_dir)

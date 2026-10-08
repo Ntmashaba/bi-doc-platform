@@ -1,0 +1,52 @@
+/* fx: a calculated column, wherever its name is shown. */
+.fx{display:inline-block;font-family:Georgia,"Times New Roman",serif;font-style:italic;font-weight:700;font-size:.78rem;line-height:1.25;color:var(--date);background:var(--dateBg);border-radius:4px;padding:0 .32rem;text-decoration:none;cursor:help;white-space:nowrap;vertical-align:baseline}
+.fx-link{border:0;background:none;padding:0;margin:0;font:inherit;cursor:pointer;border-radius:4px}
+.fx-link .fx{cursor:pointer}
+.fx-link:hover .fx{outline:1px solid var(--date)}
+.fo-name .fx,.mea-name .fx{font-size:.72rem}
+/* How a table is defined: beside its role, never instead of it. */
+.defined{font-size:.78rem;font-weight:600;color:var(--ink2);border:1px solid var(--line);border-radius:999px;padding:.08rem .55rem;white-space:nowrap;background:var(--panel)}
+.defined-by{font-weight:400;color:var(--ink3)}
+.defined-line{color:var(--ink2)}
+.defined-line b{color:var(--ink)}
+.calc-item{font-size:.92rem;font-weight:650;margin:1rem 0 .35rem}
+details.calc-table>summary,details.calc-group>summary{align-items:center}
+/* The seven sections. Each opens with one line naming the Power BI Desktop view it corresponds to. */
+.view-line{font-size:.9rem;color:var(--ink2);margin:0 0 14px;max-width:95ch}
+.view-line b{color:var(--ink);font-weight:650}
+.nav-utilities{margin-top:18px;padding-top:14px;border-top:1px solid #1E293B;display:flex;flex-direction:column;gap:2px}
+.nav-util{border:0;background:none;font:inherit;font-size:.84rem;color:#94A3B8;text-align:left;padding:7px 12px;border-radius:8px;cursor:pointer}
+.nav-util:hover{background:#1E293B;color:#fff}
+.nav-util.active{background:#1E293B;color:#fff;box-shadow:inset 3px 0 0 #818CF8}
+.nav-util:focus-visible{outline:2px solid #818CF8;outline-offset:1px}
+/* Overview: every number is a link to the list it counts. */
+.stat-link{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:inherit;cursor:pointer;margin:0;width:100%}
+.stat-link .big{font-size:30px;font-weight:650;font-variant-numeric:tabular-nums;color:var(--accent);line-height:1.15}
+.stat-link .lbl{font-size:.8rem;color:var(--ink2)}
+.stat-link:hover{border-color:var(--accent);box-shadow:0 2px 10px #4f46e526}
+.stat-link:hover .lbl{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.stat-grid{margin-bottom:.8rem}
+.not-recorded{font-style:italic}
+.card-details>summary{font-weight:600}
+/* Table view: tables by how they are defined; automatic date tables last, closed. */
+.tbl-group{margin-top:1.4rem}
+.tbl-group>h2{margin:0 0 .15rem;display:flex;align-items:baseline;gap:.5rem}
+.tbl-group h2 .n,.tbl-auto>summary .n,.rel-auto>summary .n{font-size:.82rem;font-weight:400;color:var(--ink2);font-variant-numeric:tabular-nums}
+.tbl-group-note{margin:0 0 .6rem}
+section.tbl-group:focus{outline:none}
+section.tbl-group.obj-hit{outline:none}
+section.tbl-group.obj-hit>h2{background:var(--accentSoft);border-radius:6px;box-shadow:0 0 0 6px var(--accentSoft)}
+details.tbl-auto,details.rel-auto{margin-top:1.6rem;background:var(--panel2)}
+details.tbl-auto>.body,details.rel-auto>.body{padding-top:.7rem}
+.auto-date-toggle{display:inline-flex;align-items:center;gap:.35rem}
+/* Data Sources: what the file holds for a source's query. */
+.query-control{display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin:.35rem 0}
+.query-control details{flex:1 1 16rem;min-width:0;margin:0}
+.query-control details>summary{padding:.3rem .6rem;font-weight:500;font-size:.84rem}
+.query-control .full-m{white-space:nowrap;padding-top:.3rem;font-size:.84rem}
+.source-query{margin:.7rem 0}
+@media(max-width:860px){.nav-utilities{flex-direction:row;flex-wrap:wrap;border-top-color:var(--line)}}
+#table-source-summary td:last-child,#table-source-summary th:last-child{min-width:21rem}
+.nav-util-label{font-size:.72rem;color:#64748B;padding:0 12px 4px}
+@media(max-width:860px){.nav-util-label{flex-basis:100%;padding-left:0}}
+.used-by-analysis{white-space:nowrap}

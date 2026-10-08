@@ -1,6 +1,7 @@
 """generate(): valid envelope-v1 artifacts from both engines, stream identity, and the
 local/shared policies end to end (A29 across HTML, manifest and search text)."""
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -51,6 +52,23 @@ class AdfGeneration(Base):
         self.assertEqual(sm["projection"]["options"], {"query_code": "withheld"})
         self.assertEqual(lm["document_id"], sm["document_id"])             # one stream, two revisions
         self.assertNotEqual(lm["revision_id"], sm["revision_id"])
+
+    def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
+        """HTML, embedded payload and manifest: code as written, supported credential patterns cleaned."""
+        local, _ = self.artifact(self.run_adf(self.factory), adf.VIEW_IDS)
+        self.assertIn(ADF_MARKERS["script_api_key"].encode(), local)    # local output is the engine's own, unchanged
+        shared, m = self.artifact(self.run_adf(self.factory, profile="shared", query_code="included"), adf.VIEW_IDS)
+        for name in ("sql_literal", "precopy_literal"):
+            self.assertIn(ADF_MARKERS[name].encode(), shared, name)
+        for name in ("inline_password", "sas_signature", "url_password", "bearer_token", "script_api_key"):
+            self.assertNotIn(ADF_MARKERS[name].encode(), shared, name)
+        self.assertIn("credential", {o["reason"] for o in m["projection"]["omissions"]})
+
+    def test_the_data_factory_payload_is_unchanged_by_the_generator_version(self):
+        """The Power BI rework added `producer`; Data Factory documents are as they were."""
+        data, m = self.artifact(self.run_adf(self.factory, bidoc_version="7.8.9"), adf.VIEW_IDS)
+        self.assertNotIn("producer", m["native_payload"]["data"])
+        self.assertNotIn(b"7.8.9", data)
 
     def test_objects_bindings_and_search_text(self):
         _, m = self.artifact(self.run_adf(self.factory), adf.VIEW_IDS)
@@ -152,6 +170,80 @@ class PowerBIGeneration(Base):
         local, _ = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
         self.assertIn(PBI_MARKERS["sql_literal"].encode(), local)
 
+    def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
+        """HTML, embedded payload, search index and manifest: code as written, credential patterns cleaned."""
+        shared, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)
+        for name in ("sql_literal", "piped_literal", "step_name", "described_column"):
+            self.assertIn(PBI_MARKERS[name].encode(), shared, name)
+        for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
+                     "api_key"):
+            self.assertNotIn(PBI_MARKERS[name].encode(), shared, name)
+        self.assertNotIn(str(self.tmp).encode(), shared)
+        reasons = {o["reason"] for o in m["projection"]["omissions"]}
+        self.assertLessEqual({"credential", "secret_bearing_url", "entered_data"}, reasons)
+
+    def test_local_output_is_not_projected(self):
+        """The local profile publishes the engine's payload as read: every seeded value, no omissions."""
+        local, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
+        for name, marker in PBI_MARKERS.items():
+            self.assertIn(marker.encode(), local, name)
+        self.assertEqual((m["projection"]["profile"], m["projection"]["omissions"]), ("local", []))
+
+    def test_power_query_follows_the_publication_policy(self):
+        """Query facts are published; the script and everything read from it (step names) only with the code."""
+        def view(profile, **kw):
+            data, m = self.artifact(self.run_pbi(self.model, profile=profile, **kw), power_bi.VIEW_IDS)
+            text = data.decode("utf-8")
+            derived = json.JSONDecoder().raw_decode(text, re.search(r"\bconst DERIVED = ", text).end())[0]
+            return {q["name"]: q for q in derived["powerQuery"]["queries"]}, m, text
+        step = PBI_MARKERS["step_name"]
+        local, _, _ = view("local")
+        self.assertEqual([s["name"] for s in local["Stepped"]["steps"]["items"]], ["Source", step])
+        self.assertEqual(local["Stepped"]["steps"]["items"][1]["says"], f"Removes 1 column: {PBI_MARKERS['described_column']}")
+        self.assertEqual((local["Stepped"]["publication"], local["Stepped"]["extraction"]["status"]), ("included", "complete"))
+        withheld, m, text = view("shared")
+        q = withheld["Stepped"]
+        self.assertEqual((q["publication"], q["extraction"]["status"], q["steps"]["status"]), ("withheld", "complete", "parsed"))
+        self.assertNotIn("items", q["steps"])
+        self.assertEqual((q["table"], q["load"], q["kind"]), ("Stepped", "loaded", "query"))     # facts stay
+        for name in ("step_name", "described_column"):            # no step, no description, no expression
+            self.assertNotIn(PBI_MARKERS[name], text, name)
+        self.assertNotIn("Removes 1 column", text)
+        included, _, text = view("shared", query_code="included")
+        self.assertEqual([s["name"] for s in included["Stepped"]["steps"]["items"]], ["Source", step])
+        # Descriptions are read from the cleaned script, so they cannot say more than it does.
+        self.assertEqual(included["Stepped"]["steps"]["items"][1]["says"], f"Removes 1 column: {PBI_MARKERS['described_column']}")
+        creds = included["Creds"]["steps"]["items"][0]
+        self.assertEqual(creds["says"], "Connects through ODBC; the connection text is in the script")
+        api = included["Userinfo"]["steps"]["items"][0]
+        self.assertNotIn(PBI_MARKERS["url_password"], json.dumps(api))
+        self.assertEqual(api["says"], "Reads JSON from https://api.contoso.com/v1/orders")
+        self.assertNotIn(PBI_MARKERS["url_password"], json.dumps(local["Userinfo"]["steps"]))    # not even locally
+        self.assertEqual(included["Creds"]["publication"], "cleaned")
+        self.assertEqual(included["Stepped"]["publication"], "included")
+        self.assertNotIn(PBI_MARKERS["odbc_password"], text)
+        # The library finds a query by name and opens it in the document; its search text never holds the script.
+        sections = {s["title"]: s for s in m["sections"]}
+        self.assertIn("Query Stepped", sections)
+        self.assertIn("Loads table: Stepped", sections["Query Stepped"]["text"])
+        self.assertNotIn("Sql.Database", sections["Query Stepped"]["text"])
+        target = next(t for t in m["navigation"]["targets"] if t["view_id"] == "pbi.query" and t["args"]["query"] == "Stepped")
+        self.assertEqual(target["target_id"], sections["Query Stepped"]["id"])
+        stepped = next(q for q in m["native_payload"]["data"]["sourceQueries"] if q["queryName"] == "Stepped")
+        self.assertEqual(target["args"]["object"], stepped["objectId"])     # opened by its id, not only its name
+
+    def test_two_queries_of_one_name_have_a_target_each(self):
+        """A table's query and a shared query with the same name and different text: each target opens its own."""
+        from bidoc_engines.power_bi import describe
+        payload = {"title": "t", "mode": "full", "sourceQueries": [
+            {"queryName": "Same", "objectId": "pbi:query:name:Same", "origin": "table", "table": "Same"},
+            {"queryName": "Same", "objectId": "pbi:query:name:Same~2", "origin": "shared"}]}
+        _, sections, targets = describe(payload)
+        queries = [t for t in targets if t["view_id"] == "pbi.query"]
+        self.assertEqual([t["args"] for t in queries], [{"query": "Same", "object": "pbi:query:name:Same"},
+                                                        {"query": "Same", "object": "pbi:query:name:Same~2"}])
+        self.assertEqual(len({t["target_id"] for t in queries}), 2)
+
     def test_lineage_tags_are_object_ids_and_sources_are_logical(self):
         _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
         ids = {o["object_id"]: o for o in m["objects"]}
@@ -163,6 +255,95 @@ class PowerBIGeneration(Base):
         ep = fact["bindings"][0]["endpoint"]
         self.assertEqual((ep["server"], ep["port"], ep["database"]), ("finance-sql.corp.local", 1444, "FinanceDW"))
         self.assertEqual(fact["bindings"][0]["operation"], "read")
+
+    def test_the_document_and_the_manifest_use_the_same_object_ids(self):
+        """Hub links carry manifest object ids; the document's own index resolves the same ids (pbi-identity/1)."""
+        for profile in ("local", "shared"):
+            with self.subTest(profile=profile):
+                data, m = self.artifact(self.run_pbi(self.model, profile=profile), power_bi.VIEW_IDS)
+                text = data.decode("utf-8")
+                start = re.search(r"\bconst DERIVED = ", text).end()
+                index = json.JSONDecoder().raw_decode(text, start)[0]["search"]
+                indexed = {item[3]: (index["kinds"][item[0]], item[1]) for item in index["items"]}
+                for obj in m["objects"]:
+                    if obj["kind"] in ("table", "measure"):
+                        self.assertEqual(indexed[obj["object_id"]][1], obj["label"], obj["object_id"])
+                self.assertEqual(indexed[f"pbi:table:{SALES_TAG}"], ("table", "Sales"))
+                self.assertEqual(indexed[f"pbi:measure:{MEASURE_TAG}"], ("measure", "Revenue"))
+                self.assertEqual(indexed["pbi:table:name:Dates"], ("calculated table", "Dates"))
+                self.assertEqual(indexed["pbi:column:name:Sales/Amount"], ("column", "Amount"))
+                self.assertEqual(indexed["pbi:query:name:Native"], ("query", "Native"))
+                if profile == "shared":      # built from the projected payload: nothing withheld is searchable
+                    blob = json.dumps(index, ensure_ascii=False)
+                    for name, marker in PBI_MARKERS.items():
+                        self.assertNotIn(marker, blob, name)
+                    self.assertNotIn(str(self.tmp), blob)
+
+    def test_the_document_says_what_generated_it(self):
+        """bidoc and engine versions travel in the payload, on both profiles and through a re-render."""
+        import pbidocgen
+        from bidoc_engines.convert import reproject, rerender
+        expected = {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": "7.8.9"}
+        for profile in ("local", "shared"):
+            data, m = self.artifact(self.run_pbi(self.model, profile=profile, bidoc_version="7.8.9"), power_bi.VIEW_IDS)
+            self.assertEqual(m["native_payload"]["data"]["producer"], expected, profile)
+            self.assertIn(b'"bidoc": "7.8.9"', data.replace(b'":"', b'": "'))
+        # what generated a document does not change when the library or an export renders it again
+        html, stored = rerender(m)
+        self.assertEqual(stored["native_payload"]["data"]["producer"], expected)
+        self.assertIn(b'"bidoc": "7.8.9"', html.replace(b'":"', b'": "'))
+        local, m = self.artifact(self.run_pbi(self.model, bidoc_version="7.8.9"), power_bi.VIEW_IDS)
+        _, shared = reproject(m)
+        self.assertEqual(shared["native_payload"]["data"]["producer"], expected)
+        # the engine library run on its own: there is no bidoc version, and none is made up
+        _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
+        self.assertEqual(m["native_payload"]["data"]["producer"], dict(expected, bidoc=None))
+
+    def test_authentication_is_a_type_and_never_an_account(self):
+        """Across the whole artifact, local and shared: how a source authenticates, never with which account."""
+        source = self.tmp / "auth" / "model.bim"
+        source.parent.mkdir()
+        source.write_text(json.dumps({"name": "Auth", "model": {"dataSources": [
+            {"name": "dw", "connectionString": "Provider=SQLNCLI11;Data Source=srv;Initial Catalog=db;User ID=acct_marker_login;Password=acct_marker_pw"},
+            {"type": "structured", "name": "SQL/srv2;db2", "connectionDetails": {"protocol": "tds", "address": {"server": "srv2", "database": "db2"}},
+             "credential": {"AuthenticationKind": "Windows", "Username": "CORP\\acct_marker_user", "EncryptConnection": True}}],
+            "tables": [
+                {"name": "Budget", "columns": [{"name": "Amount", "dataType": "double"}],
+                 "partitions": [{"name": "Budget", "source": {"query": "SELECT * FROM dbo.Budget", "dataSource": "dw"}}]},
+                {"name": "Orders", "columns": [{"name": "Id", "dataType": "int64"}], "partitions": [{"name": "Orders", "source": {
+                    "type": "m", "expression": 'let S = #"SQL/srv2;db2", T = S{[Schema="dbo",Item="Orders"]}[Data] in T'}}]}]}}), encoding="utf-8")
+        for profile in ("local", "shared"):
+            data, m = self.artifact(self.run_pbi(source, profile=profile), power_bi.VIEW_IDS)
+            self.assertNotIn(b"acct_marker", data, profile)
+            sources = {d["name"]: d.get("authentication") for d in m["native_payload"]["data"]["model"]["dataSources"]}
+            self.assertEqual(sources, {"dw": "User name and password", "SQL/srv2;db2": "Windows"}, profile)
+
+    def test_page_types_reach_both_profiles(self):
+        """The Report view says what kind of page each page is: local and shared documents carry the same facts."""
+        definition = self.tmp / "Pages.Report" / "definition"
+        pages = {"home": {"name": "home", "displayName": "Home"},
+                 "tip": {"name": "tip", "displayName": "Tip", "type": "Tooltip", "visibility": "HiddenInViewMode"},
+                 "detail": {"name": "detail", "displayName": "Detail", "pageBinding": {"name": "b", "type": "Drillthrough"},
+                            "filterConfig": {"filters": [{"name": "f", "howCreated": "Drillthrough", "field": {"Column": {
+                                "Expression": {"SourceRef": {"Entity": "Sales"}}, "Property": "Region"}}}]}}}
+        for pid, page in pages.items():
+            (definition / "pages" / pid).mkdir(parents=True)
+            (definition / "pages" / pid / "page.json").write_text(json.dumps(page), encoding="utf-8")
+        (definition / "pages" / "pages.json").write_text(json.dumps({"pageOrder": list(pages)}), encoding="utf-8")
+        (definition / "report.json").write_text("{}", encoding="utf-8")
+        (definition / "bookmarks").mkdir()
+        (definition / "bookmarks" / "bookmarks.json").write_text(json.dumps({"items": [{"name": "b1"}]}), encoding="utf-8")
+        (definition / "bookmarks" / "b1.bookmark.json").write_text(json.dumps({"name": "b1", "displayName": "Saved",
+            "explorationState": {"version": "1.3", "activeSection": "detail", "sections": {}}}), encoding="utf-8")
+        for profile in ("local", "shared"):
+            r = generate(GenerateRequest(engine="power_bi", source_path=str(definition.parent), source_kind="pbir",
+                                         output_dir=str(self.out), profile=profile))
+            _, m = self.artifact(r, power_bi.VIEW_IDS)
+            report = m["native_payload"]["data"]["report"]
+            self.assertEqual([(p["id"], p.get("pageType"), p["hidden"]) for p in report["pages"]],
+                             [("home", "page", False), ("tip", "tooltip", True), ("detail", "drillthrough", False)], profile)
+            self.assertEqual([(b["name"], b.get("page")) for b in report["bookmarks"]], [("Saved", "detail")], profile)
+            self.assertTrue(report["pages"][2]["filters"][0]["drillthrough"], profile)
 
     def test_include_query_code_is_explicit(self):
         _, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)

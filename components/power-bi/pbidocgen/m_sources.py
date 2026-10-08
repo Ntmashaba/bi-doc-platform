@@ -14,8 +14,14 @@ from .external_sources import EXTERNAL, READERS, external_value, navigate_extern
 
 @dataclass
 class Token:
+    """value: the decoded text. kind: id, string or symbol. start/end: where it is in the source, so a caller
+    can quote the source exactly as written. quoted: an identifier written #"...", which is never a keyword
+    (a step may be named #"in")."""
     value: str
     kind: str
+    start: int = 0
+    end: int = 0
+    quoted: bool = False
 
 
 def decode_m(value):
@@ -61,6 +67,7 @@ def tokenize(text):
             continue
         quoted_id = text.startswith('#"', i)
         if quoted_id or text[i] == '"':
+            opened = i
             i += 2 if quoted_id else 1
             start, closed = i, False
             while i < len(text):
@@ -73,17 +80,25 @@ def tokenize(text):
                 i += 1
             if not closed:
                 raise ValueError('Unterminated M string/identifier')
-            result.append(Token(decode_m(text[start:i]), 'id' if quoted_id else 'string'))
+            result.append(Token(decode_m(text[start:i]), 'id' if quoted_id else 'string', opened, i + 1, quoted_id))
             i += 1
             continue
-        match = re.match(r'[^\W\d][\w.]*', text[i:], re.UNICODE)
+        match = _IDENTIFIER.match(text, i)
         if match:
-            result.append(Token(match[0], 'id'))
-            i += len(match[0])
+            result.append(Token(match[0], 'id', i, match.end()))
+            i = match.end()
         else:
-            result.append(Token(text[i], 'symbol'))
+            result.append(Token(text[i], 'symbol', i, i + 1))
             i += 1
     return result
+
+
+_IDENTIFIER = re.compile(r'[^\W\d][\w.]*', re.UNICODE)
+
+
+def keyword(token, value) -> bool:
+    """True when the token is the keyword `value` as written, not an identifier or text that spells it."""
+    return token.kind == 'id' and not token.quoted and token.value == value
 
 
 def pairs_for(ts):
@@ -110,11 +125,11 @@ def top_positions(ts, delimiter):
         elif t.kind == 'symbol' and t.value in ')]}':
             depth -= 1
         elif not depth:
-            if t.kind == 'id' and t.value == 'let':
+            if keyword(t, 'let'):
                 lets += 1
-            elif t.kind == 'id' and t.value == 'in':
+            elif keyword(t, 'in'):
                 lets -= 1
-            elif not lets and t.value == delimiter and t.kind != 'string':
+            elif not lets and t.value == delimiter and t.kind != 'string' and not t.quoted:
                 yield i
 
 
@@ -253,14 +268,14 @@ class Tracer:
         if not ts:
             return Value(issues=['Empty M expression'])
         pairs = pairs_for(ts)
-        if ts[0].kind == 'id' and ts[0].value == 'let':
+        if keyword(ts[0], 'let'):
             depth, lets, end = 0, 0, None
             for i, t in enumerate(ts):
                 if t.kind == 'symbol' and t.value in '([{':
                     depth += 1
                 elif t.kind == 'symbol' and t.value in ')]}':
                     depth -= 1
-                elif not depth and t.kind == 'id':
+                elif not depth and t.kind == 'id' and not t.quoted:
                     if t.value == 'let':
                         lets += 1
                     elif t.value == 'in':

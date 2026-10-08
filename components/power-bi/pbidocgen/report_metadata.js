@@ -63,7 +63,7 @@ function connectionTitle(c,i){
 // Published copies (DATA.published, set by the library) are read-only: the library owns metadata edits.
 function rDocumentationReadOnly(){
  const rows=documentation.connections.map((c,i)=>`<tr><th>${connectionTitle(c,i)}</th><td>${esc(c.username||'')}</td><td>${esc(c.authentication||'')}</td></tr>`).join('');
- return `<h1>Report details</h1><p class="sub doc-readonly" role="note">This is a published, read-only copy. Edit document metadata in the library, or regenerate the documentation from the source.</p>
+ return `<h1>Documentation details</h1><p class="sub doc-readonly" role="note">This is a published, read-only copy. Edit document metadata in the library, or regenerate the documentation from the source.</p>
 <div class="card doc-grid"><p><strong>Original report URL or file path:</strong> ${esc(documentation.reportLocation||'Not recorded')}</p><p><strong>Catalogue folder:</strong> ${esc(documentation.folder||'Not recorded')}</p></div>
 <h2>Connections and account references</h2>
 <table class="t doc-connections"><thead><tr><th>Connection</th><th>Username / service account</th><th>Authentication</th></tr></thead><tbody>${rows||'<tr><td colspan="3">No connections recorded.</td></tr>'}</tbody></table>`;}
@@ -76,7 +76,7 @@ function rDocumentation(){
   <td class="doc-actions"><button class="chip" id="doc-edit-${i}-btn" aria-expanded="${documentationOpen.has(i)}" aria-controls="doc-edit-${i}" onclick="toggleConnectionEdit(${i})">Edit</button></td></tr>
   <tr class="doc-edit-row" id="doc-edit-${i}"${documentationOpen.has(i)?'':' hidden'}><td colspan="4"><div class="doc-edit">${Object.entries(CONNECTION_FIELDS).map(([k,label])=>documentationInput(label,`doc-${i}-${k}`,c[k])).join('')}
    <div><button class="chip" onclick="removeDocumentationConnection(${i})">Remove reference</button></div></div></td></tr>`).join('');
- return `<h1>Report details</h1><p class="sub">Keep the original report location and connection account references with this document. Enter usernames or service account names only; never passwords, tokens or secret-bearing URLs.</p>
+ return `<h1>Documentation details</h1><p class="sub">Keep the original report location and connection account references with this document. Enter usernames or service account names only; never passwords, tokens or secret-bearing URLs.</p>
 <div class="card doc-grid">${documentationInput('Original report URL or file path','doc-location',documentation.reportLocation)}
 ${documentationInput('Catalogue folder (optional, e.g. Finance / Monthly)','doc-folder',documentation.folder)}
 <p class="mut">The home page groups by this folder, or by the parent of the report location. Without either, it lists the document under Ungrouped.</p></div>
@@ -96,5 +96,5 @@ function saveDocumentationHtml(){
  savedDocumentation=JSON.stringify(cleanDocumentation(documentation));updateSaveBar();
  document.getElementById('doc-status').textContent='Downloaded. Replace the original HTML with the downloaded file to keep these details, then refresh the home page catalogue.';
 }
-TABS.push({id:'report-details',label:'Report details',group:'Documentation',avail:true});
+TABS.push({id:'report-details',label:'Documentation details',group:'Documentation',avail:true});
 RENDER['report-details']=rDocumentation;

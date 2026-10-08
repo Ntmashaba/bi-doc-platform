@@ -1,0 +1,41 @@
+/* Report view › Pages: the page list, one page at a time, its layout beside the panel (UI rework, Change 4). */
+.page-strip{display:flex;flex-wrap:wrap;gap:6px;margin:.4rem 0 1.1rem;padding:0;list-style:none}
+.page-tab{display:inline-flex;align-items:baseline;gap:7px;max-width:100%;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:.86rem;padding:6px 11px;border-radius:7px;cursor:pointer;text-align:left}
+.page-tab:hover{border-color:#94A3B8}
+.page-tab:focus-visible{outline:2px solid var(--accent,#4F46E5);outline-offset:1px}
+.page-tab.is-current{border-color:var(--ink);box-shadow:inset 0 -3px 0 var(--accent,#4F46E5);font-weight:600}
+.page-tab.is-hidden .page-name{color:var(--ink2)}
+.page-no{font-size:.75rem;color:var(--ink2);font-variant-numeric:tabular-nums;font-weight:400}
+.page-name{overflow-wrap:anywhere}
+.page-flags{font-size:.74rem;color:var(--ink2);font-weight:400}
+.page-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.page-head h2{margin:0;font-size:1.3rem;overflow-wrap:anywhere}
+.page-facts{margin:.25rem 0 .2rem}
+.page-type-note{margin:.35rem 0 .2rem;max-width:72ch}
+.badge.pt-tooltip{background:var(--viamBg);color:var(--viam)}
+.badge.pt-drill{background:var(--factBg);color:var(--fact)}
+.badge.pt-unknown{background:transparent;color:var(--poss);box-shadow:inset 0 0 0 1px currentColor}
+
+.page-surface{padding:0!important;overflow:hidden;margin-top:12px;display:grid;grid-template-columns:minmax(0,1fr) 320px;align-items:stretch}
+.page-main{min-width:0;display:flex;flex-direction:column}
+.page-main .layout-viewport{margin:0;border:0;border-top:1px solid var(--line);max-height:70vh}
+.page-main .layout-legend{padding:10px 20px 12px;margin:0;border-top:1px solid var(--line)}
+.page-no-layout,.page-unplaced{padding:12px 20px;margin:0}
+.page-panel{border-left:1px solid var(--line);padding:16px 18px;overflow:auto;max-height:calc(70vh + 110px);background:var(--panel)}
+.page-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.page-view .page-panel h3{font-size:1.02rem;margin:0 0 .45rem;overflow-wrap:anywhere}
+.page-view .page-panel h4{font-size:.84rem;margin:1rem 0 .35rem;color:var(--ink2);font-weight:600}
+.page-panel p{margin:.4rem 0}
+.page-view .fp-title{border-top:1px solid var(--line);padding-top:.8rem;margin-top:1rem}
+.panel-hint{margin-top:0!important}
+.fp-group h4 .n{font-weight:400;margin-left:2px}
+.fp-list{list-style:none;margin:0;padding:0}
+.fp-list li{padding:.32rem 0;border-top:1px solid var(--line2);line-height:1.8;overflow-wrap:anywhere}
+.fp-list li:first-child{border-top:0}
+
+.page-view h3{font-size:1rem;margin:1.4rem 0 .5rem}
+.page-visuals tr.is-selected td{background:#EEF2FF}
+.page-visuals tr.is-selected td:first-child{box-shadow:inset 3px 0 0 var(--accent,#4F46E5)}
+
+@media(max-width:1100px){.page-surface{grid-template-columns:1fr}.page-panel{border-left:0;border-top:1px solid var(--line);max-height:none}.page-main .layout-viewport{max-height:56vh}}
+@media print{.page-strip .page-tab:not(.is-current){display:none}.page-surface{display:block}.page-main .layout-viewport{max-height:none;overflow:visible}.page-panel{border-left:0;border-top:1px solid var(--line);max-height:none}}

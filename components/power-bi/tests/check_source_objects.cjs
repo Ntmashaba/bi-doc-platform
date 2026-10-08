@@ -5,7 +5,7 @@ let blob,filename;
 const c=vm.createContext({console,Blob,setTimeout:fn=>fn(),URL:{createObjectURL:b=>(blob=b,'blob:test'),revokeObjectURL(){}},document:{getElementById:node,querySelectorAll:()=>[],body:{appendChild(){}},createElement:()=>({click(){filename=this.download},remove(){}})},window:{scrollTo(){}}});
 const run=s=>vm.runInContext(s,c);
 run(fs.readFileSync(process.argv[2],'utf8').match(/<script>([\s\S]*)<\/script>/)[1]);
-run("switchTab('sources');setPageScope('p2')");assert.equal(run('visibleSourceObjects.length'),2);
+run("switchTab('source-objects');setPageScope('p2')");assert.equal(run('visibleSourceObjects.length'),2);
 assert.ok(run("visibleSourceObjects.every(r=>r.pageId==='p2')"));
 node('source-object-search').value='Customers';run('filterSourceObjects()');assert.equal(run('visibleSourceObjects.length'),2);
 node('source-object-status').value='Unresolved';run('filterSourceObjects()');assert.equal(run('visibleSourceObjects.length'),0);

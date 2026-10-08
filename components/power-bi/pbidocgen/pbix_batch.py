@@ -118,9 +118,22 @@ def load_extracted(folder, source, has_embedded_model):
     raw_database = model_path is not None and model_path.name == 'database.json'
     if model_path is not None and model_path.name == 'database.json':
         model_dir = model_path.parent
+        from .legacy_mashup import folder_package, pbix_package
+        # A pre-2019 file's whole Power Query package: pbi-tools writes it to Mashup/, and the PBIX has it too.
+        package = folder_package(folder) or (pbix_package(source) if Path(source).suffix.lower() == '.pbix'
+                                             and Path(source).is_file() else None)
         if is_folder_model(model_dir):
+            document = assemble(model_dir)
+        elif package:
+            document = json.loads(model_path.read_text(encoding='utf-8-sig'))
+        else:
+            document = None
+        if document is not None:
+            if package and package.get('section') and isinstance(document.get('model'), dict) \
+                    and not document['model'].get('mashupPackage'):
+                document['model']['mashupPackage'] = package
             assembled = folder / 'assembled-model.bim'
-            assembled.write_text(json.dumps(assemble(model_dir)), encoding='utf-8')
+            assembled.write_text(json.dumps(document), encoding='utf-8')
             model_path = assembled
     model = parse_model(model_path) if model_path else None
     if model and raw_database and model.get('name') in (None, '', 'database'):

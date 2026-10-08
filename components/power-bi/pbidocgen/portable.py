@@ -142,6 +142,18 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                 s['connectionString'] = connection_strings.redact(connection, connection_strings.SOURCE_KEYS)
             elif connection:
                 warnings.append(f"Data source '{r['Name']}' has an encrypted or opaque connection string. Server/database are unavailable; SQL object names remain visible.")
+            if re.search(r'(?i)(?:^|;)\s*(?:user id|uid)\s*=', connection):
+                s['signsInWithAccount'] = True      # that a login is named, never which one
+            # How it authenticates, never with what: the kind named by the credential, and the impersonation mode.
+            if isinstance(r.get('ImpersonationMode'), int):
+                s['impersonationMode'] = r['ImpersonationMode']
+            if r.get('Credential'):
+                try:
+                    credential = json.loads(r['Credential'])
+                    if isinstance(credential, dict) and isinstance(credential.get('AuthenticationKind'), str):
+                        s['credential'] = {'AuthenticationKind': credential['AuthenticationKind']}
+                except (ValueError, TypeError):
+                    pass                          # encrypted or opaque: the file does not say
             if r.get('ConnectionDetails'):
                 try:
                     details = json.loads(r['ConnectionDetails'])
@@ -150,7 +162,17 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                 except (ValueError, TypeError):
                     gaps.append(f"Unreadable connection details for {r['Name']}")
             out_sources.append(s)
+        def shared_expression(r):
+            out = dict(fields(r, {'Name':'name','Description':'description','LineageTag':'lineageTag'}),
+                       kind='m', expression=r.get('Expression') or '')
+            if r.get('QueryGroupID') in query_groups:
+                out['queryGroup'] = query_groups[r['QueryGroupID']]['Folder']
+            if r.get('ID') is not None and anns(r['ID']):
+                out['annotations'] = anns(r['ID'])
+            return out
         partitions = rows('Partition', ('TableID', 'Type', 'Mode', 'QueryDefinition'))
+        # Power Query folders (TOM QueryGroup). Older files have no such table; that is a flat list, not a gap.
+        query_groups = {r['ID']: r for r in rows('QueryGroup') if r.get('ID') is not None and r.get('Folder')}
         measures = rows('Measure', ('TableID', 'Name', 'Expression', 'FormatString', 'IsHidden'))
         hierarchies, levels = rows('Hierarchy'), rows('Level')
         calc_groups = {r['ID']: r for r in rows('CalculationGroup')}
@@ -176,6 +198,8 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                     gaps.append(f"Unknown data type {dt} on {t['Name']}[{cname(c)}]")
                 if c['Type'] == 2:
                     col['type'] = 'calculated'
+                elif c['Type'] == 4:
+                    col['type'] = 'calculatedTableColumn'
                 if c['SortByColumnID']:
                     sort = cols.get(c['SortByColumnID'])
                     if sort:
@@ -216,7 +240,10 @@ def model_document(path, temp_dir=None, max_decompressed=None):
                     # verified mapping. Never pretend they are M or Direct Lake.
                     src = {'type':'unknown', 'expression':query}
                     gaps.append(f"Partition type {typ} on {t['Name']} is not yet supported by portable extraction; remote-model lineage is incomplete.")
-                out['partitions'].append({'name':r['Name'], 'mode':mode_name, 'source':src})
+                part = {'name':r['Name'], 'mode':mode_name, 'source':src}
+                if r.get('QueryGroupID') in query_groups:
+                    part['queryGroup'] = query_groups[r['QueryGroupID']]['Folder']
+                out['partitions'].append(part)
             for h in hierarchies_by_table.get(tid, []):
                 out['hierarchies'].append({'name':h['Name'], 'levels':[
                     {'name':lv['Name'], 'column':cname(cols[lv['ColumnID']])}
@@ -258,7 +285,18 @@ def model_document(path, temp_dir=None, max_decompressed=None):
             gaps.append('Object-level security permissions are present; this renderer does not document them completely.')
         model = {'name':raw_model.get('Name') or path.stem, 'culture':raw_model.get('Culture'), 'tables':result,
                  'relationships':rels, 'dataSources':out_sources, 'roles':roles,
-                 'expressions':[{'name':r['Name'],'kind':'m','expression':r.get('Expression') or ''} for r in exprs.values()]}
+                 'expressions':[shared_expression(r) for r in exprs.values()]}
+        if query_groups:
+            model['queryGroups'] = [dict(fields(g, {'Folder':'folder','Description':'description'}), annotations=anns(g['ID']))
+                                    for g in query_groups.values()]
+        if raw_model.get('ID') is not None and anns(raw_model['ID']):
+            model['annotations'] = anns(raw_model['ID'])
+        if path.suffix.lower() == '.pbix' and path.is_file():
+            # Pre-2019 files keep Power Query in the DataMashup part; newer files have none.
+            from .legacy_mashup import pbix_package
+            package = pbix_package(path)
+            if package and package.get('section'):
+                model['mashupPackage'] = package
     # A file cannot establish who else uses a model, nor prove deletion safety.
     coverage = {'backend':'pbixray', 'version':status()['installed'], 'inputKind':path.suffix.lstrip('.').lower(),
                 'complete':not gaps, 'warnings':sorted(set(warnings+gaps)),

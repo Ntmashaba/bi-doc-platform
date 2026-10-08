@@ -207,11 +207,16 @@ table.source-list .badge{white-space:normal}
 <body>
 <div class="layout">
   <nav id="nav" aria-label="Sections"></nav>
-  <main id="main"></main>
+  <div class="content">
+    <div id="finder" class="finder" role="search" aria-label="Find an object in this document"></div>
+    <main id="main"></main>
+  </div>
 </div>
 <!--__DOCUMENTATION_METADATA__-->
 <script>
 const DATA = /*__DATA__*/null;
+// Worked out from DATA when this page was rendered (the search index); never part of the extract itself.
+const DERIVED = /*__DERIVED__*/null;
 /* ============================================================ helpers */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const M = DATA.model, R = DATA.report, L = DATA.linked, MODE = DATA.mode;
@@ -234,8 +239,10 @@ const hlDAX = s => esc(s)
   .replace(/\b(CALCULATE|SUMX?|AVERAGEX?|COUNTROWS|DISTINCTCOUNT|FILTER|ALL|ALLEXCEPT|VALUES|RELATED|RELATEDTABLE|DIVIDE|IF|SWITCH|VAR|RETURN|USERELATIONSHIP|DATEADD|DATESYTD|TOTALYTD|SAMEPERIODLASTYEAR|MAXX?|MINX?|SELECTEDVALUE|TREATAS|CALENDARAUTO|CALENDAR|USERPRINCIPALNAME)\b/g,'<span class="k">$1</span>')
   .replace(/(&#39;[^&]*?&#39;\[[^\]]+\]|\b[\w ]+\[[^\]]+\]|\[[^\]]+\])/g,'<span class="r">$1</span>')
   .replace(/(&quot;.*?&quot;)/g,'<span class="s">$1</span>');
-const goTable = n => { switchTab("tables"); requestAnimationFrame(()=>flash("tbl-"+slug(n))); };
-const goMeasure = n => { switchTab("measures"); requestAnimationFrame(()=>flash("mea-"+slug(n))); };
+// Links between objects go through the object index, so they land on the object whatever filter or page
+// selection is active, and Back returns to where the reader came from.
+const goTable = n => { if(!goRef("table", n)){ switchTab("tables"); requestAnimationFrame(()=>flash("tbl-"+slug(n))); } };
+const goMeasure = n => { if(!goRef("measure", n)){ switchTab("measures"); requestAnimationFrame(()=>flash("mea-"+slug(n))); } };
 const slug = s => "u"+Array.from(String(s)).map(c=>c.codePointAt(0).toString(16)).join("_");
 const pageKey = id => Array.from(String(id)).map(c=>c.codePointAt(0).toString(16)).join('_');
 const pageLabel = r => r.pageId ? `${r.report} / ${r.page} [${r.pageId}]` : `${r.report} / No specific page`;
@@ -258,20 +265,29 @@ const usageOf = t => {
 
 /* ============================================================ tabs */
 const TABS = [
-  {id:"overview", label:"Overview", group:"Start", avail:true},
-  {id:"columns", label:"Columns", group:"Start", avail:has.model, count:()=>DATA.columns?.columnCount},
-  {id:"lineage",  label:"Lineage",  group:"Start", avail:has.linked},
-  {id:"usage",    label:"Usage",    group:"Start", avail:has.linked, count:()=>L.tableUsage.filter(u=>u.usage==="none").length ? L.tableUsage.filter(u=>u.usage==="none").length+" no references" : null},
-  {id:"pages",    label:"Pages",    group:"Report", avail:has.report, count:()=>R?.pages.length},
-  {id:"filters",  label:"Filters",  group:"Report", avail:has.report, count:()=>allFilters().length},
-  {id:"manifest", label:"Field manifest", group:"Report", avail:has.report, count:()=>reportManifest().length},
-  {id:"tables",   label:"Tables",   group:"Model", avail:has.model, count:()=>M?.tables.length},
-  {id:"measures", label:"Measures", group:"Model", avail:has.model, count:()=>M?.measures.length},
-  {id:"rels",     label:"Relationships", group:"Model", avail:has.model, count:()=>M?.relationships.length},
-  {id:"sources",  label:"Sources",  group:"Model", avail:has.model||!!DATA.liveSource},
-  {id:"primary-sources", label:"Primary sources", group:"Model", avail:has.model, count:()=>(DATA.primarySources?.rows||[]).length||null},
-  {id:"security", label:"Security", group:"Model", avail:has.model, count:()=>M?.roles.length||null},
-  {id:"warnings", label:"Warnings", group:"Quality", avail:true, count:()=>allWarnings().length||null},
+  {id:"overview", label:"Overview", avail:true},
+  {id:"warnings", label:"Warnings", avail:true, count:()=>allWarnings().length||null},
+  {id:"sources",  label:"Sources", avail:has.model||!!DATA.liveSource, count:()=>has.model?sourceGroups().length||null:null},
+  {id:"table-sources", label:"Sources by table", avail:has.model},
+  {id:"primary-sources", label:"Primary sources", avail:has.model, count:()=>(DATA.primarySources?.rows||[]).length||null},
+  {id:"source-objects", label:"Source objects", avail:has.model},
+  {id:"power-query", label:"Power Query", avail:has.model, count:()=>PQ.queries.length||null},
+  {id:"tables",   label:"Tables", avail:has.model, count:()=>countedTables().length},
+  {id:"columns",  label:"Columns", avail:has.model, count:()=>countedColumns().length},
+  {id:"rels",     label:"Relationships", avail:has.model, count:()=>countedRelationships().length},
+  {id:"rel-list", label:"Relationships list", avail:has.model},
+  {id:"security", label:"Security", avail:has.model, count:()=>M?.roles.length||null},
+  {id:"lineage",  label:"Lineage", avail:has.linked},
+  {id:"usage",    label:"Table usage", avail:has.linked, count:()=>L.tableUsage.filter(u=>u.usage==="none").length ? L.tableUsage.filter(u=>u.usage==="none").length+" no references" : null},
+  {id:"measures", label:"Measures", avail:has.model, count:()=>M?.measures.length},
+  {id:"calc-columns", label:"Calculated Columns", avail:has.model, count:()=>calcColumns().length},
+  {id:"calc-tables", label:"Calculated Tables", avail:has.model, count:()=>tablesDefinedBy('Calculated table').length},
+  {id:"calc-groups", label:"Calculation Groups", avail:has.model, count:()=>tablesDefinedBy('Calculation group').length},
+  {id:"pages",    label:"Pages", avail:has.report, count:()=>R?.pages.length},
+  {id:"visuals",  label:"Visuals", avail:has.report, count:()=>scopedPages().reduce((n,p)=>n+p.visuals.length,0)},
+  {id:"filters",  label:"Filters", avail:has.report, count:()=>filterList().length},
+  {id:"manifest", label:"Field manifest", avail:has.report, count:()=>reportManifest().length},
+  {id:"bookmarks", label:"Bookmarks", avail:has.report, count:()=>(R?.bookmarks||[]).length},
 ];
 const allWarnings = () => [...(M?.warnings||[]), ...(R?.warnings||[]), ...(L?.warnings||[])];
 const allFilters = () => (R?.filterRows || []).filter(inPageScope);
@@ -280,19 +296,42 @@ const reportManifest = () => (has.linked ? L.manifest : (R?.manifest||[])).map(e
   return {...e,locations,usedIn:locations.map(l=>pageLabel(l)+": "+l.description)};
 }).filter(e=>pageScope==='*'||e.locations.length);
 
-/* Six top-level sections; every existing view is a sub-tab of one of them. */
+/* Seven sections, in the order a Power BI Desktop file is read, each named after the view of Power BI Desktop
+   that shows the same things. `view` is the line every tab of the section opens with. */
 const SECTIONS = [
-  {id:"overview", label:"Overview",         tabs:["overview"]},
-  {id:"data",     label:"Data & sources",   tabs:["tables","columns","measures","rels","lineage","sources","primary-sources","security"]},
-  {id:"visuals",  label:"Pages & visuals",  tabs:["layout","pages","filters","manifest"]},
-  {id:"changes",  label:"Impact & usage", tabs:["impact","matrix","usage","compare"]},
-  {id:"review",   label:"Review issues",    tabs:["cleanup","warnings"]},
-  {id:"details",  label:"Report details",   tabs:["report-details"]},
+  {id:"overview", label:"Overview", tabs:["overview","warnings","cleanup"],
+   view:"A summary of this file: what it contains, how completely it was read and what to check first. Power BI Desktop has no view like it."},
+  {id:"sources", label:"Data Sources", tabs:["sources","table-sources","primary-sources","source-objects"],
+   view:"Data source settings in Power BI Desktop: the databases, files and services this model reads."},
+  {id:"power-query", label:"Power Query", tabs:["power-query"],
+   view:"The Power Query Editor in Power BI Desktop: the queries that connect to sources and shape the data before it reaches the model."},
+  {id:"table", label:"Table view", tabs:["tables","columns"],
+   view:"Table view in Power BI Desktop: each table of the model with its columns. No data rows: this document reads the file, not the data."},
+  {id:"model", label:"Model view", tabs:["rels","rel-list","security","lineage","impact","matrix","usage"],
+   view:"Model view in Power BI Desktop: how the tables relate, who may see which rows, and what depends on what."},
+  {id:"dax", label:"DAX query view", tabs:["measures","calc-columns","calc-tables","calc-groups"],
+   view:"DAX definitions for this model: measures, calculated columns, calculated tables and calculation items. DAX query view in Power BI Desktop is an editor for queries that return data; saved queries and their results are not part of this document."},
+  {id:"report", label:"Report view", tabs:["pages","visuals","filters","manifest","bookmarks"],
+   view:"Report view in Power BI Desktop: the report's pages, visuals, filters and bookmarks."},
+];
+/* Actions on the document itself rather than views of the file: reached from the sidebar and the Overview. */
+const UTILITIES = [
+  {id:"compare", label:"Compare extracts", hint:"See what changed since an earlier extract of this file"},
+  {id:"report-details", label:"Documentation details", hint:"Where the report lives and who connects to it"},
 ];
 const lastTabInSection = {};
-const sectionOf = id => SECTIONS.find(s=>s.tabs.includes(id)) || SECTIONS[1];
-const sectionTabs = s => TABS.filter(t=>!t.hidden && sectionOf(t.id)===s)
+const sectionOf = id => SECTIONS.find(s=>s.tabs.includes(id))
+  || (UTILITIES.some(u=>u.id===id) ? {id:"utility", label:UTILITIES.find(u=>u.id===id).label, tabs:[id], utility:true} : SECTIONS[0]);
+const sectionTabs = s => TABS.filter(t=>!t.hidden && s.tabs.includes(t.id))
   .sort((a,b)=>s.tabs.indexOf(a.id)-s.tabs.indexOf(b.id));
+// Why a section has nothing to show, in the reader's terms.
+function sectionGap(s){
+  if(MODE==="report-only") return R?.liveConnection
+    ? "This report reads a remote model over a live connection, so the file holds no "+({sources:"sources",["power-query"]:"queries",table:"tables",model:"model",dax:"DAX"}[s.id]||"content")+" of its own."
+    : "No semantic model was supplied, so there is nothing to show here.";
+  if(MODE==="semantic-only") return "No report was supplied, so there are no pages or visuals to show.";
+  return "This file has nothing to show here.";
+}
 function openSection(sid){
   const s = SECTIONS.find(x=>x.id===sid);
   const tabs = sectionTabs(s).filter(t=>t.avail);
@@ -308,8 +347,10 @@ function buildNav(){
     const avail = sectionTabs(s).some(t=>t.avail);
     html += avail
       ? `<button class="nav-btn" id="sec-${s.id}" onclick="openSection('${s.id}')">${esc(s.label)}</button>`
-      : `<button class="nav-btn disabled" id="sec-${s.id}" title="Not available in ${MODE} mode" tabindex="-1">${esc(s.label)}</button>`;
+      : `<button class="nav-btn disabled" id="sec-${s.id}" aria-disabled="true" title="${esc(sectionGap(s))}" tabindex="-1">${esc(s.label)}</button>`;
   }
+  html += `<div class="nav-utilities" role="group" aria-labelledby="nav-util-label"><div class="nav-util-label" id="nav-util-label">Document actions</div>${UTILITIES.map(u=>
+    `<button class="nav-util" id="util-${u.id}" title="${esc(u.hint)}" onclick="switchTab('${u.id}')">${esc(u.label)}</button>`).join("")}</div>`;
   nav.innerHTML = html + "</div>";
 }
 function toggleNav(open){
@@ -319,19 +360,23 @@ function toggleNav(open){
   if(btn) btn.setAttribute("aria-expanded", String(next));
 }
 function subTabs(id){
-  const tabs = sectionTabs(sectionOf(id));
-  if(tabs.length<2) return "";
-  return `<div class="subtabs" aria-label="${esc(sectionOf(id).label)} views">${tabs.map(t=>{
+  const section = sectionOf(id), tabs = sectionTabs(section);
+  if(section.utility || tabs.length<2) return "";
+  return `<div class="subtabs" aria-label="${esc(section.label)} tabs">${tabs.map(t=>{
     const c = t.avail && t.count ? t.count() : null;
     return t.avail
-      ? `<button class="subtab${t.id===id?" active":""}" id="nav-${t.id}"${t.id===id?' aria-current="page"':""} onclick="switchTab('${t.id}')">${esc(t.label)}${c?` <span class="n">${esc(c)}</span>`:""}</button>`
-      : `<button class="subtab disabled" title="Not available in ${MODE} mode" tabindex="-1">${esc(t.label)}</button>`;
+      ? `<button class="subtab${t.id===id?" active":""}" id="nav-${t.id}"${t.id===id?' aria-current="page"':""} onclick="switchTab('${t.id}')">${esc(t.label)}${c!==null&&c!==undefined?` <span class="n">${esc(c)}</span>`:""}</button>`
+      : `<button class="subtab disabled" aria-disabled="true" title="Not available in ${MODE} mode" tabindex="-1">${esc(t.label)}</button>`;
   }).join("")}</div>`;
 }
-function switchTab(id, recordHistory=true){
+// fresh: show the view without the filters the reader left in it (used to reveal an object a filter hides).
+function switchTab(id, recordHistory=true, fresh=false){
+  id = TAB_ALIASES[id] || id;
   const tab = TABS.find(t=>t.id===id);
   if(!tab || !tab.avail) return;
-  rememberView();
+  if(!(fresh && activeTab===id)) rememberView();
+  if(fresh) forgetView(id);
+  if(fresh && id==="rels") resetRelView();
   closeInspector();
   activeTab = id;
   if(window.location && window.history && recordHistory && window.location.hash!=="#"+id){
@@ -340,28 +385,39 @@ function switchTab(id, recordHistory=true){
     if(window.location.hash && window.parent===window)window.history.pushState(null,"","#"+id);
     else window.history.replaceState(null,"","#"+id);
   }
-  document.title=tab.label+" · "+DATA.title;
-
   const section = sectionOf(id);
-  lastTabInSection[section.id] = id;
-  document.querySelectorAll(".nav-btn").forEach(b=>{b.classList.remove("active");b.removeAttribute("aria-current");});
-  const btn = document.getElementById("sec-"+section.id);
+  document.title=(section.utility||section.label===tab.label?tab.label:section.label+" › "+tab.label)+" · "+DATA.title;
+  if(!section.utility) lastTabInSection[section.id] = id;
+  document.querySelectorAll(".nav-btn, .nav-util").forEach(b=>{b.classList.remove("active");b.removeAttribute("aria-current");});
+  const btn = document.getElementById(section.utility ? "util-"+id : "sec-"+section.id);
   if(btn){ btn.classList.add("active"); btn.setAttribute("aria-current","true"); }
   const current = document.getElementById("nav-current");
   if(current) current.textContent = section.label;
   toggleNav(false);
-  document.getElementById("main").innerHTML = `<div class="breadcrumb"><a href="pbi-home.html#reports">Reports</a><span aria-hidden="true">/</span><span>${esc(DATA.title)}</span><span aria-hidden="true">/</span><strong>${esc(tab.label)}</strong></div>` + subTabs(id) + scopeBar(id) + RENDER[id]();
+  const crumb = section.utility || section.label===tab.label || sectionTabs(section).length<2
+    ? `<strong>${esc(section.label)}</strong>`
+    : `<span>${esc(section.label)}</span><span aria-hidden="true">/</span><strong>${esc(tab.label)}</strong>`;
+  document.getElementById("main").innerHTML = `<div class="breadcrumb"><a href="pbi-home.html#reports">Reports</a><span aria-hidden="true">/</span><span>${esc(DATA.title)}</span><span aria-hidden="true">/</span>${crumb}</div>`
+    + (section.view ? `<p class="view-line" id="view-line"><b>${esc(section.label)}.</b> ${esc(section.view)}</p>` : "")
+    + subTabs(id) + scopeBar(id) + RENDER[id]();
   restoreView(id);
   window.scrollTo(0,0);
-  if(id==="rels") drawERD();
+  if(id==="rels"){ drawRelSurface(); relReveal(); }
+  if(id==="rel-list") filterRelList();
+  if(id==="visuals") filterVisualList();
+  if(id==="filters") filterFilterList();
   if(id==="lineage") drawLineage();
   if(id==="columns") filterColumns();
   if(id==="tables") fTbl(document.getElementById("table-search").value);
   if(id==="manifest") fMan(document.getElementById("manifest-search").value);
-  if(id==="sources"&&M){ filterSourceList(); filterSourceObjects(); }
+  if(id==="sources"&&M) filterSourceList();
+  if(id==="source-objects") filterSourceObjects();
+  if(id==="table-sources") filterTableSources();
   if(id==="primary-sources") filterPrimarySources();
   if(id==="report-details") updateSaveBar();
   if(id==="measures") fMea(document.getElementById("measure-search").value);
+  if(id==="power-query") pqFilter();
+  if(id==="calc-columns"&&document.getElementById("calc-column-search")) fCalcColumns(document.getElementById("calc-column-search").value);
 }
 
 /* ============================================================ column/page inventory */
@@ -373,10 +429,13 @@ function rColumns(){
   // usage/measure detail sits in the assessment and evidence cells.
   const headings = [["decision","Assessment"],["column","Table / column"],["page","Report page"],
     ["pageUsage","Page usage"],["reason","Evidence & source"]];
+  // The same columns the headline counts: automatic date tables are apart unless asked for.
+  const distinct = [...new Map(DATA.columns.rows.filter(r=>!AUTO_DATE_NAMES.has(r.table)).map(r=>[r.table+"\u0001"+r.column,r])).values()];
+  const stats = [["Columns",distinct.length],["Used in report",distinct.filter(r=>r.usedInReport==="Yes").length],
+    ["Deletion candidates",distinct.filter(r=>r.decision==="Deletion candidate").length],["Need review",distinct.filter(r=>r.decision==="Review").length]];
   return `<h1>Which columns are used?</h1>
     <p class="sub">One row per report, page and column. Usage is specific to that page; deletion assessment covers all detected dependencies.</p>
-    <div class="grid c4" style="margin-top:1rem">${[["Columns",a.columnCount],["Used in report",a.counts["Used in report"]||0],
-      ["Deletion candidates",a.counts["Deletion candidate"]||0],["Need review",a.counts.Review||0]].map(([label,n])=>
+    <div class="grid c4" style="margin-top:1rem">${stats.map(([label,n])=>
       `<div class="card stat"><div class="big">${num(n)}</div><div class="lbl">${label}</div></div>`).join("")}</div>
     <div class="card"><b>Keep</b> means a report or model dependency was found.
       <b>Deletion candidate</b> means no references were detected. <b>Review</b> means the analysis is incomplete or a dependency is uncertain.
@@ -388,6 +447,7 @@ function rColumns(){
       <select id="column-used" class="search" style="width:auto;margin:0" aria-label="Filter report usage" onchange="filterColumns()">
         <option value="">All report usage</option><option value="Yes">Used in report</option><option value="Possible">Possible usage</option><option value="Not detected">No report usage detected</option><option value="Unknown">Usage unknown</option></select>
       <button class="chip" onclick="downloadColumnCsv()">Export filtered CSV</button>
+      ${AUTO_DATE_NAMES.size?`<label class="mut auto-date-toggle"><input type="checkbox" id="column-auto-date" onchange="filterColumns()"> Include automatic date tables</label>`:""}
     </div>
     <p id="column-count" class="mut" aria-live="polite" style="margin-bottom:.5rem"></p>
     <div class="column-scroll"><table class="t column-inventory"><thead><tr>${headings.map(([key,title])=>
@@ -398,18 +458,20 @@ function filterColumns(){
   const q = document.getElementById("column-search").value.toLowerCase().trim();
   const assessment = document.getElementById("column-assessment").value;
   const used = document.getElementById("column-used").value;
-  visibleColumns = DATA.columns.rows.filter(inPageScope).filter(r=>(!q||Object.values(r).join(" ").toLowerCase().includes(q)) &&
+  const withAuto = !!document.getElementById("column-auto-date")?.checked;
+  visibleColumns = DATA.columns.rows.filter(inPageScope).filter(r=>(withAuto||!AUTO_DATE_NAMES.has(r.table)) && (!q||Object.values(r).join(" ").toLowerCase().includes(q)) &&
     (!assessment||r.decision===assessment) && (!used||r.usedInReport===used));
   const value = r=>String(r[columnSort.key]??"");
   visibleColumns.sort((a,b)=>columnSort.direction*value(a).localeCompare(value(b),undefined,{numeric:true}) ||
     a.table.localeCompare(b.table) || a.column.localeCompare(b.column) || a.pageId.localeCompare(b.pageId));
-  document.getElementById("column-count").textContent = `${visibleColumns.length} rows · ${new Set(visibleColumns.map(r=>JSON.stringify([r.table,r.column]))).size} distinct columns`;
+  const hiddenAuto = withAuto ? 0 : new Set(DATA.columns.rows.filter(r=>AUTO_DATE_NAMES.has(r.table)).map(r=>JSON.stringify([r.table,r.column]))).size;
+  document.getElementById("column-count").textContent = `${visibleColumns.length} rows · ${new Set(visibleColumns.map(r=>JSON.stringify([r.table,r.column]))).size} distinct columns${hiddenAuto?` · ${plural(hiddenAuto,"column")} of automatic date tables not shown`:""}`;
   document.querySelectorAll("[data-column-sort]").forEach(th=>th.setAttribute("aria-sort",
     th.dataset.columnSort===columnSort.key?(columnSort.direction===1?"ascending":"descending"):"none"));
-  const list = values=>values.length?values.map(esc).join("<br>"):"—";
+  const list = values=>values.length?values.map(v=>esc(v)+fxInText(v)).join("<br>"):"—";
   document.getElementById("column-rows").innerHTML = visibleColumns.map(r=>`<tr>
     <td><span class="badge ${r.decision==='Keep'?'b-direct':r.decision==='Review'?'b-warn':'b-info'}">${esc(r.decision)}</span><div class="mut">Used in report: ${esc(r.usedInReport)}</div></td>
-    <td><div class="mut">${esc(r.table)}</div><b>${esc(r.column)}</b></td>
+    <td><div class="mut">${esc(r.table)}</div><b>${esc(r.column)}</b>${fx(r.table,r.column)}</td>
     <td title="${esc(r.pageId)}">${esc(r.page)||esc(r.pageScope)}</td>
     <td>${esc(r.pageUsage)}${r.pageMeasures.length?`<div class="mut">${list(r.pageMeasures)}</div>`:''}</td><td><details><summary>${esc(r.reason)}</summary><div class="body">
     <b>Page evidence</b><p>${list(r.evidence)}</p><b>All dependent measures</b><p>${list(r.usedByMeasures)}</p>
@@ -445,7 +507,7 @@ function coupler(){
   // Shown once, on Overview; repeating it on every view pushed content down.
   if(activeTab!=="overview") return "";
   const mHalf = has.model
-    ? `<div class="half"><div class="tag">Semantic model</div><div class="val">${esc(M.name)}</div><div class="sub">${plural(M.tables.length,"table")} · ${plural(M.measures.length,"measure")}</div></div>`
+    ? `<div class="half"><div class="tag">Semantic model</div><div class="val">${esc(M.name)}</div><div class="sub">${plural(countedTables().length,"table")} · ${plural(M.measures.length,"measure")}</div></div>`
     : `<div class="half off"><div class="tag">Semantic model</div><div class="val">Not supplied</div><div class="sub">model-side analysis unavailable</div></div>`;
   const rHalf = has.report
     ? `<div class="half"><div class="tag">Report</div><div class="val">${esc(R.name)}</div><div class="sub">${plural(R.pages.length,"page")} · ${plural(R.pages.reduce((a,p)=>a+p.visuals.length,0),"visual")}</div></div>`
@@ -454,18 +516,43 @@ function coupler(){
 }
 
 /* ============================================================ overview */
+/* Every number on the Overview is a link, and opens the list it counts. `n` and the list come from the same
+   function, so a number cannot differ from what it opens. Counts cover the whole file, whatever page is selected. */
+const OVERVIEW_COUNTS = [
+  {id:"source-tables", label:"Source tables", when:()=>has.model, n:()=>sourceTables().length, open:()=>openTableGroup("source")},
+  {id:"calc-tables", label:"Calculated tables", when:()=>has.model&&tablesDefinedBy("Calculated table").length>0, n:()=>tablesDefinedBy("Calculated table").length, open:()=>switchTab("calc-tables")},
+  {id:"calc-groups", label:"Calculation groups", when:()=>has.model&&tablesDefinedBy("Calculation group").length>0, n:()=>tablesDefinedBy("Calculation group").length, open:()=>switchTab("calc-groups")},
+  {id:"other-tables", label:"Other tables", when:()=>has.model&&tablesInGroup(TABLE_GROUPS[3]).length>0, n:()=>tablesInGroup(TABLE_GROUPS[3]).length, open:()=>openTableGroup("other")},
+  {id:"columns", label:"Columns", when:()=>has.model, n:()=>countedColumns().length, open:()=>switchTab("columns",true,true)},
+  {id:"calc-columns", label:"Calculated columns", when:()=>has.model, n:()=>calcColumns().length, open:()=>switchTab("calc-columns",true,true)},
+  {id:"measures", label:"Measures", when:()=>has.model, n:()=>M.measures.length, open:()=>switchTab("measures",true,true)},
+  {id:"relationships", label:"Relationships", when:()=>has.model, n:()=>countedRelationships().length, open:()=>switchTab("rel-list",true,true)},
+  {id:"queries", label:"Power Query queries", when:()=>has.model, n:()=>PQ.queries.length, open:()=>switchTab("power-query",true,true)},
+  {id:"sources", label:"Data sources", when:()=>has.model, n:()=>sourceGroups().length, open:()=>switchTab("sources",true,true)},
+  {id:"roles", label:"Security roles", when:()=>has.model&&M.roles.length>0, n:()=>M.roles.length, open:()=>switchTab("security")},
+  {id:"pages", label:"Pages", when:()=>has.report, n:()=>R.pages.length, open:()=>switchTab("pages",true,true)},
+  {id:"visuals", label:"Visuals", when:()=>has.report, n:()=>R.pages.reduce((a,p)=>a+p.visuals.length,0), open:()=>switchTab("visuals",true,true)},
+  {id:"filters", label:"Filters", when:()=>has.report, n:()=>filterList(R.filterRows||[]).length, open:()=>switchTab("filters",true,true)},
+  {id:"bookmarks", label:"Bookmarks", when:()=>has.report, n:()=>(R.bookmarks||[]).length, open:()=>switchTab("bookmarks")},
+  {id:"warnings", label:"Warnings", when:()=>true, n:()=>allWarnings().length, open:()=>switchTab("warnings")},
+];
+function openCount(id){
+  const c = OVERVIEW_COUNTS.find(c=>c.id===id);
+  if(!c) return;
+  pageScope = "*";          // the numbers count the whole file
+  c.open();
+}
+// bidoc and engine versions, beside the generation time. "not recorded" when the document does not say.
+function producerLine(){
+  const p = DATA.producer || {};
+  const known = v => typeof v==="string" && v.trim() ? esc(v.trim()) : '<span class="not-recorded">not recorded</span>';
+  return `bidoc ${known(p.bidoc)} · ${esc(p.engine||"pbi-doc-gen")} ${known(p.engineVersion)}`;
+}
 function rOverview(){
-  const stats = [];
-  if(has.model){
-    stats.push(["Tables", M.tables.length], ["Columns", M.tables.reduce((a,t)=>a+t.columns.length,0)],
-      ["Measures", M.measures.length], ["Relationships", M.relationships.length]);
-  }
-  if(has.report){
-    stats.push(["Pages", R.pages.length], ["Visuals", R.pages.reduce((a,p)=>a+p.visuals.length,0)],
-      ["Filters", allFilters().length], ["Bookmarks", R.bookmarks.length]);
-  }
-  const srcTypes = has.model ? [...new Set(M.tables.flatMap(t=>t.partitions.map(p=>(p.source.label||p.source.sourceType))))] : [];
-  const unused = has.linked ? L.tableUsage.filter(u=>u.usage==="none") : [];
+  const counts = OVERVIEW_COUNTS.filter(c=>c.when());
+  const auto = has.model ? tablesDefinedBy("Automatic date table") : [];
+  const srcTypes = has.model ? [...new Set(countedTables().flatMap(t=>t.partitions.map(p=>(p.source.label||p.source.sourceType))))] : [];
+  const unused = has.linked ? L.tableUsage.filter(u=>u.usage==="none"&&!AUTO_DATE_NAMES.has(u.table)) : [];
   const warnCount = allWarnings().filter(w=>w.severity==="warning").length;
 
   let modeNote = "";
@@ -474,26 +561,28 @@ function rOverview(){
 
   return `${coupler()}
   <h1>${esc(DATA.title)}</h1>
-  <p class="sub">Generated ${esc(DATA.generated)} · mode: <b>${MODE}</b></p>
+  <p class="sub" id="generated-line">Generated ${esc(DATA.generated)} · ${producerLine()} · mode: <b>${MODE}</b></p>
   ${modeNote}
   ${DATA.livePairing ? `<div class="card" style="border-left:3px solid var(--poss)"><h3>External model pairing</h3><p>${esc(DATA.livePairing.note)}</p><p>Field resolution uses the supplied snapshot. Server identity and backup freshness have not been verified.</p></div>` : ""}
   ${DATA.extraction ? `<div class="card"><h3>Extraction coverage</h3><p>${esc(DATA.extraction.inputKind.toUpperCase())} · ${esc(DATA.extraction.backend)} ${esc(DATA.extraction.version)} · ${DATA.extraction.complete ? "Supported metadata extracted" : "Partial metadata — review required"}</p>${[...(DATA.extraction.warnings||[]),...(DATA.extraction.limitations||[])].map(w=>`<p>${esc(w)}</p>`).join("")}</div>` : ""}
-  ${M ? `<div class="card"><h3>Storage modes by table</h3><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${M.tables.map(t=>`<tr><td>${esc(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table></div>` : ""}
-  <div class="grid c4" style="margin-top:1rem">
-    ${stats.map(([l,v])=>`<div class="card stat"><div class="big">${num(v)}</div><div class="lbl">${l}</div></div>`).join("")}
+  <h2 id="contents">What this file contains</h2>
+  <p class="mut" style="margin:-.3rem 0 .6rem">Each number opens the list it counts.${auto.length?` ${plural(auto.length,"automatic date table")} that Power BI adds for date columns ${auto.length===1?"is":"are"} in none of these numbers; ${auto.length===1?"it is":"they are"} listed at the end of <button class="xl" onclick="openTableGroup('auto')">Table view</button>.`:""}</p>
+  <div class="grid c4 stat-grid">
+    ${counts.map(c=>`<button type="button" class="card stat stat-link" id="count-${c.id}" onclick="openCount('${c.id}')" aria-label="${num(c.n())} ${esc(c.label)}: open the list"><span class="big">${num(c.n())}</span><span class="lbl">${esc(c.label)}</span></button>`).join("")}
   </div>
+  ${M ? `<details class="card-details"><summary>Storage modes by table</summary><div class="body"><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${countedTables().map(t=>`<tr><td>${tblLink(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
   ${has.model?`<h2>Data sources at a glance</h2>
   <div class="card">
     ${srcTypes.length?`<div class="pill-list">${srcTypes.map(s=>`<span class="ref">${esc(s)}</span>`).join("")}</div>`:`<div class="mut">No sources detected</div>`}
-    <div class="mut" style="margin-top:.5rem">Full breakdown in <button class="xl" onclick="switchTab('sources')">Sources</button>.</div>
+    <div class="mut" style="margin-top:.5rem">Full breakdown in <button class="xl" onclick="switchTab('sources')">Data Sources</button>.</div>
   </div>`:""}
   ${has.linked?`<h2>Usage verdict</h2>
   <div class="card">
     ${["direct","via measures","possible","none"].map(u=>{
-      const n = L.tableUsage.filter(x=>x.usage===u).length;
+      const n = L.tableUsage.filter(x=>x.usage===u&&!AUTO_DATE_NAMES.has(x.table)).length;
       return `${usageBadge(u)} <b style="margin-right:1.1rem">${n}</b>`;
     }).join("")}
-    ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Usage</button>.</div>`:""}
+    ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Table usage</button>.</div>`:""}
   </div>`:""}
   ${rQualityOverview(warnCount)}`;
 }
@@ -579,7 +668,7 @@ function rUsage(){
   const rows = DATA.columns.tablePages.filter(inPageScope).map(r=>{
     const category = r.kinds.includes('Direct')?'direct':r.kinds.some(k=>['Via measures','Via calculations','Table expression'].includes(k))?'via measures':r.kinds.length?'possible':'none';
     return `<tr data-u="${category}"><td>${esc(r.report)}</td><td title="${esc(r.pageId)}">${esc(r.page)||esc(r.scope)}</td>
-      <td>${tblLink(r.table)}</td><td>${esc(r.usage)}</td><td>${r.fields.map(esc).join(', ')||'—'}
+      <td>${tblLink(r.table)}</td><td>${esc(r.usage)}</td><td>${r.fields.map(f=>esc(f)+fx(r.table,f)).join(', ')||'—'}
       ${r.measures.length?`<div class="mut">Measures: ${r.measures.map(esc).join(', ')}</div>`:''}</td>
       <td class="mut">${r.evidence.map(esc).join('<br>')||'No page reference detected'}</td></tr>`;
   }).join('');
@@ -602,54 +691,6 @@ const DECORATIVE_TYPES=new Set(['actionButton','shape','basicShape','image','gro
 const isDecorative=v=>DECORATIVE_TYPES.has(v.type)&&!(v.fields||[]).length&&!(v.filters||[]).length;
 // Page name alone, unless another page shares it (then the full label with its id).
 const pageTitle=p=>p.name&&(R?.pages||[]).filter(q=>q.name===p.name).length===1?p.name:(p.label||p.name);
-function rPages(){
-  if(!R.pages.length) return `${coupler()}<div class="empty"><b>No pages found.</b><br>Check that the .Report folder contains definition/pages/.</div>`;
-  const cards = scopedPages().map(p=>{
-    const feedRows = (p.feeds||[]).map(({table:t,fields,usage})=>{
-      return `<tr><td>${has.model?tblLink(t):`<span class="ref">${esc(t)}</span>`}<div class="mut">${esc(usage)}</div></td><td class="mut">${fields.map(f=>`<span class="ref">${esc(f)}</span>`).join(" ")}</td></tr>`;
-    }).join("");
-    const deco = p.visuals.filter(isDecorative);
-    const visRows = p.visuals.filter(v=>!isDecorative(v)).map(v=>`
-      <tr><td title="${esc(v.type)}"><b>${esc(visualName(p.id,v))}</b><div class="mut">${esc(visualTypeName(v.type))}</div></td>
-      <td class="mut">${v.fields.filter((f,i,a)=>a.findIndex(g=>g.table===f.table&&g.field===f.field&&g.kind===f.kind)===i).map(f=>{
-        const label = f.table?`${f.table}[${f.field}]`:`[${f.field}]`;
-        const kind = f.kind==="measure"?" (m)":"";
-        return `<span class="ref" title="${esc(f.context)}">${esc(label)}${kind}</span>`;
-      }).join(" ")||"—"}</td>
-      <td class="mut">${v.filters.length? v.filters.map(f=>esc(f.field||"?")).join(", "):"—"}</td></tr>`).join("");
-    return `<details id="pg-${pageKey(p.id)}">
-      <summary title="${esc(p.id)}">${esc(pageTitle(p))} ${p.hidden?'<span class="badge b-hidden">hidden</span>':""} ${p.isActive?'<span class="badge b-other">landing page</span>':""}
-        <span class="mut" style="font-weight:400;margin-left:auto">${p.visuals.length-p.visuals.filter(isDecorative).length} data visuals${p.visuals.some(isDecorative)?` · ${p.visuals.filter(isDecorative).length} decorative`:''}</span></summary>
-      <div class="body">
-        <h2 style="margin-top: .6rem">What feeds this page</h2>
-        ${feedRows?`<table class="t"><thead><tr><th>Table</th><th>Fields used</th></tr></thead><tbody>${feedRows}</tbody></table>`:`<p class="mut">No field bindings detected on this page.</p>`}
-        <h2>Visuals</h2>
-        <table class="t"><thead><tr><th>Visual</th><th>Field bindings</th><th>Visual filters</th></tr></thead><tbody>${visRows||'<tr><td colspan="3" class="mut">No data visuals on this page.</td></tr>'}</tbody></table>
-        ${deco.length?`<details><summary>${deco.length} decorative visual${deco.length===1?'':'s'} without data <span class="mut" style="font-weight:400">${esc(Object.entries(deco.reduce((a,v)=>(a[visualTypeName(v.type)]=(a[visualTypeName(v.type)]||0)+1,a),{})).map(([k,n])=>n>1?k+' ×'+n:k).join(', '))}</span></summary><div class="body"><p class="mut">${deco.map(v=>esc(visualName(p.id,v))).join(' · ')}</p></div></details>`:''}
-        ${p.filters.filter(f=>f.level==="page").length?`<h2>Page-level filters</h2><div class="pill-list">${p.filters.filter(f=>f.level==="page").map(f=>`<span class="ref">${esc(f.table||"?")}[${esc(f.field||"?")}] — ${esc(f.filterType)}${f.raw?`: ${esc(f.raw)}`:""}</span>`).join("")}</div>`:""}
-      </div>
-    </details>`;
-  }).join("");
-  return `${coupler()}<h1>Report pages</h1>
-  <p class="sub">Every page with its visuals, their field bindings, and a rolled-up "what feeds this page" table.${has.model?"":" Field references are unresolved (report-only mode): they name what the report expects, not what a model confirms."}</p>${cards}`;
-}
-
-/* ============================================================ filters */
-function rFilters(){
-  const fs = allFilters();
-  if(!fs.length) return `${coupler()}<h1>Filters</h1><div class="empty"><b>No filters found</b> at report, page, or visual level.</div>`;
-  const row = f=>`<tr>
-    <td><span class="badge b-other">${esc(f.level)}</span></td>
-    <td class="mut">${esc(f.pageLabel)}<div>${esc(f.target)}</div></td>
-    <td>${f.table&&has.model?tblLink(f.table):`<span class="ref">${esc(f.table||"?")}</span>`}<span class="ref">[${esc(f.field||"?")}]</span></td>
-    <td class="mut">${esc(f.filterType)}</td>
-    <td class="mut">${f.raw?esc(f.raw):"—"}</td></tr>`;
-  return `${coupler()}<h1>Filters</h1>
-  <p class="sub">Every filter the report declares, at all three scopes. Report-level filters apply everywhere; page filters apply to one page; visual filters to a single visual.</p>
-  <table class="t"><thead><tr><th>Scope</th><th>Applies to</th><th>Field</th><th>Type</th><th>Condition hint</th></tr></thead>
-  <tbody>${fs.map(row).join("")}</tbody></table>`;
-}
-
 /* ============================================================ manifest */
 function rManifest(){
   const man = reportManifest();
@@ -664,7 +705,7 @@ function rManifest(){
   <input id="manifest-search" class="search" placeholder="Search fields…" oninput="fMan(this.value)">
   <table class="t"><thead><tr><th>Field</th><th>Referenced as</th>${has.linked?"<th>Resolved</th>":""}<th>Used in</th></tr></thead>
   <tbody>${man.map(e=>`<tr data-s="${esc((e.table||"")+" "+e.field).toLowerCase()}">
-    <td><span class="ref">${esc(e.table||"?")}[${esc(e.field)}]</span></td>
+    <td><span class="ref">${esc(e.table||"?")}[${esc(e.field)}]</span>${fx(e.table,e.field)}</td>
     <td class="mut">${esc(e.kind)}</td>
     ${has.linked?`<td>${res(e)}</td>`:""}
     <td class="mut">${e.usedIn.slice(0,4).map(esc).join("<br>")}${e.usedIn.length>4?`<br>+${e.usedIn.length-4} more`:""}</td>
@@ -685,72 +726,163 @@ function sourceRows(q='', page='*'){
   q=q.trim().toLowerCase();
   return DATA.tableSources.filter(inPageScope).filter(r=>(!q||Object.values(r).join(' ').toLowerCase().includes(q))&&(page==='*'||r.pageId===page));
 }
-function rTableSources(){
-  return `<h2>Report → page → table → source</h2>
+/* Data Sources › Sources by table: one row per report page and table partition, with what the file holds for it. */
+let visibleTableSources = [];
+function rTableSourcesTab(){
+  return `<h1>Sources by table</h1>
     <p class="sub">Each row identifies usage on one report page, for one table partition. Blank pages mean no resolved page usage, not usage on every page.</p>
-    <button class="chip" style="margin:.7rem 0" onclick="downloadSourceCsv()">Export source summary CSV</button>
+    <div class="filter-row"><input id="table-source-search" class="search" style="margin:0" placeholder="Search table, server, object or query…" aria-label="Search sources by table" oninput="filterTableSources()">
+    <button class="chip" onclick="downloadSourceCsv()">Export source summary CSV</button></div>
+    <p id="table-source-count" class="mut" aria-live="polite"></p>
     <div class="column-scroll" style="margin-bottom:1.2rem"><table class="t" id="table-source-summary">
     <thead><tr><th>Report</th><th>Report page</th><th>Model table / partition</th><th>Page usage</th><th>Server</th><th>Database</th><th>Source type</th><th>Source object / query</th></tr></thead>
-    <tbody>${DATA.tableSources.map((r,i)=>inPageScope(r)?`<tr data-source-index="${i}">
-      <td>${esc(r.report)}</td><td title="${esc(r.pageId)}">${esc(r.page)||esc(r.pageScope)}</td><td><b>${esc(r.table)}</b><div class="mut">${esc(r.partition)||'No partition'}</div></td>
+    <tbody id="table-source-rows"></tbody></table></div>`;
+}
+// What the file holds for one partition's source: native SQL, an M source expression, or neither.
+function tableSourceQuery(r){
+  const table = M.tables.find(t=>t.name===r.table), kind = table ? definedBy(table).kind : "";
+  const query = PQ.queries.find(q=>q.origin==="table"&&q.table===r.table&&(q.partitions||[]).includes(r.partition))
+    || PQ.queries.find(q=>q.origin==="table"&&q.table===r.table);
+  if(r.queryKind==="DAX"||kind==="Calculated table"||kind==="Automatic date table")
+    return kind==="Calculated table" ? `<button class="xl" onclick="${action('goCalc','calc-tables',calcTableAnchor(r.table))}">DAX expression</button>` : '<span class="mut">Defined by DAX, not read from a source</span>';
+  // The source tracer follows parameters and referenced queries, so a statement it resolved is in the file.
+  const traced = (DATA.sourceObjects||[]).find(o=>o.table===r.table&&o.partition===r.partition&&o.sql);
+  const sql = r.queryKind==="SQL" ? r.query : traced ? traced.sql : "";
+  const dynamic = !sql && r.objectType==="Query (review expression)";
+  return queryControl({sql, unavailable:dynamic, query,
+    note:dynamic?"The statement is built when the query runs, so its text is not in the file.":""});
+}
+function filterTableSources(){
+  const body = document.getElementById("table-source-rows"); if(!body) return;
+  visibleTableSources = sourceRows(document.getElementById("table-source-search")?.value||"");
+  document.getElementById("table-source-count").textContent = `${visibleTableSources.length} table/page rows`;
+  body.innerHTML = visibleTableSources.map(r=>`<tr>
+      <td>${esc(r.report)}</td><td title="${esc(r.pageId)}">${esc(r.page)||esc(r.pageScope)}</td><td><b>${tblLink(r.table)}</b><div class="mut">${esc(r.partition)||'No partition'}</div></td>
       <td>${esc(r.usage)}${r.pageMeasures.length?`<div class="mut">${r.pageMeasures.map(esc).join(', ')}</div>`:''}</td><td>${esc(r.server)||'Unknown / not applicable'}</td><td>${esc(r.database)||'Unknown / not applicable'}</td>
       <td>${esc(r.objectType)}<div class="mut">${esc(r.sourceType)}</div></td>
       <td>${r.object?`<span class="ref">${esc(r.object)}</span>`:''}
-      ${r.query?`<details><summary>Show ${esc(r.queryKind)} query</summary><div class="body"><pre class="code">${esc(r.query)}</pre></div></details>`:''}
-      ${!r.object&&!r.query?'No source object or expression found':''}
+      ${tableSourceQuery(r)}
       ${r.notes.length?`<p class="mut">${r.notes.map(esc).join('<br>')}</p>`:''}</td>
-    </tr>`:'').join('')}</tbody></table></div>`;
+    </tr>`).join('')||'<tr><td colspan="8">No rows match this selection.</td></tr>';
+}
+// What defines the table, with a way to the definition itself.
+function rDefinedBy(t){
+  const d=definedBy(t), queries=PQ.queries.filter(q=>q.origin==='table'&&q.table===t.name);
+  const more={
+    'Power Query': queries.length?`${queries.length===1?'Query':'Queries'}: ${queries.map(q=>queryLink(q.objectId)).join(', ')} in Power Query.`:'Its query is listed in Power Query.',
+    'SQL query': 'Each partition is a SQL statement sent to a provider data source; the statements are below.',
+    'Entity': `Each partition names an entity in another store${t.partitions.some(p=>p.source?.expressionSource)?`, reached through ${[...new Set(t.partitions.map(p=>p.source?.expressionSource).filter(Boolean))].map(esc).join(', ')}`:''}.`,
+    'Calculated table': `Its rows come from a DAX expression: <button class="xl" onclick="${action('goCalc','calc-tables',calcTableAnchor(t.name))}">open it in Calculated Tables</button>.`,
+    'Automatic date table': 'Power BI created it for a date column (Auto date/time); the file marks it as such.',
+    'Calculation group': `It holds calculation items: <button class="xl" onclick="${action('goCalc','calc-groups',calcGroupAnchor(t.name))}">open them in Calculation Groups</button>.`,
+    'Other': d.raw==='not recorded'?'This document was generated before the definition kind was recorded.':`The file gives the partition type as: ${esc(d.raw||'unknown')}.`,
+  }[d.kind]||'';
+  return `<p class="defined-line" style="margin:.6rem 0 0"><b>Defined by ${esc(d.kind)}.</b> ${more}</p>`;
 }
 function downloadSourceCsv(){
-  const rows=sourceRows(document.getElementById('table-search').value);
-  exportCsvFile(inventoryCsv(rows,sourceCsvFields),'report-table-sources.csv');
+  exportCsvFile(inventoryCsv(sourceRows(document.getElementById('table-source-search')?.value||''),sourceCsvFields),'report-table-sources.csv');
+}
+// Table view lists tables by how they are defined; automatic date tables come last, closed.
+function openTableGroup(id){
+  pageScope = '*';
+  switchTab('tables', true, true);
+  nextFrame(()=>{ const el=document.getElementById('tbl-group-'+id); if(!el) return; if(el.tagName==='DETAILS') el.open=true;
+    el.scrollIntoView({block:'start',behavior:'instant'}); markObject(el); focusObject(el); });
 }
 function rTables(){
-  const cards = scopedTables().map(t=>{
+  const cards = new Map(scopedTables().map(t=>{
     const u = usageOf(t.name);
     const srcs = [...new Set(t.partitions.map(p=>{
       const s=p.source; return [s.sourceType,s.server,s.database,s.schema&&s.object?`${s.schema}.${s.object}`:s.object].filter(Boolean).join(" · ");
     }))];
-    const colRow = c=>`<tr>
-      <td><span class="ref">${esc(c.name)}</span>${c.isCalculated?' <span class="badge b-other">calc</span>':""}${c.isHidden?' <span class="badge b-hidden">hidden</span>':""}</td>
+    const colRow = c=>`<tr id="col-${slug(t.name)}-${slug(c.name)}" data-column="${esc(c.name)}" tabindex="-1">
+      <td><span class="ref">${esc(c.name)}</span>${c.isCalculated?` <button class="fx-link" title="Calculated column: open its DAX expression" aria-label="Calculated column: open its DAX expression" onclick="${action('goCalc','calc-columns',calcColumnAnchor(t.name,c.name))}">${FX}</button>`:""}${c.columnType==="calculatedTableColumn"?' <span class="badge b-other" title="Produced by the table\'s DAX expression; it has no expression of its own">from the table expression</span>':""}${c.isHidden?' <span class="badge b-hidden">hidden</span>':""}</td>
       <td class="mut">${esc(c.dataType)}</td>
       <td class="mut">${has.linked ? esc(c.reportUsage) : (c.internallyReferenced ? "internally referenced" : "no internal references")}</td>
-      <td class="mut">${c.dependsOn.length?c.dependsOn.map(d=>`<span class="ref">${esc(d)}</span>`).join(" "):"—"}</td>
+      <td class="mut">${c.dependsOn.length?c.dependsOn.map(d=>`<span class="ref">${esc(d)}</span>${fxOfRef(d)}`).join(" "):"—"}</td>
       <td class="mut">${(DATA.columns?.rows||[]).filter(inPageScope).filter(r=>r.table===t.name&&r.column===c.name).map(r=>`${esc(pageLabel(r))}: ${esc(r.pageUsage)}`).join('<br>')||'No page reference'}</td></tr>`;
-    return `<details id="tbl-${slug(t.name)}">
-      <summary>${esc(t.name)} ${typeBadge(t.tableType)} ${t.isHidden?'<span class="badge b-hidden">hidden</span>':""} ${u?usageBadge(u):""}
-        <span class="mut" style="font-weight:400;margin-left:auto">${t.columns.length} cols · ${plural(t.measures.length,"measure")}</span></summary>
+    return [t.name, `<details id="tbl-${slug(t.name)}" data-table="${esc(t.name)}">
+      <summary>${esc(t.name)} ${typeBadge(t.tableType)} <span class="defined" title="How this table is defined"><span class="defined-by">defined by</span> ${esc(definedLabel(t))}</span> ${t.isHidden?'<span class="badge b-hidden">hidden</span>':""} ${u?usageBadge(u):""}
+        <span class="tbl-match badge b-info" hidden></span>
+        <span class="mut" style="font-weight:400;margin-left:auto">${plural(t.columns.length,"col")} · ${plural(t.measures.length,"measure")}</span></summary>
       <div class="body">
         ${t.description?`<p class="mut" style="margin:.5rem 0">${esc(t.description)}</p>`:""}
+        ${rDefinedBy(t)}
         <h2 style="margin-top:.6rem">Source</h2>
         <div class="pill-list">${srcs.map(s=>`<span class="ref">${esc(s)}</span>`).join("")||'<span class="mut">—</span>'}</div>
         ${t.partitions.some(p=>p.source.nativeQuery)?`<p class="mut" style="margin-top:.3rem">⚠ contains a native SQL query — transformations happen upstream of Power Query.</p>`:""}
         <h2>Columns</h2>
         <table class="t"><thead><tr><th>Column</th><th>Type</th><th>Usage (all pages)</th><th>Depends on</th><th>Usage by report page</th></tr></thead><tbody>${t.columns.map(colRow).join("")}</tbody></table>
         ${t.measures.length?`<h2>Measures on this table</h2><div class="pill-list">${t.measures.map(m=>`<span class="ref">${meaLink(m.name)}</span>`).join("")}</div>`:""}
-        ${t.hierarchies.length?`<h2>Hierarchies</h2><div class="mut">${t.hierarchies.map(h=>`<b>${esc(h.name)}</b>: ${h.levels.map(esc).join(" → ")}`).join("<br>")}</div>`:""}
+        ${t.hierarchies.length?`<h2>Hierarchies</h2><div class="mut">${t.hierarchies.map(h=>`<b>${esc(h.name)}</b>: ${h.levels.map(l=>esc(l)+fx(t.name,l)).join(" → ")}`).join("<br>")}</div>`:""}
         <h2>Partition M / expression</h2>
         ${t.partitions.map(p=>`<div class="mut" style="margin:.2rem 0"><b>${esc(p.name)}</b> · ${esc(p.mode)} · ${esc(p.type)}</div><pre class="code">${hlDAX(p.expression)}</pre>`).join("")}
       </div>
-    </details>`;
-  }).join("");
+    </details>`];
+  }));
+  const card = t => cards.get(t.name) || '';
+  const shown = new Set(scopedTables().map(t=>t.name));
+  const groups = TABLE_GROUPS.map(g=>({...g, tables: tablesInGroup(g).filter(t=>shown.has(t.name)), total: tablesInGroup(g).length})).filter(g=>g.total);
+  const auto = tablesDefinedBy('Automatic date table');
+  const autoShown = auto.filter(t=>shown.has(t.name));
   return `${coupler()}<h1>Tables</h1>
-  <input id="table-search" class="search" placeholder="Search tables, reports or sources…" aria-label="Search tables, reports or sources" oninput="fTbl(this.value)">
-  ${rTableSources()}
-  <h2>Table details</h2>
-  <div id="tbl-list">${cards}</div>`;
+  <p class="sub">${plural(countedTables().length,"table")}, listed by how each is defined. Its role in the model (fact, dimension …) is shown beside it.</p>
+  <input id="table-search" class="search" placeholder="Search tables, columns or sources…" aria-label="Search tables, columns or sources" oninput="fTbl(this.value)">
+  <p id="table-search-status" class="mut" role="status" aria-live="polite"></p>
+  <div id="tbl-results"><div id="tbl-list">
+  ${groups.map(g=>`<section class="tbl-group" id="tbl-group-${g.id}" tabindex="-1" data-group="${g.id}"><h2>${esc(g.label)} <span class="n">${g.total}</span></h2>
+    <p class="mut tbl-group-note">${esc(g.note)}${g.tables.length<g.total?` ${g.tables.length} of ${g.total} are used on the selected report page.`:''}</p>
+    ${g.tables.map(card).join("")}</section>`).join("")}
+  ${auto.length?`<details class="tbl-group tbl-auto" id="tbl-group-auto" data-group="auto"><summary>Automatic date tables <span class="n">${auto.length}</span>
+      <span class="mut" style="font-weight:400">added by Power BI for date columns (Auto date/time); in no headline count</span></summary>
+    <div class="body"><p class="mut tbl-group-note">A table is listed here only when the file marks it as an automatic date table, never because of its name.</p>
+    ${autoShown.map(card).join("")}</div></details>`:''}
+  </div></div>`;
+}
+// What the Tables search box shows for some text: a table is kept when its name, one of its columns or one
+// of its source fields contains the text, and the columns that matched are named. No DOM, so it can be
+// checked without a browser.
+function tableSearch(q){
+  q=String(q||'').trim().toLowerCase();
+  const direct=sourceRows(q), directRows=new Set(direct), bySource=new Set(direct.map(r=>r.table)), tables=[];
+  for(const t of scopedTables()){
+    const columns=q?t.columns.filter(c=>c.name.toLowerCase().includes(q)).map(c=>c.name):[];
+    const named=!!q&&t.name.toLowerCase().includes(q);
+    if(!q||named||columns.length||bySource.has(t.name)) tables.push({name:t.name,columns,named});
+  }
+  // A table found by its name or a column brings its source rows with it.
+  const widened=new Set(tables.filter(t=>t.named||t.columns.length).map(t=>t.name));
+  const rows=q?sourceRows('').filter(r=>directRows.has(r)||widened.has(r.table)):direct;
+  return {query:q,tables,rows};
 }
 function fTbl(q){
-  q=q.toLowerCase();
-  const visibleRows = new Set(sourceRows(q));
-  const matches = new Set([...visibleRows].map(r=>r.table));
-  document.querySelectorAll('[data-source-index]').forEach(tr=>{
-    const row=DATA.tableSources[Number(tr.dataset.sourceIndex)];
-    tr.style.display=visibleRows.has(row)?'':'none';
+  const found=tableSearch(q), shown=new Map(found.tables.map(t=>[t.name,t]));
+  document.querySelectorAll("#tbl-list details[data-table]").forEach(d=>{
+    const t=shown.get(d.dataset.table), note=d.querySelector('.tbl-match');
+    d.style.display=t?'':'none';
+    if(note){
+      note.hidden=!(t&&t.columns.length);
+      note.textContent=note.hidden?'':`Matching ${t.columns.length===1?'column':'columns'}: ${t.columns.join(', ')}`;
+    }
+    d.querySelectorAll('tr[data-column]').forEach(tr=>tr.classList.toggle('col-match',!!t&&t.columns.includes(tr.dataset.column)));
   });
-  document.querySelectorAll("#tbl-list > details").forEach(d=>{
-    d.style.display = [...matches].some(name=>d.id==='tbl-'+slug(name))?'':'none';
+  // A group with nothing left to show goes with its tables; the automatic date tables open when one of them matches.
+  document.querySelectorAll('#tbl-list .tbl-group').forEach(g=>{
+    const any=[...g.querySelectorAll('details[data-table]')].some(d=>d.style.display!=='none');
+    g.style.display=!found.query||any?'':'none';
+    // Opened to show a match; closed again when the search is cleared, as it was.
+    if(g.id==='tbl-group-auto'){
+      if(found.query&&any&&!g.open){ g.open=true; g.dataset.openedBySearch='1'; }
+      else if(!found.query&&g.dataset.openedBySearch){ g.open=false; delete g.dataset.openedBySearch; }
+    }
   });
+  const none=!!found.query&&!found.tables.length;
+  const status=document.getElementById('table-search-status'), results=document.getElementById('tbl-results');
+  if(status){
+    status.textContent=!found.query?'':none?'No matching tables or columns.':`${plural(found.tables.length,"table")} shown`;
+    status.className=none?'empty':'mut';
+  }
+  if(results) results.hidden=none;
 }
 
 /* ============================================================ measures */
@@ -770,9 +902,9 @@ function rMeasures(){
         <table class="t" style="margin-top:.6rem"><tbody>
           <tr><td class="mut" style="width:170px">Home table</td><td>${tblLink(m.table)}</td></tr>
           <tr><td class="mut">Depends on measures</td><td>${m.dependsOnMeasures.map(meaLink).join(", ")||"—"}</td></tr>
-          <tr><td class="mut">Depends on columns</td><td>${m.dependsOnColumns.map(c=>`<span class="ref">${esc(c)}</span>`).join(" ")||"—"}</td></tr>
+          <tr><td class="mut">Depends on columns</td><td>${m.dependsOnColumns.map(c=>`<span class="ref">${esc(c)}</span>${fxOfRef(c)}`).join(" ")||"—"}</td></tr>
           <tr><td class="mut">All tables touched</td><td>${m.allTables.map(tblLink).join(", ")||"—"}</td></tr>
-          ${has.report?`<tr><td class="mut">Shown in visuals</td><td>${measureVisuals(m)}</td></tr>`:""}
+          <tr><td class="mut">Used by</td><td class="used-by">${measureUsedBy(m)}</td></tr>
           ${m.formatString?`<tr><td class="mut">Format</td><td><span class="ref">${esc(m.formatString)}</span></td></tr>`:""}
         </tbody></table>
       </div>
@@ -786,6 +918,27 @@ function rMeasures(){
   return `${coupler()}<h1>Measures</h1>
   <input id="measure-search" class="search" placeholder="Search names, folders or DAX…" aria-label="Search measures" oninput="fMea(this.value)">
   <div id="mea-list">${grouped}</div>`;
+}
+// A measure's "used by" line: the pages and visuals that use it, named briefly. The dependency and page-usage
+// analysis itself has one home, the Impact inspector in Model view, and the line links there.
+const USED_BY_SHOWN = 4;
+function openImpactOf(id){ impactNode = id; impactQuery = ''; switchTab('impact'); }
+function measureUsedBy(m){
+  const id = nodeId('m', m.table, m.name);
+  const analysis = `<button class="xl used-by-analysis" onclick="${action('openImpactOf',id)}">Dependency and page-usage analysis</button>`;
+  if(!has.report) return `<span class="mut">No report was supplied, so pages and visuals are unknown.</span> ${analysis}`;
+  const seen = new Map();
+  for(const c of impactConsumers(id).filter(c=>c.visualId)){
+    const key = c.pageId+'|'+c.visualId, direct = c.path.length<=1;
+    if(!seen.has(key)) seen.set(key,{c,direct}); else if(direct) seen.get(key).direct = true;
+  }
+  const visuals = [...seen.values()];
+  if(!visuals.length) return `<span class="mut">${pageScope==='*'?'No visual in this report uses it.':'No visual on the selected page uses it.'}</span> ${analysis}`;
+  const pages = new Set(visuals.map(v=>v.c.pageId)).size;
+  const name = ({c}) => { const page = R.pages.find(p=>p.id===c.pageId), v = page?.visuals.find(v=>v.id===c.visualId);
+    return `<button class="xl" onclick="${action('inspectVisual',c.pageId,c.visualId)}">${esc(page?.name||c.pageId)} · ${esc(v?visualName(c.pageId,v):c.visualId)}</button>`; };
+  const more = visuals.length-USED_BY_SHOWN;
+  return `${plural(visuals.length,"visual")} on ${plural(pages,"page")}: ${visuals.slice(0,USED_BY_SHOWN).map(name).join(', ')}${more>0?` and ${more} more`:''}. ${analysis}`;
 }
 // Visuals that show a measure directly or through measures built on it (D).
 function measureVisuals(m){
@@ -810,105 +963,64 @@ function fMea(q){
   });
 }
 
-/* ============================================================ relationships / ERD */
-let erdZoom=1, erdFocus='';
-function relationshipRows(){
- const relationships=M.relationships.filter(r=>!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus);
- return relationships.map(r=>`<tr>
-    <td>${tblLink(r.fromTable)} <span class="ref">[${esc(r.fromColumn)}]</span></td>
-    <td class="mut">${esc(r.fromCardinality)} → ${esc(r.toCardinality)}</td>
-    <td>${tblLink(r.toTable)} <span class="ref">[${esc(r.toColumn)}]</span></td>
-    <td>${r.isActive?'<span class="badge b-direct">active</span>':'<span class="badge b-hidden">inactive</span>'}</td>
-    <td>${r.crossFilteringBehavior==="bothDirections"?'<span class="badge b-warn">both</span>':(!r.crossFilteringBehavior||r.crossFilteringBehavior==="oneDirection"||r.crossFilteringBehavior==="singleDirection")?"single":esc(r.crossFilteringBehavior)}</td></tr>`).join("")||'<tr><td colspan="5">No relationships for this selection.</td></tr>';
-}
-function rRels(){
- return `${coupler()}<h1>Relationships</h1>
- <p class="sub" style="margin-bottom:16px">Select a table to follow its connections. Zoom in for detail; scroll the canvas to explore.</p>
- <div class="card erd-card">
- <div class="erd-toolbar"><label>Focus table <select id="erd-focus" onchange="focusERD(this.value)"><option value="">All tables</option>${M.tables.map(t=>`<option value="${esc(t.name)}"${erdFocus===t.name?' selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
- <div class="erd-zoom" role="group" aria-label="Diagram zoom"><button type="button" aria-label="Zoom out" onclick="zoomERD(-0.25)">−</button><output id="erd-zoom-label" aria-live="polite">${Math.round(erdZoom*100)}%</output><button type="button" aria-label="Zoom in" onclick="zoomERD(0.25)">+</button><button type="button" onclick="resetERD()">Reset view</button></div></div>
- <div id="erd-viewport" class="erd-viewport" tabindex="0" role="region" aria-label="Relationship diagram; scroll to explore"><div id="erd"></div></div>
- <div id="erd-selection" class="erd-selection" role="status"></div>
- <div class="legend erd-legend"><span><i class="erd-line"></i>Active</span><span><i class="erd-line inactive"></i>Inactive</span><span><i class="erd-line both"></i>Filters both ways</span><span>1 = one · * = many</span></div></div>
- <div class="column-scroll"><table class="t"><thead><tr><th>From table / column</th><th>Cardinality</th><th>To table / column</th><th>Status</th><th>Cross-filter</th></tr></thead><tbody id="erd-rows">${relationshipRows()}</tbody></table></div>`;
-}
-function focusERD(name){erdFocus=name===erdFocus?'':name;drawERD();}
-function zoomERD(delta){erdZoom=Math.max(.5,Math.min(2.5,erdZoom+delta));drawERD();}
-function resetERD(){erdZoom=1;erdFocus='';drawERD();const viewport=document.getElementById('erd-viewport');viewport.scrollLeft=0;viewport.scrollTop=0;}
-function drawERD(){
- const host=document.getElementById('erd');if(!host)return;
- const inRel=new Set(M.relationships.flatMap(r=>[r.fromTable,r.toTable]));
- const facts=M.tables.filter(t=>t.tableType==='fact'&&inRel.has(t.name)).map(t=>t.name);
- const dims=M.tables.filter(t=>['dimension','date dimension'].includes(t.tableType)&&inRel.has(t.name)).map(t=>t.name);
- const other=M.tables.filter(t=>inRel.has(t.name)&&!facts.includes(t.name)&&!dims.includes(t.name)).map(t=>t.name);
- const cols=[dims,facts,other].filter(c=>c.length);
- const rowH=100,boxW=260,boxH=64,pad=56;
- const viewport=document.getElementById('erd-viewport');
- const baseW=Math.max(cols.length*boxW+Math.max(0,cols.length-1)*180+pad*2,(viewport.clientWidth||0)-2);
- const H=Math.max(1,...cols.map(c=>c.length))*rowH+pad*2;
- const colW=cols.length>1?(baseW-pad*2-boxW)/(cols.length-1):0;
- const pos=new Map();cols.forEach((col,ci)=>col.forEach((name,i)=>pos.set(name,{x:pad+ci*colW,y:pad+i*rowH+(H-pad*2-col.length*rowH)/2})));
- const related=new Set([erdFocus]);for(const r of M.relationships)if(r.fromTable===erdFocus||r.toTable===erdFocus){related.add(r.fromTable);related.add(r.toTable);}
- let svg=`<svg width="${baseW*erdZoom}" height="${H*erdZoom}" viewBox="0 0 ${baseW} ${H}" role="group" aria-label="Model table relationships" font-size="16">`;
- const cardinality=value=>String(value).toLowerCase()==='many'?'*':String(value).toLowerCase()==='one'?'1':'?';
- for(const [i,r] of M.relationships.entries()){
-  const a=pos.get(r.fromTable),b=pos.get(r.toTable);if(!a||!b)continue;
-  const same=a.x===b.x,right=a.x<b.x;
-  const x1=same?a.x+boxW:a.x+(right?boxW:0),x2=same?b.x+boxW:b.x+(right?0:boxW);
-  const siblings=M.relationships.filter(e=>e.fromTable===r.fromTable&&e.toTable===r.toTable);
-  const offset=(siblings.indexOf(r)-(siblings.length-1)/2)*12;
-  const y1=a.y+boxH/2+offset,y2=b.y+boxH/2+offset;
-  const selected=!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus;
-  const bend=same?Math.min(baseW-8,x1+30+(i%3)*8):(x1+x2)/2;
-  const path=r.fromTable===r.toTable?`M${x1},${y1-14} C${bend},${y1-40} ${bend},${y1+40} ${x2},${y2+14}`:`M${x1},${y1} C${bend},${y1} ${bend},${y2} ${x2},${y2}`;
-  const stroke=r.crossFilteringBehavior==='bothDirections'?'var(--warn)':'#526b87';
-  svg+=`<g opacity="${selected?1:.35}"><title>${esc(r.fromTable)}[${esc(r.fromColumn)}] → ${esc(r.toTable)}[${esc(r.toColumn)}] · ${r.isActive?'active':'inactive'}</title><path d="${path}" fill="none" stroke="${stroke}" stroke-width="${erdFocus&&selected?3:2}" ${r.isActive?'':'stroke-dasharray="8 6"'}/>`;
-  if(!same)svg+=`<text x="${x1+(right?12:-12)}" y="${y1-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.fromCardinality)}</text><text x="${x2+(right?-12:12)}" y="${y2-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.toCardinality)}</text>`;
-  svg+='</g>';
- }
- const colors={fact:['#eef0ff','#5261a1'],dimension:['#e8f5f1','#277965'],'date dimension':['#f2ebfc','#8054ae']};
- for(const [name,p] of pos){
-  const t=M.tables.find(t=>t.name===name),[fill,stroke]=colors[t.tableType]||['#edf2f7','#61748a'];
-  const selected=name===erdFocus,label=name.length>27?name.slice(0,26)+'…':name;
-  const activate=action('focusERD',name);
-  svg+=`<g class="erd-node" tabindex="0" role="button" aria-label="Focus ${esc(name)}" aria-pressed="${selected}" onclick="${activate}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${activate}}" opacity="1"><title>${esc(name)} · ${esc(t.tableType)}</title><rect x="${p.x}" y="${p.y}" width="${boxW}" height="${boxH}" rx="10" fill="${fill}" stroke="${selected?'#172434':stroke}" stroke-width="${selected?3:2}"/><text x="${p.x+16}" y="${p.y+27}" fill="#1c2430" font-weight="650">${esc(label)}</text><text x="${p.x+16}" y="${p.y+48}" fill="#4f5b67" font-size="12">${esc(t.tableType||'Table')}</text></g>`;
- }
- svg+='</svg>';
- host.innerHTML=cols.length?svg:'<div class="empty">No relationships in this model.</div>';
- const orphans=M.tables.filter(t=>!inRel.has(t.name));
- document.getElementById('erd-selection').innerHTML=(erdFocus?`Showing connections for <strong>${esc(erdFocus)}</strong> · ${tblLink(erdFocus)} <span class="mut">(table details)</span>`:'All connections shown. Select a table to highlight its relationships.')+(orphans.length?`<p class="mut">No relationships: ${orphans.map(t=>tblLink(t.name)).join(', ')}</p>`:'');
- document.getElementById('erd-focus').value=erdFocus;
- document.getElementById('erd-zoom-label').textContent=Math.round(erdZoom*100)+'%';
- document.getElementById('erd-rows').innerHTML=relationshipRows();
-}
+/* relationships: relationships.js (the Model view surface and the Relationships list) */
 
 /* ============================================================ sources */
 function rLiveSource(){
   const S=DATA.liveSource; if(!S) return "";
   const P=DATA.livePairing;
-  return `<h2>Live connection</h2><div class="card" style="border-left:3px solid var(--poss)">
+  return `<h2>Live connection</h2><div class="card" id="src-live" tabindex="-1" style="border-left:3px solid var(--poss)">
     <b>${esc(S.sourceType)}</b>${S.server?` · ${esc(S.server)}`:""}${S.database?` · ${esc(S.database)}`:""}
     <div class="mut" style="margin-top:.4rem">This report reads its data from a remote model (DirectQuery / live connection) rather than embedding one. ${P?esc(P.note):"No model was supplied, so tables, measures and upstream sources are not documented."}</div>
     ${S.location?`<div class="mut">Dataset/model id: ${esc(S.location)}</div>`:""}</div>`;
 }
 function rSources(){
   if(!M) return `${coupler()}<h1>Data sources</h1>${rLiveSource()}`;
-  // Source list first, then the page-level inventories. Primary sources has its own tab.
   return `${coupler()}<h1>Data sources</h1>${rLiveSource()}
-    <p class="sub">One row per external source, traced through supported M and embedded SQL. Select a source for its connection, queries, model tables, pages and code. No database connection is made.</p>
+    <p class="sub">One row per external source, traced through supported M and embedded SQL. Select a source for its connection, authentication type, queries, model tables and pages. No database connection is made.</p>
     ${rSourceList()}
-    <h2>Detailed inventories</h2>
-    <p class="mut">External inputs per report page, with CSV export: <button class="xl" onclick="switchTab('primary-sources')">Primary sources</button>.</p>
-    <details id="src-objects"><summary>Source objects by report page, with code</summary><div class="body">${rSourceObjects()}</div></details>
-    <details id="src-queries"><summary>All M queries</summary><div class="body"><button class="chip" onclick="downloadQueryCsv()">Export all M queries CSV</button>
-    <p class="mut">${(DATA.sourceQueries||[]).length} M queries and shared expressions across the complete model. This three-column export is independent of page selection.</p></div></details>`;
+    <p class="mut" style="margin-top:1rem">The same sources by table partition, by report page, and object by object with their extraction evidence:
+      <button class="xl" onclick="switchTab('table-sources')">Sources by table</button>,
+      <button class="xl" onclick="switchTab('primary-sources')">Primary sources</button>,
+      <button class="xl" onclick="switchTab('source-objects')">Source objects</button>.
+      Scripts are in <button class="xl" onclick="switchTab('power-query')">Power Query</button> (${plural((DATA.sourceQueries||[]).length,"M query","M queries")}).</p>`;
+}
+/* The query control of Data Sources. It says which of three things the file holds for a source, in these words:
+     Native SQL from the file   the SQL statement is written in the file; it opens here
+     Source expression (M)      there is no native SQL; the M expression that names the source opens here
+     Native query unavailable   a native query is run, but its text is not in the file (it is built at run time)
+   and links to the whole script in the Power Query view ("Full M script"). */
+function queryControl({sql, unavailable, query, note}){
+  const withheldMark = "[query code withheld]";
+  const link = query ? ` <button class="xl full-m" onclick="${action('goObject',query.objectId)}">Full M script</button>` : "";
+  const why = note ? ` <span class="mut">${esc(note)}</span>` : "";
+  if(sql && sql!==withheldMark)
+    return `<div class="query-control"><details><summary>Native SQL from the file</summary><div class="body"><pre class="code">${esc(sql)}</pre></div></details>${link}</div>`;
+  if(unavailable)
+    return `<div class="query-control"><span class="badge b-warn">Native query unavailable</span>${why}${link}</div>`;
+  if(sql===withheldMark || (query && query.publication==="withheld"))
+    return `<div class="query-control"><span class="badge b-hidden">Query code withheld</span> <span class="mut">Not part of this shared document.</span>${link}</div>`;
+  if(!query) return "";
+  const code = pqCode(query), first = (query.steps?.items||[])[0];
+  const expression = first && Number.isInteger(first.s) ? code.slice(first.s, first.e) : code;
+  if(!expression.trim()) return `<div class="query-control"><span class="mut">No expression was read for this query.</span>${link}</div>`;
+  return `<div class="query-control"><details><summary>Source expression (M)</summary><div class="body">${first?`<p class="mut">Step <b>${esc(first.name)}</b>${first.says?`: ${esc(first.says)}`:""}</p>`:""}<pre class="code">${hlM(expression)}</pre></div></details>${link}</div>`;
+}
+// How a source authenticates, only when the file itself says so.
+const NO_AUTHENTICATION = "Not available from this file";
+function sourceAuthentication(g){
+  // Only the model data sources the source's own tables read through: a query that connects by itself to the
+  // same server uses credentials the file does not hold.
+  const through = new Set((M?.tables||[]).filter(t=>g.tables.includes(t.name)).flatMap(t=>t.partitions.flatMap(p=>p.dataSources||[])));
+  const found = (M?.dataSources||[]).filter(d=>d.authentication && through.has(d.name));
+  return [...new Set(found.map(d=>d.authentication))].join("; ") || NO_AUTHENTICATION;
 }
 
 /* ============================================================ security */
 function rSecurity(){
   if(!M.roles.length) return `${coupler()}<h1>Security</h1><div class="empty"><b>No RLS roles found in this extract.</b><br>Service permissions and other access controls are outside this analysis.</div>`;
   return `${coupler()}<h1>Security (RLS)</h1>
-  ${M.roles.map(r=>`<div class="card">
+  ${M.roles.map(r=>`<div class="card" id="role-${slug(r.name)}" tabindex="-1">
     <div style="font-weight:650">${esc(r.name)} <span class="badge b-other">${esc(r.modelPermission)}</span></div>
     ${r.tablePermissions.length ? r.tablePermissions.map(tp=>`
       <div class="mut" style="margin-top:.5rem">Filter on ${tblLink(tp.table)}:</div>
@@ -924,37 +1036,40 @@ function rWarnings(){
   return `${coupler()}<h1>Warnings</h1>
   <p class="sub">Static-analysis findings a new developer should know before changing anything.</p>
   <table class="t"><thead><tr><th>Severity</th><th>Category</th><th>Detail</th></tr></thead><tbody>
-  ${ws.map(w=>`<tr><td><span class="badge ${w.severity==="warning"?"b-warn":"b-info"}">${esc(w.severity)}</span></td><td>${esc(w.category)}</td><td>${esc(w.message)}</td></tr>`).join("")}
+  ${ws.map(w=>`<tr><td><span class="badge ${w.severity==="warning"?"b-warn":"b-info"}">${esc(w.severity)}</span></td><td>${esc(w.category)}</td><td>${esc(w.message)}${fxInText(w.message)}</td></tr>`).join("")}
   </tbody></table>`;
 }
 
 /* ============================================================ boot */
 const RENDER = {columns:rColumns, overview:rOverview, lineage:rLineage, usage:rUsage, pages:rPages,
   filters:rFilters, manifest:rManifest, tables:rTables, measures:rMeasures,
-  rels:rRels, sources:rSources, "primary-sources":()=>coupler()+rPrimarySources(), security:rSecurity, warnings:rWarnings};
+  rels:rRels, sources:rSources, "table-sources":rTableSourcesTab, bookmarks:rBookmarks, "power-query":rPowerQuery, "calc-columns":rCalcColumns, "calc-tables":rCalcTables, "calc-groups":rCalcGroups, "primary-sources":()=>coupler()+"<h1>Primary sources</h1>"+rPrimarySources(), "source-objects":()=>rSourceObjects(), security:rSecurity, warnings:rWarnings};
 /*__EXPLORER_JS__*/
 /*__DOCUMENTATION_JS__*/
 buildNav();
-function routeReport(){
- const requested=window.location?.hash.slice(1);
- const tab=TABS.find(t=>t.id===requested&&t.avail);
- switchTab(tab?tab.id:"overview",false);
-}
+buildFinder();
 if(window.addEventListener)window.addEventListener('popstate',routeReport);
 routeReport();
+// Views the library and the portable hub can ask for. Each goes through the object index, so it lands on the
+// object whatever the reader last filtered; the plain element lookup remains for an object the index lacks.
 const viewerReveal = id => { if(!document.getElementById(id)) return false; requestAnimationFrame(()=>flash(id)); return true; };
 const VIEWER_VIEWS = {
   "pbi.overview": () => { switchTab("overview"); return true; },
-  "pbi.table": a => { switchTab("tables"); return viewerReveal("tbl-"+slug(a.table)); },
-  "pbi.measure": a => { switchTab("measures"); return viewerReveal("mea-"+slug(a.measure)); },
-  "pbi.page": a => { switchTab("pages"); return viewerReveal("pg-"+pageKey(a.page)); },
+  "pbi.table": a => goRef("table", a.table, {history:false}) || (switchTab("tables"), viewerReveal("tbl-"+slug(a.table))),
+  "pbi.measure": a => goRef("measure", a.measure, {history:false}) || (switchTab("measures"), viewerReveal("mea-"+slug(a.measure))),
+  "pbi.page": a => goRef("page", a.page, {history:false}) || (switchTab("pages"), viewerReveal("pg-"+pageKey(a.page))),
+  // By the query's own id: two queries can share a name. A document without that id is searched by name, and
+  // a name lookup after the id was not found is never reported as exact.
+  "pbi.query": a => a.object ? (goObject(a.object, {history:false}) || (goRef("query", a.query, {history:false}), false))
+                             : goRef("query", a.query, {history:false}),
   "pbi.source": a => {
     switchTab("sources");
     const same = (x, y) => !y || String(x||"") === y;
     const g = sourceGroups().find(g => same(g.server, a.server) && same(g.database, a.database) &&
       (!a.object || a.object === g.object || a.object === (g.schema ? g.schema+"."+g.object : g.object)));
     if(!g) return false;
-    inspectSource(g.key); return true;
+    if(!goRef("data source", g.key, {history:false})) inspectSource(g.key);
+    return true;
   },
 };
 /* ============================================================ library viewer bridge

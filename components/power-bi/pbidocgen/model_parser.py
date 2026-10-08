@@ -27,12 +27,13 @@ import json
 import re
 from .data_sources import describe_all
 from .dax_lexer import mask_dax, REFERENCE
-from .legacy_mashup import is_mashup_source, location, members, section_text
+from .legacy_mashup import is_mashup_source, location, member_descriptions, members, section_text
 from .input_validation import validate_model
 from pathlib import Path
 from .source_inventory import enrich_source
 from .source_labels import refine_source_type, source_label
 from .partition_sources import apply_traced_sources
+from .table_kinds import column_type, defined_by
 
 
 # --------------------------------------------------------------------------
@@ -285,10 +286,19 @@ def inline_legacy_mashups(model: dict) -> None:
     sources = {d.get("name"): d for d in model.get("dataSources") or [] if is_mashup_source(d)}
     if not sources:
         return
-    section = {}
+    section, described = {}, {}
     for ds in sources.values():
-        for name, expression in members(section_text(ds)).items():
+        text = section_text(ds)
+        described.update(member_descriptions(text))
+        for name, expression in members(text).items():
             section.setdefault(name, expression)
+    # The file's whole package, when the reader found it: it also holds the queries no table reads, and what
+    # the file records about each query (its folder, what it returned).
+    package = model.get("mashupPackage") if isinstance(model.get("mashupPackage"), dict) else {}
+    described.update(member_descriptions(package.get("section")))
+    for name, expression in members(package.get("section")).items():
+        section.setdefault(name, expression)
+    facts = package.get("queries") if isinstance(package.get("queries"), dict) else {}
     used = set()
     for tbl in model.get("tables") or []:
         for part in tbl.get("partitions") or []:
@@ -297,11 +307,31 @@ def inline_legacy_mashups(model: dict) -> None:
             member = location(ds) if ds else None
             if (src.get("type") or ("query" if "query" in src else "")) == "query" and member in section:
                 part["source"] = dict(src, type="m", expression=section[member], legacyQuery=src.get("query"))
+                folder = (facts.get(member) or {}).get("queryGroup")
+                if folder and not part.get("queryGroup"):
+                    part["queryGroup"] = folder
                 used.add(member)
     existing = {e.get("name") for e in model.get("expressions") or []}
-    extra = [{"name": n, "kind": "m", "expression": e} for n, e in section.items() if n not in used | existing]
+    extra = []
+    for name, expression in section.items():
+        if name in used | existing:
+            continue
+        item = {"name": name, "kind": "m", "expression": expression, "legacyMashup": True}
+        fact = facts.get(name) or {}
+        if fact.get("queryGroup"):
+            item["queryGroup"] = fact["queryGroup"]
+        if fact.get("resultType"):
+            item["annotations"] = [{"name": "PBI_ResultType", "value": fact["resultType"]}]
+        if described.get(name):
+            item["description"] = described[name]
+        extra.append(item)
     if extra:
         model["expressions"] = list(model.get("expressions") or []) + extra
+    if package.get("groups") and not model.get("queryGroups"):
+        model["queryGroups"] = [{"folder": g["folder"], "description": g.get("description"),
+                                 "annotations": [{"name": "PBI_QueryGroupOrder", "value": str(g["order"])}]
+                                 if g.get("order") is not None else []}
+                                for g in package["groups"] if isinstance(g, dict) and g.get("folder")]
 
 
 CROSS_FILTER_ONE = "oneDirection"
@@ -350,6 +380,9 @@ def parse_model(model_path: str | Path) -> dict:
     measure_index: dict[str, str] = {}  # measure name -> home table
     column_index: dict[tuple[str, str], dict] = {}
 
+    structured_names = {d.get("name") for d in model.get("dataSources") or []
+                        if isinstance(d, dict) and d.get("name") and not is_mashup_source(d)}
+
     # ---- tables ---------------------------------------------------------
     for tbl in model.get("tables", []):
         name = tbl.get("name", "")
@@ -362,6 +395,7 @@ def parse_model(model_path: str | Path) -> dict:
                 "dataType": col.get("dataType", ""),
                 "isHidden": bool(col.get("isHidden", False)),
                 "isCalculated": col.get("type") == "calculated",
+                "columnType": column_type(col),
                 "expression": expr_text(col.get("expression")) or None,
                 "sortByColumn": col.get("sortByColumn"),
                 "description": expr_text(col.get("description")) or None,
@@ -425,13 +459,27 @@ def parse_model(model_path: str | Path) -> dict:
                 source = extract_m_source(expression, p_mode)
             source = enrich_source(source, expression, p_mode, data_source)
             source["label"] = source_label(source)
-            partitions.append({
+            partition = {
                 "name": part.get("name", ""),
                 "mode": part.get("mode", "import"),
                 "type": p_mode,
                 "expression": expression,
                 "source": source,
-            })
+            }
+            # The model data sources this partition reads through: the one a SQL partition names, or the
+            # structured data sources its M refers to (#"SQL/server;db"). What a data source records, such as
+            # its authentication type, applies to these partitions only.
+            through = [src["dataSource"]] if isinstance(src.get("dataSource"), str) and src.get("dataSource") else []
+            if p_mode == "m" and structured_names and expression:
+                through += [n for n in _named_in(expression, structured_names) if n not in through]
+            if through:
+                partition["dataSources"] = through
+            if part.get("queryGroup"):
+                partition["queryGroup"] = str(part["queryGroup"])
+            if p_mode == "query" and is_mashup_source(data_source):
+                # A pre-2019 table whose Power Query member could not be read: the query exists, its text does not.
+                partition["mashupLocation"] = location(data_source) or name
+            partitions.append(partition)
 
         hierarchies = [
             {
@@ -448,15 +496,21 @@ def parse_model(model_path: str | Path) -> dict:
         calc_group = tbl.get("calculationGroup")
         tables_out.append({
             "name": name,
+            "definedBy": defined_by({"calculationGroup": calc_group, "annotations": annotations, "partitions": partitions}),
             "isHidden": bool(tbl.get("isHidden", False)),
             "calculationGroupDefinition": calc_group,
             "detailRowsDefinition": tbl.get("detailRowsDefinition"),
             "calculationGroup": (
                 [{"name": ci.get("name", ""),
-                  "expression": expr_text(ci.get("expression"))}
+                  "expression": expr_text(ci.get("expression")),
+                  **({"ordinal": ci["ordinal"]} if isinstance(ci.get("ordinal"), int) else {}),
+                  **({"formatStringExpression": expr_text(ci["formatStringDefinition"].get("expression"))}
+                     if isinstance(ci.get("formatStringDefinition"), dict) and ci["formatStringDefinition"].get("expression") else {}),
+                  **({"description": expr_text(ci.get("description"))} if ci.get("description") else {})}
                  for ci in (calc_group.get("calculationItems") or [])]
                 if calc_group else None
             ),
+            "calculationGroupPrecedence": (calc_group or {}).get("precedence"),
             "description": expr_text(tbl.get("description")) or None,
             "dataCategory": tbl.get("dataCategory"),
             "columns": columns,
@@ -692,9 +746,9 @@ def parse_model(model_path: str | Path) -> dict:
         "name": model.get("name") or bim_path.stem,
         "extraction": doc.get("_extraction"),
         "dependencyExpressions": _dependency_expressions(model),
-        "expressions": [{"name": e.get("name", ""), "kind": e.get("kind", "m"),
-                         "expression": expr_text(e.get("expression"))}
-                        for e in model.get("expressions", [])],
+        "expressions": [_expression(e) for e in model.get("expressions", [])],
+        "queryGroups": _query_groups(model),
+        "queryOrder": _query_order(model),
         "sourceFormat": source_format,
         "sourcePath": str(bim_path),
         "compatibilityLevel": doc.get("compatibilityLevel"),
@@ -710,6 +764,68 @@ def parse_model(model_path: str | Path) -> dict:
     # tracer knows more (shared queries, parameters, dataflows, entered data).
     apply_traced_sources(result)
     return result
+
+
+def _named_in(expression: str, names: set) -> list[str]:
+    """The names in `names` an M expression refers to (as identifiers, never as text)."""
+    from . import m_steps
+    from .m_sources import tokenize
+    try:
+        return m_steps.references(tokenize(expression), names)
+    except ValueError:
+        return []
+
+
+def _annotation(obj: dict, name: str):
+    for item in obj.get("annotations") or []:
+        if isinstance(item, dict) and item.get("name") == name:
+            return item.get("value")
+    return None
+
+
+def _expression(e: dict) -> dict:
+    """A shared expression: its text, and the query facts the file records beside it."""
+    out = {"name": e.get("name", ""), "kind": e.get("kind", "m"), "expression": expr_text(e.get("expression"))}
+    for key in ("lineageTag", "queryGroup"):
+        if e.get(key):
+            out[key] = str(e[key])
+    description = expr_text(e.get("description"))
+    if description:
+        out["description"] = description
+    result_type = _annotation(e, "PBI_ResultType")
+    if result_type:
+        out["resultType"] = str(result_type)
+    if e.get("legacyMashup"):
+        out["legacyMashup"] = True
+    return out
+
+
+def _query_groups(model: dict) -> list[dict]:
+    """Power Query folders as the file records them (TOM QueryGroup): folder path, description and position."""
+    groups = []
+    for group in model.get("queryGroups") or []:
+        if not isinstance(group, dict) or not group.get("folder"):
+            continue
+        order = _annotation(group, "PBI_QueryGroupOrder")
+        try:
+            order = int(order)
+        except (TypeError, ValueError):
+            order = None
+        groups.append({"folder": str(group["folder"]), "description": expr_text(group.get("description")) or None,
+                       "order": order})
+    return groups
+
+
+def _query_order(model: dict) -> list[str] | None:
+    """The order of the queries pane, which Power BI Desktop saves as a model annotation."""
+    raw = _annotation(model, "PBI_QueryOrder")
+    if not raw:
+        return None
+    try:
+        order = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return None
+    return [str(name) for name in order] if isinstance(order, list) else None
 
 
 def _dependency_expressions(model: dict) -> list[dict]:

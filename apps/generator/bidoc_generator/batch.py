@@ -15,6 +15,7 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__
 from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix
 from .history import History, now
 
@@ -285,7 +286,7 @@ class Runner:
                 output_dir=opts.output_dir, profile=opts.profile, query_code=opts.query_code,
                 environment=opts.environment, business_area=opts.business_area, owner=opts.owner,
                 extracted_path=str(extracted) if extracted else None,
-                mapping_dir=str(self.history.home / "identity"))
+                mapping_dir=str(self.history.home / "identity"), bidoc_version=__version__)
 
             def progress(stage, message=""):
                 if stage in ("analysing", "rendering"):

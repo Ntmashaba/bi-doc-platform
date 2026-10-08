@@ -34,6 +34,7 @@ import re
 from pathlib import Path
 from .page_references import attach_report_locations
 from .input_validation import validate_report
+from . import page_types
 
 
 def _load(path: Path):
@@ -211,7 +212,7 @@ def _collect_filters(config, aliases: dict, level: str, target: str) -> list[dic
         refs: list[dict] = []
         _collect_field_refs(f.get("field") or f.get("expression") or f, aliases, refs)
         first = refs[0] if refs else {}
-        out.append({
+        entry = {
             "level": level,
             "target": target,
             "table": first.get("table"),
@@ -219,9 +220,19 @@ def _collect_filters(config, aliases: dict, level: str, target: str) -> list[dic
             "kind": first.get("kind", "column"),
             "filterType": _FILTER_TYPES.get(f.get("type", ""), (f.get("type") or "basic")),
             "name": f.get("name"),
-            "isHidden": bool((f.get("howCreated") == 1) or f.get("isHiddenInViewMode", False)),
+            # Hidden from report readers (the eye in the Filters pane). How a filter was created says nothing about
+            # that: howCreated 1 is "User", a filter the author added, shown to readers like any other.
+            "isHidden": f.get("isHiddenInViewMode") is True,
             "raw": _summarize_condition(f),
-        })
+        }
+        if f.get("isLockedInViewMode") is True:
+            entry["isLocked"] = True
+        if page_types.is_drillthrough_filter(f):
+            # A drillthrough field (a tooltip field on a tooltip page), not a filter in the Filters pane.
+            entry["drillthrough"] = True
+        if isinstance(f.get("displayName"), str) and f["displayName"].strip():
+            entry["displayName"] = f["displayName"].strip()
+        out.append(entry)
     return out
 
 
@@ -243,6 +254,18 @@ def _summarize_condition(f: dict) -> str | None:
 # --------------------------------------------------------------------------
 # Main parse
 # --------------------------------------------------------------------------
+
+def _bookmark_place(bookmark: dict, group: str | None = None) -> dict:
+    """The page a bookmark opens (explorationState.activeSection) and the group it is in, when recorded."""
+    out = {}
+    state = bookmark.get("explorationState")
+    page = state.get("activeSection") if isinstance(state, dict) else None
+    if isinstance(page, str) and page:
+        out["page"] = page
+    if group:
+        out["group"] = group
+    return out
+
 
 def parse_report(report_path: str | Path) -> dict:
     from .custom_visuals import from_folder as custom_visual_names
@@ -328,6 +351,7 @@ def parse_report(report_path: str | Path) -> dict:
 
         page_filters = _collect_filters(page_json.get("filterConfig"),
                                         p_aliases, "page", display)
+        page_type = page_types.pbir(page_json, page_filters)
 
         visuals_out: list[dict] = []
         visuals_dir = page_dir / "visuals"
@@ -404,6 +428,7 @@ def parse_report(report_path: str | Path) -> dict:
             "id": page_id(page_dir),
             "name": display,
             "hidden": hidden,
+            **page_type,
             "isActive": page_id(page_dir) == active,
             "width": page_json.get("width"), "height": page_json.get("height"),
             "visuals": visuals_out,
@@ -412,9 +437,25 @@ def parse_report(report_path: str | Path) -> dict:
         })
 
     # ---- bookmarks ------------------------------------------------------
+    # One <name>.bookmark.json per bookmark; bookmarks.json beside them is not a bookmark but their order and groups.
     bookmarks_dir = definition / "bookmarks"
     if bookmarks_dir.exists():
+        meta = _load(bookmarks_dir / "bookmarks.json")
+        order, groups = [], {}
+        for item in (meta.get("items") if isinstance(meta, dict) else None) or []:
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("children"), list):
+                for child in item["children"]:
+                    if isinstance(child, str):
+                        order.append(child)
+                        groups[child] = str(item.get("displayName") or item.get("name") or "")
+            elif isinstance(item.get("name"), str):
+                order.append(item["name"])
+        found = []
         for bm_file in sorted(bookmarks_dir.glob("*.json")):
+            if bm_file.name == "bookmarks.json":
+                continue
             bm = _load(bm_file)
             if not isinstance(bm, dict):
                 warnings.append({"severity": "warning", "category": "Unreadable bookmark",
@@ -424,10 +465,11 @@ def parse_report(report_path: str | Path) -> dict:
             _collect_aliases(bm, b_aliases)
             refs: list[dict] = []
             _collect_field_refs(bm, b_aliases, refs, context="bookmark")
-            bookmarks_out.append({
-                "name": bm.get("displayName") or bm_file.stem,
-                "fields": refs,
-            })
+            key = bm.get("name") if isinstance(bm.get("name"), str) else bm_file.name.removesuffix(".json").removesuffix(".bookmark")
+            entry = {"name": bm.get("displayName") or key, "fields": refs}
+            entry.update(_bookmark_place(bm, groups.get(key)))
+            found.append((order.index(key) if key in order else len(order), len(found), entry))
+        bookmarks_out = [entry for _, _, entry in sorted(found, key=lambda item: item[:2])]
 
     from .live_connection import from_pbir, summary as live_summary
     live = from_pbir(root.parent if root.name == "definition" else root)

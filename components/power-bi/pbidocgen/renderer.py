@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from .column_usage import build_column_usage
+from .object_index import build_search_index
+from .power_query import power_query_view
+from .table_kinds import defined_by
 from .source_inventory import build_source_inventory
 from .source_queries import build_source_queries
 from .source_objects import build_source_objects
@@ -16,6 +20,25 @@ from .quality import build_quality
 from .live_connection import pairing as live_pairing, source_row as live_source_row
 
 TEMPLATE = Path(__file__).parent / "template.html"
+
+
+ENGINE_NAME = "pbi-doc-gen"
+
+
+def producer(bidoc_version: str | None = None) -> dict:
+    """What generated a payload: this engine and its version, and the bidoc generator that ran it when one did.
+
+    `bidoc` is None when the engine was run on its own (pbi-doc-gen), where there is no generator version to record."""
+    from . import __version__
+    return {"engine": ENGINE_NAME, "engineVersion": __version__, "bidoc": bidoc_version or None}
+
+
+def producer_line(payload: dict) -> str:
+    """bidoc and engine versions, as the documents state them beside the generation time; "not recorded" when the
+    payload does not say (generated before versions were recorded, or by the engine on its own for bidoc)."""
+    p = payload.get("producer") if isinstance(payload.get("producer"), dict) else {}
+    known = lambda v: v.strip() if isinstance(v, str) and v.strip() else "not recorded"   # noqa: E731
+    return f"bidoc {known(p.get('bidoc'))} · {p.get('engine') or ENGINE_NAME} {known(p.get('engineVersion'))}"
 
 
 def build_payload(model: dict | None, report: dict | None,
@@ -47,6 +70,7 @@ def build_payload(model: dict | None, report: dict | None,
         "title": title,
         "mode": mode,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "producer": producer(),
         "model": model,
         "report": report,
         "linked": linked,
@@ -109,6 +133,35 @@ def build_summary(model, report, columns, primary, quality=None) -> dict:
     }
 
 
+def build_derived(payload: dict) -> dict:
+    """Content the page works out from the payload it is given: the search index and the Power Query view.
+
+    It is rebuilt on every render from the payload being rendered, and is not part of the payload. A document
+    re-rendered from a stored payload (a library import, a portable export) therefore gets it from the engine
+    doing the rendering, and a shared document derives it only from what its projection left on the page.
+    """
+    return {"search": build_search_index(payload), "powerQuery": power_query_view(payload),
+            "tableKinds": table_kinds_view(payload)}
+
+
+def table_kinds_view(payload: dict) -> dict:
+    """{table name: how it is defined} for a payload written before tables recorded it; empty otherwise."""
+    tables = (payload.get("model") or {}).get("tables") or []
+    return {t.get("name", ""): defined_by(t) for t in tables if isinstance(t, dict) and not isinstance(t.get("definedBy"), dict)}
+
+
+# Every place the template is filled. One pass: text that has been inserted is never searched again, so a
+# name in the payload that spells a slot is inert.
+_SLOTS = re.compile(r"<!--__DOCUMENTATION_METADATA__-->|/\*__DOCUMENTATION_JS__\*/|__TITLE__|/\*__EXPLORER_CSS__\*/"
+                    r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null")
+SCRIPTS = ("explorer.js", "model_kinds.js", "power_query.js", "relationships.js", "report_view.js", "navigation.js")
+STYLES = ("explorer.css", "navigation.css", "power_query.css", "model_kinds.css", "relationships.css", "report_view.css")
+
+
+def _part(name: str) -> str:
+    return TEMPLATE.with_name(name).read_text(encoding="utf-8")
+
+
 def render_html(payload: dict, out_path: str | Path) -> Path:
     from .catalog import read_metadata, validate_metadata, json_script
     out_path = Path(out_path)
@@ -117,20 +170,17 @@ def render_html(payload: dict, out_path: str | Path) -> Path:
         metadata = read_metadata(out_path.read_text(encoding="utf-8-sig"))
     metadata = validate_metadata(metadata or {})
     payload = dict(payload, documentationFilename=out_path.name)
-    template = TEMPLATE.read_text(encoding="utf-8")
-    template = template.replace('<!--__DOCUMENTATION_METADATA__-->',
-        '<script type="application/json" id="pbi-documentation-metadata">' + json_script(metadata) + '</script>')
-    template = template.replace('/*__DOCUMENTATION_JS__*/', TEMPLATE.with_name('report_metadata.js').read_text(encoding='utf-8'))
-    blob = json.dumps(payload, ensure_ascii=False)
-    # keep the embedded JSON from terminating the script block early or spelling
-    # another element (e.g. a second manifest); these characters only occur in strings
-    blob = blob.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    html = (template
-            .replace("__TITLE__", payload["title"].replace("<", "&lt;"))
-            .replace("/*__EXPLORER_CSS__*/", TEMPLATE.with_name("explorer.css").read_text(encoding="utf-8"))
-            .replace("/*__EXPLORER_JS__*/", TEMPLATE.with_name("explorer.js").read_text(encoding="utf-8"))
-            .replace("/*__DATA__*/null", blob))
-    out_path = Path(out_path)
+    slots = {
+        "<!--__DOCUMENTATION_METADATA__-->":
+            '<script type="application/json" id="pbi-documentation-metadata">' + json_script(metadata) + "</script>",
+        "/*__DOCUMENTATION_JS__*/": _part("report_metadata.js"),
+        "__TITLE__": payload["title"].replace("<", "&lt;"),
+        "/*__EXPLORER_CSS__*/": "\n".join(_part(name) for name in STYLES),
+        "/*__EXPLORER_JS__*/": "\n".join(_part(name) for name in SCRIPTS),
+        "/*__DERIVED__*/null": json_script(build_derived(payload)),
+        "/*__DATA__*/null": json_script(payload),
+    }
+    html = _SLOTS.sub(lambda match: slots[match.group(0)], TEMPLATE.read_text(encoding="utf-8"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     return out_path

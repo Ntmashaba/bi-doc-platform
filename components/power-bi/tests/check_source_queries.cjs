@@ -6,7 +6,8 @@ const context=vm.createContext({console,Blob,setTimeout:fn=>fn(),URL:{createObje
  document:{getElementById:node,querySelectorAll:()=>[],body:{appendChild(){}},createElement:()=>({click(){downloads.push(this.download)},remove(){}})},window:{scrollTo(){}}});
 const run=s=>vm.runInContext(s,context);
 run(fs.readFileSync(process.argv[2],'utf8').match(/<script>([\s\S]*)<\/script>/)[1]);
-run("switchTab('sources');setPageScope('p2')");assert.match(node('main').innerHTML,/Export all M queries CSV/);
+run("switchTab('sources');setPageScope('p2')");assert.match(node('main').innerHTML,/switchTab\('power-query'\)/);
+run("switchTab('power-query')");assert.match(node('main').innerHTML,/Export all M queries CSV/);
 run('downloadQueryCsv()');assert.equal(downloads.at(-1),'Sales _ Q4_ Café_-source-queries.csv');
 const bytes=Buffer.from(await blob.arrayBuffer());assert.equal(bytes.subarray(0,3).toString('hex'),'efbbbf');fs.writeFileSync(process.argv[3],bytes);
 run('downloadColumnCsv()');assert.equal(downloads.at(-1),'Sales _ Q4_ Café_-column-page-usage.csv');

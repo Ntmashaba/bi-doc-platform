@@ -21,6 +21,8 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from .model_parser import cross_filter_label
 from .page_references import page_label
+from . import page_types
+from .renderer import producer_line
 
 # --------------------------------------------------------------------------
 # Page geometry (A4, 2 cm margins) — all values in DXA (1440 = 1 inch)
@@ -282,7 +284,7 @@ def build_docx_body(payload: dict) -> str:
     if report:
         inputs.append(f"report \u201c{report['name']}\u201d")
     parts.append(text_para(
-        f"Power BI documentation · mode: {mode} · generated {payload['generated']} · "
+        f"Power BI documentation · mode: {mode} · generated {payload['generated']} · {producer_line(payload)} · "
         f"inputs: {_join(inputs)}", style="Subtitle"))
     parts.append(para(run("What this document can claim.  ", bold=True)
                       + run(_MODE_NOTES[mode]), shade=GREY_HDR, space_after=240))
@@ -368,9 +370,7 @@ def build_docx_body(payload: dict) -> str:
         parts.append(page_break())
         parts.append(heading("Report pages — what feeds each page", 1))
         for pg in report["pages"]:
-            flags = []
-            if pg["hidden"]:
-                flags.append("hidden")
+            flags = page_types.flags(pg)
             if pg.get("isActive"):
                 flags.append("landing page")
             suffix = f"  ({', '.join(flags)})" if flags else ""

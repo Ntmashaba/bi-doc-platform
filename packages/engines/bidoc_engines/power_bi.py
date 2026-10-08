@@ -10,6 +10,7 @@ import pbidocgen
 from bidoc_contracts import power_bi_scope
 from pbidocgen.linker import link
 from pbidocgen.model_parser import parse_model
+from pbidocgen.object_index import measure_id, table_id
 from pbidocgen.renderer import build_payload, render_html
 from pbidocgen.report_parser import parse_report
 
@@ -21,7 +22,7 @@ ENGINE = "pbi-doc-gen"
 ENGINE_VERSION = pbidocgen.__version__
 IDENTITY_VERSION = "pbi-identity/1"
 SOURCE_KINDS = ("pbip", "tmdl", "bim", "pbir", "extracted")
-VIEW_IDS = frozenset({"pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page"})
+VIEW_IDS = frozenset({"pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page", "pbi.query"})
 
 
 class InputError(ValueError):
@@ -147,7 +148,7 @@ def describe(payload: dict, coverage: str = "complete"):
     targets.append({"target_id": overview, "view_id": "pbi.overview", "args": {}})
 
     for t in model.get("tables", []):
-        tid = f"pbi:table:{t['lineageTag']}" if t.get("lineageTag") else f"pbi:table:name:{t['name']}"
+        tid = table_id(t)            # the same ids the document itself uses for its links (pbi-identity/1)
         sid = anchor("t", tid)
         objects.append({"object_id": tid, "kind": "table", "label": t["name"][:512], "section_id": sid,
                         "parent_object_id": None, "bindings": [], "dynamic": False, "opaque": False,
@@ -161,8 +162,7 @@ def describe(payload: dict, coverage: str = "complete"):
         ]))
         targets.append({"target_id": tid, "view_id": "pbi.table", "args": {"table": t["name"]}})
         for m in t.get("measures", []):
-            mid = (f"pbi:measure:{m['lineageTag']}" if m.get("lineageTag")
-                   else f"pbi:measure:name:{t['name']}/{m['name']}")
+            mid = measure_id(t["name"], m)
             msid = anchor("m", mid)
             objects.append({"object_id": mid, "kind": "measure", "label": m["name"][:512], "section_id": msid,
                             "parent_object_id": tid, "bindings": [], "dynamic": False, "opaque": False,
@@ -171,6 +171,29 @@ def describe(payload: dict, coverage: str = "complete"):
                 f"Table: {t['name']}", m.get("description"), m.get("displayFolder") and f"Folder: {m['displayFolder']}",
                 m.get("expression") and f"{m['name']} = {m['expression']}"]))
             targets.append({"target_id": mid, "view_id": "pbi.measure", "args": {"table": t["name"], "measure": m["name"]}})
+
+    # Power Query queries: found by name in the library and opened in the document's Power Query view. The
+    # text never includes the script, so a section says the same in a local and a shared artifact.
+    seen_queries = set()
+    for q in payload.get("sourceQueries") or []:
+        if not isinstance(q, dict) or not q.get("queryName"):
+            continue
+        qid = q.get("objectId") or f"pbi:query:name:{q['queryName']}"
+        if qid in seen_queries:
+            continue
+        seen_queries.add(qid)
+        qsid = anchor("q", qid)
+        kind = {"function": "Function", "parameter": "Parameter"}.get(q.get("kind"), "Query")
+        sections.append(section(qsid, f"{kind} {q['queryName']}", [
+            q.get("description"),
+            q.get("table") and f"Loads table: {q['table']}",
+            q.get("usedBy") and "Used by tables: " + ", ".join(q["usedBy"]),
+            q.get("group") and f"Query folder: {q['group']}",
+            q.get("load") and f"Load status: {q['load']}",
+            q.get("sources") and "Sources: " + ", ".join(q["sources"])]))
+        # Two queries can share a name (a table's query and a shared query with different text), so the target
+        # carries the query's own id; the name stays for documents generated before ids were looked up.
+        targets.append({"target_id": qsid, "view_id": "pbi.query", "args": {"query": q["queryName"][:512], "object": qid[:512]}})
 
     # sourceObjects has one row per (logical source, page usage); objects are the logical sources.
     grouped: dict[str, dict] = {}
