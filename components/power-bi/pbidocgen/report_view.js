@@ -60,7 +60,8 @@ function showReportPage(pageId){
   const o = objectFor('page', pageId);
   switchTab('pages', !o);
   if(o) recordObject(o.id);
-  nextFrame(() => { const strip = document.getElementById('page-strip'); strip?.querySelector('[aria-current="page"]')?.focus?.({preventScroll: true}); });
+  // The page list is drawn by now: focus stays on it at once, so a keyboard reader can keep moving through pages.
+  document.getElementById('page-strip')?.querySelector?.('[aria-current="page"]')?.focus?.({preventScroll: true});
 }
 // The address names the page and the selected visual, so a reload or a copied link opens the same; selecting a
 // visual replaces the entry rather than adding one.

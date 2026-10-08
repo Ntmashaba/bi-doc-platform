@@ -46,7 +46,7 @@ table.t thead th .xl:hover{text-decoration:underline}
 .source-list tbody th .xl{font-weight:600}.source-list tbody th .mut{font-weight:400;overflow-wrap:anywhere}.visual-box:hover,.visual-box:focus{outline:2px solid var(--pbi);z-index:2}.visual-box small{display:block;color:var(--ink3)}.hidden-visual{border-style:dashed;border-color:#61748a}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #547bba;outline-offset:2px}
 /* Phones: a wide table scrolls inside itself and a long name wraps, so the page never scrolls sideways. */
-@media(max-width:800px){#main table.t{display:block;max-width:100%;overflow-x:auto}#main select{max-width:100%}.pill-list .ref{white-space:normal;overflow-wrap:anywhere}}
+@media(max-width:800px){#main table.t{display:block;max-width:100%;overflow-x:auto}#main select{max-width:100%}.pill-list .ref{white-space:normal;overflow-wrap:anywhere}#main .card,#main p,#main li{overflow-wrap:anywhere}}
 #impact-details p,#impact-details li{overflow-wrap:anywhere}
 @media(max-width:800px){.scope-bar{position:static}.scope-page{flex:1 1 100%;min-width:0}.scope-bar select{max-width:100%;min-width:0;flex:1 1 0}.subtabs{flex-wrap:nowrap;overflow-x:auto}.matrix th:first-child{min-width:150px}}
 @media print{.scope-bar,.subtabs,#inspector{display:none}}

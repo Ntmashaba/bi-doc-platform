@@ -35,7 +35,7 @@ const step=name=>console.log('  ok '+name);
   // ---- one page: the layout on top with the panel beside it, then every visual with its fields
   await tabs.nth(2).click();
   assert.equal(await page.locator('#page-strip [aria-current="page"]').getAttribute('data-page'),'p3');
-  assert.equal(await page.evaluate(()=>document.activeElement.dataset.page),'p3','focus stays on the page list');
+  assert.equal(await page.evaluate(()=>document.activeElement?.dataset?.page),'p3','focus stays on the page list');
   assert.match(await words(page.locator('.page-head')),/^Order details drillthrough page$/);
   assert.match(await words(page.locator('.page-facts')),/^Drillthrough page · 1,280 × 720 · 2 data visuals · 1 decorative$/);
   assert.equal(await words(page.locator('#page-type-note')),'A drillthrough page: readers reach it by drilling through from another page on Dim[ID].');
@@ -114,7 +114,8 @@ const step=name=>console.log('  ok '+name);
   await page.waitForFunction(()=>activeTab==='pages');
   assert.equal(await page.locator('#page-strip [aria-current="page"]').getAttribute('data-page'),'p3');
   assert.equal(await box('p3','d2').getAttribute('aria-pressed'),'true');
-  assert.ok(await box('p3','d2').evaluate(el=>el===document.activeElement),'the visual has keyboard focus');
+  // object navigation moves focus on the next frame
+  await page.waitForFunction(()=>document.activeElement?.dataset?.visualId==='d2');
   await page.goBack();await page.waitForFunction(()=>activeTab==='visuals');
   step('Visuals lists every visual of every page, is searchable, and opens a visual selected on its page');
   // ---- Filters: the flat list, with its scope, searchable
