@@ -304,11 +304,11 @@ const SECTIONS = [
   {id:"power-query", label:"Power Query", tabs:["power-query"],
    view:"The Power Query Editor in Power BI Desktop: the queries that connect to sources and shape the data before it reaches the model."},
   {id:"table", label:"Table view", tabs:["tables","columns"],
-   view:"Table view in Power BI Desktop: each table of the model with its columns."},
+   view:"Table view in Power BI Desktop: each table of the model with its columns. No data rows: this document reads the file, not the data."},
   {id:"model", label:"Model view", tabs:["rels","security","lineage","impact","matrix","usage"],
    view:"Model view in Power BI Desktop: how the tables relate, who may see which rows, and what depends on what."},
   {id:"dax", label:"DAX query view", tabs:["measures","calc-columns","calc-tables","calc-groups"],
-   view:"DAX query view in Power BI Desktop: the model's measures, calculated columns, calculated tables and calculation groups."},
+   view:"DAX definitions for this model: measures, calculated columns, calculated tables and calculation items. DAX query view in Power BI Desktop is an editor for queries that return data; saved queries and their results are not part of this document."},
   {id:"report", label:"Report view", tabs:["pages","layout","filters","manifest","bookmarks"],
    view:"Report view in Power BI Desktop: the report's pages, visuals, filters and bookmarks."},
 ];
@@ -347,7 +347,7 @@ function buildNav(){
       ? `<button class="nav-btn" id="sec-${s.id}" onclick="openSection('${s.id}')">${esc(s.label)}</button>`
       : `<button class="nav-btn disabled" id="sec-${s.id}" aria-disabled="true" title="${esc(sectionGap(s))}" tabindex="-1">${esc(s.label)}</button>`;
   }
-  html += `<div class="nav-utilities" role="group" aria-label="Document actions">${UTILITIES.map(u=>
+  html += `<div class="nav-utilities" role="group" aria-labelledby="nav-util-label"><div class="nav-util-label" id="nav-util-label">Document actions</div>${UTILITIES.map(u=>
     `<button class="nav-util" id="util-${u.id}" title="${esc(u.hint)}" onclick="switchTab('${u.id}')">${esc(u.label)}</button>`).join("")}</div>`;
   nav.innerHTML = html + "</div>";
 }
@@ -578,9 +578,7 @@ function rOverview(){
     }).join("")}
     ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Table usage</button>.</div>`:""}
   </div>`:""}
-  ${rQualityOverview(warnCount)}
-  <h2>Document actions</h2>
-  <div class="card utility-actions">${UTILITIES.map(u=>`<button class="chip" id="action-${u.id}" onclick="switchTab('${u.id}')">${esc(u.label)}</button> <span class="mut">${esc(u.hint)}.</span>`).join("<br>")}</div>`;
+  ${rQualityOverview(warnCount)}`;
 }
 /* Documentation coverage and duplicates (review item D). Static facts only. */
 function rQualityOverview(warnCount){
@@ -948,7 +946,7 @@ function rMeasures(){
           <tr><td class="mut">Depends on measures</td><td>${m.dependsOnMeasures.map(meaLink).join(", ")||"—"}</td></tr>
           <tr><td class="mut">Depends on columns</td><td>${m.dependsOnColumns.map(c=>`<span class="ref">${esc(c)}</span>${fxOfRef(c)}`).join(" ")||"—"}</td></tr>
           <tr><td class="mut">All tables touched</td><td>${m.allTables.map(tblLink).join(", ")||"—"}</td></tr>
-          ${has.report?`<tr><td class="mut">Shown in visuals</td><td>${measureVisuals(m)}</td></tr>`:""}
+          <tr><td class="mut">Used by</td><td class="used-by">${measureUsedBy(m)}</td></tr>
           ${m.formatString?`<tr><td class="mut">Format</td><td><span class="ref">${esc(m.formatString)}</span></td></tr>`:""}
         </tbody></table>
       </div>
@@ -962,6 +960,27 @@ function rMeasures(){
   return `${coupler()}<h1>Measures</h1>
   <input id="measure-search" class="search" placeholder="Search names, folders or DAX…" aria-label="Search measures" oninput="fMea(this.value)">
   <div id="mea-list">${grouped}</div>`;
+}
+// A measure's "used by" line: the pages and visuals that use it, named briefly. The dependency and page-usage
+// analysis itself has one home, the Impact inspector in Model view, and the line links there.
+const USED_BY_SHOWN = 4;
+function openImpactOf(id){ impactNode = id; impactQuery = ''; switchTab('impact'); }
+function measureUsedBy(m){
+  const id = nodeId('m', m.table, m.name);
+  const analysis = `<button class="xl used-by-analysis" onclick="${action('openImpactOf',id)}">Dependency and page-usage analysis</button>`;
+  if(!has.report) return `<span class="mut">No report was supplied, so pages and visuals are unknown.</span> ${analysis}`;
+  const seen = new Map();
+  for(const c of impactConsumers(id).filter(c=>c.visualId)){
+    const key = c.pageId+'|'+c.visualId, direct = c.path.length<=1;
+    if(!seen.has(key)) seen.set(key,{c,direct}); else if(direct) seen.get(key).direct = true;
+  }
+  const visuals = [...seen.values()];
+  if(!visuals.length) return `<span class="mut">${pageScope==='*'?'No visual in this report uses it.':'No visual on the selected page uses it.'}</span> ${analysis}`;
+  const pages = new Set(visuals.map(v=>v.c.pageId)).size;
+  const name = ({c}) => { const page = R.pages.find(p=>p.id===c.pageId), v = page?.visuals.find(v=>v.id===c.visualId);
+    return `<button class="xl" onclick="${action('inspectVisual',c.pageId,c.visualId)}">${esc(page?.name||c.pageId)} · ${esc(v?visualName(c.pageId,v):c.visualId)}</button>`; };
+  const more = visuals.length-USED_BY_SHOWN;
+  return `${plural(visuals.length,"visual")} on ${plural(pages,"page")}: ${visuals.slice(0,USED_BY_SHOWN).map(name).join(', ')}${more>0?` and ${more} more`:''}. ${analysis}`;
 }
 // Visuals that show a measure directly or through measures built on it (D).
 function measureVisuals(m){

@@ -228,7 +228,7 @@ Power BI Desktop. Every view opens with one line saying which Power BI view it s
 | Report view | Report view | Pages, Page layout, Filters, Field manifest, Bookmarks |
 
 A section the file has nothing for stays in the rail, disabled, and says why (for example, no report was
-supplied). Below the sections are two **document actions**, also offered at the foot of the Overview:
+supplied). Below the sections, under the label *Document actions*, are two actions on the document itself:
 **Compare extracts** and **Documentation details** (report location, library folder and connection notes, see
 [below](#the-report-library-and-report-details)).
 
@@ -281,8 +281,13 @@ Highlights:
   visuals by their package name ("Mapbox Visual (custom)").
 - **Pages** lists each page's data visuals with their fields; buttons, shapes and
   images without data are folded into one "decorative visuals" row.
-- **Measures** are grouped by display folder, with DAX, format string, the pages
-  that use them and their dependencies.
+- **Measures** are grouped by display folder, with DAX, format string and dependencies. Each has a short
+  **Used by** line naming the pages and visuals that use it (the first four, then a count) and a link,
+  *Dependency and page-usage analysis*, that opens the measure in the Impact inspector in Model view, the one
+  home of that analysis.
+- **DAX query view** holds DAX definitions for this model: measures, calculated columns, calculated tables and
+  calculation items. Power BI's own DAX query view is an editor for queries that return data; saved DAX queries
+  and their results are not part of the document.
 - **Impact inspector** shows everything downstream of a column or measure, down to the visuals.
 
 Raw page IDs (`ReportSection…`) appear only in tooltips and exports, unless two

@@ -28,7 +28,6 @@ details.calc-table>summary,details.calc-group>summary{align-items:center}
 .stat-grid{margin-bottom:.8rem}
 .not-recorded{font-style:italic}
 .card-details>summary{font-weight:600}
-.utility-actions{line-height:2.2}
 /* Table view: tables by how they are defined; automatic date tables last, closed. */
 .tbl-group{margin-top:1.4rem}
 .tbl-group>h2{margin:0 0 .15rem;display:flex;align-items:baseline;gap:.5rem}
@@ -48,3 +47,6 @@ details.tbl-auto>.body,details.rel-auto>.body{padding-top:.7rem}
 .source-query{margin:.7rem 0}
 @media(max-width:860px){.nav-utilities{flex-direction:row;flex-wrap:wrap;border-top-color:var(--line)}}
 #table-source-summary td:last-child,#table-source-summary th:last-child{min-width:21rem}
+.nav-util-label{font-size:.72rem;color:#64748B;padding:0 12px 4px}
+@media(max-width:860px){.nav-util-label{flex-basis:100%;padding-left:0}}
+.used-by-analysis{white-space:nowrap}

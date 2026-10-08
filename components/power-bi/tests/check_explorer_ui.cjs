@@ -99,6 +99,15 @@ run("switchTab('pages')");assert.ok(!node('main').innerHTML.includes('id="pg-70_
 run("switchTab('matrix');toggleMatrixTable('Sales')");assert.match(node('main').innerHTML,/matrix-column/);assert.ok(!run('rMatrix()').includes('<div class="mut">p1</div>'));assert.equal(run("matrixKinds({kinds:['Possible relationship dependency']}).kinds.length"),0);run('matrixRelOnly=true');assert.equal(run("matrixKinds({kinds:['Possible relationship dependency']}).kinds.length"),1);assert.match(run('rMatrix()'),/id="matrix-rel" checked/);run('matrixRelOnly=false');
 assert.match(run("measureVisuals(M.measures.find(m=>m.name==='Total'))"),/inspectVisual/);assert.doesNotMatch(run("measureVisuals(M.measures.find(m=>m.name==='Total'))"),/via/);
 assert.match(run("measureVisuals(M.measures.find(m=>m.name==='Base'))"),/via Total/);
+// Each measure has a short "used by" line; the analysis itself lives in Model view (Impact inspector), one click away.
+{const used=run("measureUsedBy(M.measures.find(m=>m.name==='Total'))"),words=used.replace(/<[^>]+>/g,'');
+ assert.match(words,/^\d+ visuals? on \d+ pages?: .+\. Dependency and page-usage analysis$/);
+ assert.match(used,/inspectVisual/);assert.match(used,/class="xl used-by-analysis" onclick="openImpactOf\(/);
+ run("switchTab('measures')");assert.match(node('main').innerHTML,/<td class="mut">Used by<\/td><td class="used-by">/);
+ assert.ok(!node('main').innerHTML.includes('Shown in visuals'));
+ run("impactQuery='zzz';openImpactOf(nodeId('m','Sales','Total'))");
+ assert.equal(run('activeTab'),'impact');assert.equal(run('impactNode'),run("nodeId('m','Sales','Total')"));assert.equal(run('impactQuery'),'');
+ assert.equal(run("sectionOf('impact').label"),'Model view');}
 run("inspectCell('Sales','Amount','p2')");assert.match(node('inspector').innerHTML,/v1/);
 const amount='["c","Sales","Amount"]';
 same(run(`impactConsumers(${JSON.stringify(amount)}).map(c=>c.pageId)`),['p2']);

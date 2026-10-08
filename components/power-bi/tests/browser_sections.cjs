@@ -8,9 +8,9 @@ const step=name=>console.log('  ok '+name);
 const SECTIONS=[['overview','Overview',/^Overview\. A summary of this file/],
  ['sources','Data Sources',/^Data Sources\. Data source settings in Power BI Desktop/],
  ['power-query','Power Query',/^Power Query\. The Power Query Editor in Power BI Desktop/],
- ['table','Table view',/^Table view\. Table view in Power BI Desktop/],
+ ['table','Table view',/^Table view\. Table view in Power BI Desktop: each table of the model with its columns\. No data rows/],
  ['model','Model view',/^Model view\. Model view in Power BI Desktop/],
- ['dax','DAX query view',/^DAX query view\. DAX query view in Power BI Desktop/],
+ ['dax','DAX query view',/^DAX query view\. DAX definitions for this model: measures, calculated columns, calculated tables and calculation items\. DAX query view in Power BI Desktop is an editor/],
  ['report','Report view',/^Report view\. Report view in Power BI Desktop/]];
 // Every view the document had before the restructure, and where it is now: section, or a document action.
 const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
@@ -69,9 +69,13 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   assert.equal(await page.locator('nav .nav-btn[aria-current]').count(),0);
   assert.equal(await page.locator('#util-report-details').getAttribute('aria-current'),'true');
   assert.match(await page.locator('#main h1').innerText(),/^Documentation details$/);
-  await page.evaluate(()=>switchTab('overview'));
-  await page.locator('#action-compare').click();
+  await page.locator('#util-compare').click();
   assert.equal(await page.evaluate(()=>activeTab),'compare');
+  assert.equal(await page.locator('nav .nav-utilities').getAttribute('aria-labelledby'),'nav-util-label');
+  assert.equal(await page.locator('#nav-util-label').innerText(),'Document actions','the actions are labelled as such');
+  // the Overview stays lean: the actions are in the sidebar, not added to the Overview
+  await page.evaluate(()=>switchTab('overview'));
+  assert.equal(await page.locator('#main [id^="action-"]').count(),0);
   step('every earlier view is reachable; Compare extracts and Documentation details are document actions');
   // ---- Overview: each number is a link, and equals the number of items in the list it opens
   await page.evaluate(()=>switchTab('overview'));
@@ -168,6 +172,22 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   await page.evaluate(()=>{delete DATA.producer;switchTab('overview');});
   assert.match(await page.locator('#generated-line').innerText(),/· bidoc not recorded · pbi-doc-gen not recorded ·/);
   step('bidoc and engine versions sit beside the generation time, "not recorded" when the document does not say');
+  // ---- DAX query view: a measure's short "used by" line, and the way to the full analysis in Model view
+  await page.evaluate(()=>{pageScope='*';switchTab('measures',true,true);});
+  const totalMeasure=page.locator('#mea-list details.measure',{has:page.locator('.mea-name',{hasText:/^Total$/})});
+  await totalMeasure.locator('summary').click();
+  assert.match((await totalMeasure.locator('.used-by').innerText()).replace(/\s+/g,' '),/^2 visuals on 2 pages: .+ · .+, .+ · .+\. Dependency and page-usage analysis$/);
+  const unused=page.locator('#mea-list details.measure',{has:page.locator('.mea-name',{hasText:/^Doubled$/})});
+  await unused.locator('summary').click();
+  assert.match(await unused.locator('.used-by').innerText(),/^No visual in this report uses it\. Dependency and page-usage analysis$/);
+  await totalMeasure.locator('.used-by-analysis').click();
+  await page.waitForFunction(()=>activeTab==='impact');
+  assert.equal(await page.locator('#sec-model').getAttribute('aria-current'),'true','the analysis has one home, in Model view');
+  assert.equal(await page.locator('#impact-field').evaluate(el=>el.selectedOptions[0].textContent),'Sales[Total] · measure');
+  assert.match(await page.locator('#impact-details').innerText(),/Where it is used/);
+  await page.goBack();
+  await page.waitForFunction(()=>activeTab==='measures');
+  step('each measure names the pages and visuals that use it and links to the analysis in Model view');
   // ---- narrow screens
   await page.setViewportSize({width:390,height:844});
   await page.goto(url);
