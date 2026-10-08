@@ -39,6 +39,21 @@ class Classification(unittest.TestCase):
         self.assertEqual(sorted(reasons), ["credential", "entered_data", "secret_bearing_url"])
 
 
+class Markers(unittest.TestCase):
+    def test_the_document_recognises_exactly_what_the_projection_writes(self):
+        """pbi-doc-gen reports a script as withheld or cleaned by these texts (pbidocgen/publication.py)."""
+        from bidoc_engines import projection
+        from pbidocgen import publication
+        self.assertEqual(publication.CODE_WITHHELD, projection.CODE_MARKER)
+        self.assertIn(projection.CREDENTIAL_MARKER, publication.CLEANED)
+        self.assertIn(projection.DATA_MARKER, publication.CLEANED)
+        path = projection.withhold_personal_paths(r"C:\Users\a\b.xlsx")
+        self.assertTrue(any(marker in path for marker in publication.CLEANED), path)
+        self.assertEqual(publication.publication_of(projection.CODE_MARKER), "withheld")
+        self.assertEqual(publication.publication_of(f'Sql.Database("s", [Password="{projection.CREDENTIAL_MARKER}"])'), "cleaned")
+        self.assertEqual(publication.publication_of('let S = 1 in S'), "included")
+
+
 class Credentials(unittest.TestCase):
     """The supported credential patterns, each as it is written in M, JSON, header text and URLs."""
 
@@ -133,7 +148,7 @@ class SeededPowerBI(unittest.TestCase):
         for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
                      "api_key"):
             self.assertNotIn(PBI_MARKERS[name], text, name)
-        for name in ("sql_literal", "piped_literal"):            # code shared as written, by choice
+        for name in ("sql_literal", "piped_literal", "step_name"):   # code shared as written, by choice
             self.assertIn(PBI_MARKERS[name], text, name)
         self.assertIn("Sql.Database", text)
         self.assertIn(f'https://{X}@api.contoso.com/v1/orders', text)          # the address stays readable

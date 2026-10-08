@@ -10,7 +10,6 @@ const KIND_PLURAL = {'data source':'Data sources','query':'Queries','table':'Tab
   'security role':'Security roles','page':'Pages','visual':'Visuals'};
 const columnAnchor = (table, column) => 'col-' + slug(table) + '-' + slug(column);
 const visualAnchor = (pageId, visualId) => 'vis-' + pageKey(pageId) + '-' + slug(visualId);
-const queryAnchor = name => 'qry-' + slug(name);
 const sourceAnchor = key => 'src-' + slug(key);
 
 const OBJECTS = SEARCH_INDEX.items.map(([kind, name, parent, id, a, b], order) =>
@@ -56,7 +55,8 @@ function homeOf(o) {
     case 'column': case 'calculated column':
       return {tab: 'tables', el: columnAnchor(o.parent, o.name)};
     case 'measure': return {tab: 'measures', el: 'mea-' + slug(o.name)};
-    case 'query': return {tab: 'sources', el: queryAnchor(o.name)};
+    // The query is picked in the queries pane; what the reader is taken to is the query itself, beside it.
+    case 'query': return {tab: 'power-query', el: pqItemId(o.id), then: () => selectQuery(o.id, false), show: 'pq-title'};
     case 'security role': return {tab: 'security', el: 'role-' + slug(o.name)};
     case 'page': return {tab: 'pages', el: 'pg-' + pageKey(o.a)};
     case 'visual': return {tab: 'pages', el: visualAnchor(o.a, o.b)};
@@ -128,12 +128,16 @@ function goObject(id, {history = true} = {}) {
   if (!el) return false;
   if (el.tagName === 'DETAILS') el.open = true;
   if (home.then) home.then(el);
+  if (home.show) el = document.getElementById(home.show) || el;
   if (history) recordObject(id);
   document.title = o.name + ' · ' + DATA.title;
   noteNavigation(onScreen(el) && undone.length ? `Cleared ${undone.join(' and ')} to show ${o.name}.` : '');
   nextFrame(() => {
     // Straight there: an animated scroll across a long view leaves the reader waiting for the object.
-    if (el.scrollIntoView) el.scrollIntoView({block: 'center', behavior: 'instant'});
+    // Something taller than the window is shown from its top (below the bars that stay on screen), not its middle.
+    const tall = !!el.getBoundingClientRect && el.getBoundingClientRect().height > (window.innerHeight || 0) * 0.7;
+    if (tall && el.style) el.style.scrollMarginTop = '124px';
+    if (el.scrollIntoView) el.scrollIntoView({block: tall ? 'start' : 'center', behavior: 'instant'});
     markObject(el);
     focusObject(el);
   });

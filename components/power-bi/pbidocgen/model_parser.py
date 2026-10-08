@@ -299,7 +299,8 @@ def inline_legacy_mashups(model: dict) -> None:
                 part["source"] = dict(src, type="m", expression=section[member], legacyQuery=src.get("query"))
                 used.add(member)
     existing = {e.get("name") for e in model.get("expressions") or []}
-    extra = [{"name": n, "kind": "m", "expression": e} for n, e in section.items() if n not in used | existing]
+    extra = [{"name": n, "kind": "m", "expression": e, "legacyMashup": True}
+             for n, e in section.items() if n not in used | existing]
     if extra:
         model["expressions"] = list(model.get("expressions") or []) + extra
 
@@ -425,13 +426,19 @@ def parse_model(model_path: str | Path) -> dict:
                 source = extract_m_source(expression, p_mode)
             source = enrich_source(source, expression, p_mode, data_source)
             source["label"] = source_label(source)
-            partitions.append({
+            partition = {
                 "name": part.get("name", ""),
                 "mode": part.get("mode", "import"),
                 "type": p_mode,
                 "expression": expression,
                 "source": source,
-            })
+            }
+            if part.get("queryGroup"):
+                partition["queryGroup"] = str(part["queryGroup"])
+            if p_mode == "query" and is_mashup_source(data_source):
+                # A pre-2019 table whose Power Query member could not be read: the query exists, its text does not.
+                partition["mashupLocation"] = location(data_source) or name
+            partitions.append(partition)
 
         hierarchies = [
             {
@@ -692,9 +699,9 @@ def parse_model(model_path: str | Path) -> dict:
         "name": model.get("name") or bim_path.stem,
         "extraction": doc.get("_extraction"),
         "dependencyExpressions": _dependency_expressions(model),
-        "expressions": [{"name": e.get("name", ""), "kind": e.get("kind", "m"),
-                         "expression": expr_text(e.get("expression"))}
-                        for e in model.get("expressions", [])],
+        "expressions": [_expression(e) for e in model.get("expressions", [])],
+        "queryGroups": _query_groups(model),
+        "queryOrder": _query_order(model),
         "sourceFormat": source_format,
         "sourcePath": str(bim_path),
         "compatibilityLevel": doc.get("compatibilityLevel"),
@@ -710,6 +717,58 @@ def parse_model(model_path: str | Path) -> dict:
     # tracer knows more (shared queries, parameters, dataflows, entered data).
     apply_traced_sources(result)
     return result
+
+
+def _annotation(obj: dict, name: str):
+    for item in obj.get("annotations") or []:
+        if isinstance(item, dict) and item.get("name") == name:
+            return item.get("value")
+    return None
+
+
+def _expression(e: dict) -> dict:
+    """A shared expression: its text, and the query facts the file records beside it."""
+    out = {"name": e.get("name", ""), "kind": e.get("kind", "m"), "expression": expr_text(e.get("expression"))}
+    for key in ("lineageTag", "queryGroup"):
+        if e.get(key):
+            out[key] = str(e[key])
+    description = expr_text(e.get("description"))
+    if description:
+        out["description"] = description
+    result_type = _annotation(e, "PBI_ResultType")
+    if result_type:
+        out["resultType"] = str(result_type)
+    if e.get("legacyMashup"):
+        out["legacyMashup"] = True
+    return out
+
+
+def _query_groups(model: dict) -> list[dict]:
+    """Power Query folders as the file records them (TOM QueryGroup): folder path, description and position."""
+    groups = []
+    for group in model.get("queryGroups") or []:
+        if not isinstance(group, dict) or not group.get("folder"):
+            continue
+        order = _annotation(group, "PBI_QueryGroupOrder")
+        try:
+            order = int(order)
+        except (TypeError, ValueError):
+            order = None
+        groups.append({"folder": str(group["folder"]), "description": expr_text(group.get("description")) or None,
+                       "order": order})
+    return groups
+
+
+def _query_order(model: dict) -> list[str] | None:
+    """The order of the queries pane, which Power BI Desktop saves as a model annotation."""
+    raw = _annotation(model, "PBI_QueryOrder")
+    if not raw:
+        return None
+    try:
+        order = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return None
+    return [str(name) for name in order] if isinstance(order, list) else None
 
 
 def _dependency_expressions(model: dict) -> list[dict]:

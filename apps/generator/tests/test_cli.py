@@ -112,7 +112,7 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 0, err)
         result = json.loads(out)
         manifest = validate_artifact(Path(result["artifact_path"]).read_bytes(),
-                                     view_ids=["pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page"])
+                                     view_ids=["pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page", "pbi.query"])
         kinds = [o["kind"] for o in manifest["objects"]]
         self.assertEqual((kinds.count("table"), kinds.count("measure")), (6, 2))
         servers = {(o["bindings"][0]["endpoint"]["system"], o["bindings"][0]["endpoint"]["server"])

@@ -48,7 +48,7 @@ const {execFileSync}=require('node:child_process');
   assert.ok(await page.locator('#inspector').isVisible());await page.keyboard.press('Tab');
   await page.locator('#inspector').getByRole('button',{name:'Close details',exact:true}).click();
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'pbi-browser-'));
-  const exports=[['columns','Export filtered CSV','column-page-usage.csv'],['tables','Export source summary CSV','report-table-sources.csv'],['sources','Export all M queries CSV','source-queries.csv'],['sources','Export source objects CSV (with code)','source-objects.csv'],['sources','Export source objects CSV (no code)','source-objects-no-code.csv'],['primary-sources','Export primary sources CSV','primary-sources.csv'],['cleanup','Export evidence at column/page grain','cleanup-column-page-usage.csv']];
+  const exports=[['columns','Export filtered CSV','column-page-usage.csv'],['tables','Export source summary CSV','report-table-sources.csv'],['power-query','Export all M queries CSV','source-queries.csv'],['sources','Export source objects CSV (with code)','source-objects.csv'],['sources','Export source objects CSV (no code)','source-objects-no-code.csv'],['primary-sources','Export primary sources CSV','primary-sources.csv'],['cleanup','Export evidence at column/page grain','cleanup-column-page-usage.csv']];
   for(const [tab,label,suffix] of exports){
    await openTab(tab);
    // Detailed inventories sit in collapsed sections; expand the one holding the button.

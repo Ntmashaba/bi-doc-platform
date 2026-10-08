@@ -31,7 +31,25 @@ def build(folder):
     raw = raw_model()
     for name in ('Sales-US', 'Sales US', "O'Brien", "x');globalThis.reviewMarker=1;//"):
         raw['model']['tables'].append({'name': name, 'columns': [{'name': 'ID'}]})
-    raw['model']['expressions'] = [{'name': 'Stage', 'kind': 'm', 'expression': 'let\n X = "Café, quoted"\nin X'}]
+    raw['model']['expressions'] = [
+        {'name': 'Stage', 'kind': 'm', 'expression': 'let\n X = "Café, quoted"\nin X', 'queryGroup': 'Staging',
+         'lineageTag': '7a000000-0000-4000-8000-000000000001', 'description': 'Text that every table query starts from.'},
+        {'name': 'Region', 'kind': 'm', 'queryGroup': 'Staging\\Parameters',
+         'expression': '"West" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]'},
+        {'name': 'fnClean', 'kind': 'm',
+         'expression': '(t as table) as table =>\nlet\n    Trimmed = Table.TransformColumns(t, {}),\n'
+                       '    #"Kept Rows" = Table.SelectRows(Trimmed, each [Region] = Region)\nin\n    #"Kept Rows"'},
+        {'name': 'Cut off', 'kind': 'm', 'expression': 'let\n    Source = Sql.Database("server", "db'}]
+    raw['model']['queryGroups'] = [
+        {'folder': 'Staging', 'description': 'Queries other queries start from.',
+         'annotations': [{'name': 'PBI_QueryGroupOrder', 'value': '0'}]},
+        {'folder': 'Staging\\Parameters', 'annotations': [{'name': 'PBI_QueryGroupOrder', 'value': '1'}]}]
+    raw['model']['annotations'] = [{'name': 'PBI_QueryOrder', 'value': '["Region","Stage","Sales","fnClean"]'}]
+    # The Sales query reads the staging query through the function, and Dim reads the staging query directly.
+    raw['model']['tables'][0]['partitions'][0]['source']['expression'] = (
+        'let\n    S = Sql.Database("server", "db"),\n    T = S{[Schema="dbo",Item="Orders"]}[Data],\n'
+        '    Cleaned = fnClean(T),\n    #"Tagged, with Stage" = Table.AddColumn(Cleaned, "Tag", each Stage)\nin\n    #"Tagged, with Stage"')
+    raw['model']['tables'][1]['partitions'] = [{'name': 'Dim', 'source': {'type': 'm', 'expression': 'let Source = Stage in Source'}}]
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / 'model.bim'
         path.write_text(json.dumps(raw))

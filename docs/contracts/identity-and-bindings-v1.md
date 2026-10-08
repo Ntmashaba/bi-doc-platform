@@ -29,7 +29,7 @@ document (index entries and `#o/<id>` links); they are **not** manifest objects,
 | Kind | id | Basis |
 |---|---|---|
 | column, calculated column | `pbi:column:{lineageTag}`, else `pbi:column:name:{table}/{column}` | as tables and measures |
-| query (a partition's M or a shared expression) | `pbi:query:{lineageTag}` when the file gives the expression a tag, else `pbi:query:name:{query name}` | the query inventory's name |
+| query (a partition's M or a shared expression) | `pbi:query:{lineageTag}` when the file gives the expression a tag, else `pbi:query:name:{query name}` | the query inventory's name. A table's query is named after the table (`Table / Partition` when a table has partitions with different text). The id is stored on the inventory row (`sourceQueries[*].objectId`) |
 | page | `pbi:page:{page id}` | the report's page id |
 | visual | `pbi:visual:{page id}/{visual id}` | the report's ids |
 | data source | `pbi:datasource:{16 hex}`: SHA-256 of type, server, database, schema, object and location | opaque; never spells a location, and changes when the source's identity changes |
@@ -37,6 +37,11 @@ document (index entries and `#o/<id>` links); they are **not** manifest objects,
 
 Two objects that would share an id (a hand-edited model with a repeated tag) keep an entry each: the later one
 gets `~2`, `~3`. An object link whose id is no longer in the document opens the Overview and says so.
+
+Queries are not manifest objects. Each has a search section (`Query <name>`, with what it loads, what uses it,
+its folder, load status and sources, never its script) and a navigation target for the registered view
+`pbi.query` (`args: {query}`), so the library finds a query by name and opens it in the document's Power Query
+view (2026-10-08).
 
 ## `adf-identity/1`
 

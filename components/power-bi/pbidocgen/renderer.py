@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .column_usage import build_column_usage
 from .object_index import build_search_index
+from .power_query import power_query_view
 from .source_inventory import build_source_inventory
 from .source_queries import build_source_queries
 from .source_objects import build_source_objects
@@ -112,21 +113,21 @@ def build_summary(model, report, columns, primary, quality=None) -> dict:
 
 
 def build_derived(payload: dict) -> dict:
-    """Content the page works out from the payload it is given: the search index.
+    """Content the page works out from the payload it is given: the search index and the Power Query view.
 
     It is rebuilt on every render from the payload being rendered, and is not part of the payload. A document
     re-rendered from a stored payload (a library import, a portable export) therefore gets it from the engine
     doing the rendering, and a shared document derives it only from what its projection left on the page.
     """
-    return {"search": build_search_index(payload)}
+    return {"search": build_search_index(payload), "powerQuery": power_query_view(payload)}
 
 
 # Every place the template is filled. One pass: text that has been inserted is never searched again, so a
 # name in the payload that spells a slot is inert.
 _SLOTS = re.compile(r"<!--__DOCUMENTATION_METADATA__-->|/\*__DOCUMENTATION_JS__\*/|__TITLE__|/\*__EXPLORER_CSS__\*/"
                     r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null")
-SCRIPTS = ("explorer.js", "navigation.js")
-STYLES = ("explorer.css", "navigation.css")
+SCRIPTS = ("explorer.js", "power_query.js", "navigation.js")
+STYLES = ("explorer.css", "navigation.css", "power_query.css")
 
 
 def _part(name: str) -> str:

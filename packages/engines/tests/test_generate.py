@@ -167,7 +167,7 @@ class PowerBIGeneration(Base):
     def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
         """HTML, embedded payload, search index and manifest: code as written, credential patterns cleaned."""
         shared, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)
-        for name in ("sql_literal", "piped_literal"):
+        for name in ("sql_literal", "piped_literal", "step_name"):
             self.assertIn(PBI_MARKERS[name].encode(), shared, name)
         for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
                      "api_key"):
@@ -182,6 +182,36 @@ class PowerBIGeneration(Base):
         for name, marker in PBI_MARKERS.items():
             self.assertIn(marker.encode(), local, name)
         self.assertEqual((m["projection"]["profile"], m["projection"]["omissions"]), ("local", []))
+
+    def test_power_query_follows_the_publication_policy(self):
+        """Query facts are published; the script and everything read from it (step names) only with the code."""
+        def view(profile, **kw):
+            data, m = self.artifact(self.run_pbi(self.model, profile=profile, **kw), power_bi.VIEW_IDS)
+            text = data.decode("utf-8")
+            derived = json.JSONDecoder().raw_decode(text, re.search(r"\bconst DERIVED = ", text).end())[0]
+            return {q["name"]: q for q in derived["powerQuery"]["queries"]}, m, text
+        step = PBI_MARKERS["step_name"]
+        local, _, _ = view("local")
+        self.assertEqual([s["name"] for s in local["Stepped"]["steps"]["items"]], ["Source", step])
+        self.assertEqual((local["Stepped"]["publication"], local["Stepped"]["extraction"]["status"]), ("included", "complete"))
+        withheld, m, text = view("shared")
+        q = withheld["Stepped"]
+        self.assertEqual((q["publication"], q["extraction"]["status"], q["steps"]["status"]), ("withheld", "complete", "parsed"))
+        self.assertNotIn("items", q["steps"])
+        self.assertEqual((q["table"], q["load"], q["kind"]), ("Stepped", "loaded", "query"))     # facts stay
+        self.assertNotIn(step, text)
+        included, _, text = view("shared", query_code="included")
+        self.assertEqual([s["name"] for s in included["Stepped"]["steps"]["items"]], ["Source", step])
+        self.assertEqual(included["Creds"]["publication"], "cleaned")
+        self.assertEqual(included["Stepped"]["publication"], "included")
+        self.assertNotIn(PBI_MARKERS["odbc_password"], text)
+        # The library finds a query by name and opens it in the document; its search text never holds the script.
+        sections = {s["title"]: s for s in m["sections"]}
+        self.assertIn("Query Stepped", sections)
+        self.assertIn("Loads table: Stepped", sections["Query Stepped"]["text"])
+        self.assertNotIn("Sql.Database", sections["Query Stepped"]["text"])
+        target = next(t for t in m["navigation"]["targets"] if t["view_id"] == "pbi.query" and t["args"] == {"query": "Stepped"})
+        self.assertEqual(target["target_id"], sections["Query Stepped"]["id"])
 
     def test_lineage_tags_are_object_ids_and_sources_are_logical(self):
         _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)

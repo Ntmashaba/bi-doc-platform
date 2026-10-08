@@ -24,7 +24,7 @@ class ViewerBridge(unittest.TestCase):
             text = out.read_text(encoding="utf-8")
         views = re.search(r"const VIEWER_VIEWS = \{(.*?)\n\};", text, re.S).group(1)
         self.assertEqual(sorted(re.findall(r'"(pbi\.[a-z]+)"', views)),
-                         ["pbi.measure", "pbi.overview", "pbi.page", "pbi.source", "pbi.table"])
+                         ["pbi.measure", "pbi.overview", "pbi.page", "pbi.query", "pbi.source", "pbi.table"])
         self.assertIn("if(ev.source!==window.parent) return;", text)
         self.assertIn('m.protocol!=="bi-doc-viewer"', text)
         self.assertIn("if(window.parent===window", text)

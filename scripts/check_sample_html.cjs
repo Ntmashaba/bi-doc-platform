@@ -57,6 +57,24 @@ const {pathToFileURL}=require('url');
     return !el||!el.getClientRects().length;
    }).map(o=>o.kind+' '+o.name));
    if(lost.length)throw Error(r.file+': '+lost.length+' indexed objects cannot be shown, e.g. '+lost.slice(0,5).join('; '));
+   // Power Query: every query opens; its script is on the page exactly when the publication status says so.
+   if(tabs.includes('power-query')){
+    const wrong=await page.evaluate(()=>{switchTab('power-query');return PQ.queries.filter(q=>{
+     selectQuery(q.objectId,false);
+     const d=document.getElementById('pq-detail'),withheld=q.publication==='withheld';
+     if(d.querySelector('#pq-title').textContent!==q.name)return true;
+     if(withheld)return !!d.querySelector('pre')||!!d.querySelector('.pq-step-name')||d.innerHTML.includes('[query code withheld]');
+     return !!pqCode(q).trim()!==!!d.querySelector('pre')||(q.steps.status==='parsed')!==!!d.querySelector('.pq-step-name');
+    }).map(q=>q.name);});
+    if(wrong.length)throw Error(r.file+': Power Query entries shown wrongly: '+wrong.slice(0,5).join('; '));
+    const publication=await page.evaluate(()=>[...new Set(PQ.queries.map(q=>q.publication))]);
+    if(r.profile==='shared'&&publication.some(p=>p!=='withheld'))throw Error(r.file+': a shared document shows query code: '+publication);
+    if(r.profile==='local'&&publication.includes('withheld'))throw Error(r.file+': a local document withholds query code');
+    if(r.sample==='DP500 08 Composite model.pbix'){
+     const parameters=await page.evaluate(()=>PQ.queries.filter(q=>q.kind==='parameter').map(q=>q.name).sort());
+     expect(parameters.join()==='Culture,SqlServerDatabase,SqlServerInstance','DP500 08 parameters: '+parameters);
+    }
+   }
    if(r.sample==='AdventureWorks Sales.pbix'&&r.profile==='local')await adventureWorksSearch(page);
    await page.evaluate(()=>switchTab('overview'));
   }

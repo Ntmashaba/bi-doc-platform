@@ -433,11 +433,14 @@ def _table_to_tmsl(node: Node) -> dict:
                 source[key] = _unescape_value(val)
         elif p.prop("source") is not None:
             source["expression"] = p.prop("source")
-        partitions.append({
+        partition = {
             "name": p.name or node.name,
             "mode": p.prop("mode", "import"),
             "source": source,
-        })
+        }
+        if p.prop("queryGroup"):
+            partition["queryGroup"] = _unquote(p.prop("queryGroup"))
+        partitions.append(partition)
     out["partitions"] = partitions
 
     detail = node.kid("detailRowsDefinition")
@@ -455,6 +458,36 @@ def _table_to_tmsl(node: Node) -> dict:
         }
 
     annotations = [{"name": a.name, "value": a.text()} for a in node.kids("annotation")]
+    if annotations:
+        out["annotations"] = annotations
+    return out
+
+
+def _annotations(node: Node) -> list[dict]:
+    return [{"name": a.name, "value": a.text()} for a in node.kids("annotation")]
+
+
+def _expression_to_tmsl(node: Node) -> dict:
+    """A shared expression with the query facts written beside it: folder, lineage tag, result type."""
+    out: dict = {"name": node.name, "kind": node.prop("kind", "m"), "expression": node.text()}
+    if node.prop("lineageTag"):
+        out["lineageTag"] = _unescape_value(node.prop("lineageTag"))
+    if node.prop("queryGroup"):
+        out["queryGroup"] = _unquote(node.prop("queryGroup"))
+    if node.description:
+        out["description"] = node.description
+    annotations = _annotations(node)
+    if annotations:
+        out["annotations"] = annotations
+    return out
+
+
+def _query_group_to_tmsl(node: Node) -> dict:
+    out: dict = {"folder": node.name}
+    description = node.description or node.prop("description")
+    if description:
+        out["description"] = description
+    annotations = _annotations(node)
     if annotations:
         out["annotations"] = annotations
     return out
@@ -537,6 +570,8 @@ def read_tmdl_model(path: str | Path) -> dict:
     roles: list[dict] = []
     expressions: list[dict] = []
     model_props: dict = {}
+    query_groups: list[dict] = []
+    model_annotations: list[dict] = []
     model_name = None
     compatibility = None
     warnings: list[str] = []
@@ -557,10 +592,18 @@ def read_tmdl_model(path: str | Path) -> dict:
             relationships += [_relationship_to_tmsl(r) for r in node.kids("relationship")]
             roles += [_role_to_tmsl(r) for r in node.kids("role")]
             for e in node.kids("expression"):
-                expressions.append({"name": e.name, "kind": e.prop("kind", "m"),
-                                    "expression": e.text()})
+                expressions.append(_expression_to_tmsl(e))
             for t in node.kids("table"):
                 tables.append(_table_to_tmsl(t))
+            query_groups += [_query_group_to_tmsl(g) for g in node.kids("queryGroup")]
+            model_annotations += _annotations(node)
+        # Desktop writes the model's own children after the model block, at the start of a line.
+        elif node.keyword == "queryGroup":
+            query_groups.append(_query_group_to_tmsl(node))
+        elif node.keyword == "annotation":
+            model_annotations.append({"name": node.name, "value": node.text()})
+        elif node.keyword == "expression":
+            expressions.append(_expression_to_tmsl(node))
 
     db_file = definition.parent / "database.tmdl"
     if not db_file.exists():
@@ -631,9 +674,7 @@ def read_tmdl_model(path: str | Path) -> dict:
             continue
         for node in nodes_of(file):
             if node.keyword == "expression":
-                expressions.append({"name": node.name,
-                                    "kind": node.prop("kind", "m"),
-                                    "expression": node.text()})
+                expressions.append(_expression_to_tmsl(node))
 
     # Desktop names the model object "Model"; the .SemanticModel folder name is
     # what the person actually calls this artifact, so prefer it.
@@ -651,6 +692,8 @@ def read_tmdl_model(path: str | Path) -> dict:
             "relationships": relationships,
             "roles": roles,
             "expressions": expressions,
+            **({"queryGroups": query_groups} if query_groups else {}),
+            **({"annotations": model_annotations} if model_annotations else {}),
             **({"dataSources": data_sources} if data_sources else {}),
         },
         "_sourceFormat": "TMDL",

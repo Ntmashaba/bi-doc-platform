@@ -22,7 +22,7 @@ ENGINE = "pbi-doc-gen"
 ENGINE_VERSION = pbidocgen.__version__
 IDENTITY_VERSION = "pbi-identity/1"
 SOURCE_KINDS = ("pbip", "tmdl", "bim", "pbir", "extracted")
-VIEW_IDS = frozenset({"pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page"})
+VIEW_IDS = frozenset({"pbi.overview", "pbi.table", "pbi.measure", "pbi.source", "pbi.page", "pbi.query"})
 
 
 class InputError(ValueError):
@@ -171,6 +171,27 @@ def describe(payload: dict, coverage: str = "complete"):
                 f"Table: {t['name']}", m.get("description"), m.get("displayFolder") and f"Folder: {m['displayFolder']}",
                 m.get("expression") and f"{m['name']} = {m['expression']}"]))
             targets.append({"target_id": mid, "view_id": "pbi.measure", "args": {"table": t["name"], "measure": m["name"]}})
+
+    # Power Query queries: found by name in the library and opened in the document's Power Query view. The
+    # text never includes the script, so a section says the same in a local and a shared artifact.
+    seen_queries = set()
+    for q in payload.get("sourceQueries") or []:
+        if not isinstance(q, dict) or not q.get("queryName"):
+            continue
+        qid = q.get("objectId") or f"pbi:query:name:{q['queryName']}"
+        if qid in seen_queries:
+            continue
+        seen_queries.add(qid)
+        qsid = anchor("q", qid)
+        kind = {"function": "Function", "parameter": "Parameter"}.get(q.get("kind"), "Query")
+        sections.append(section(qsid, f"{kind} {q['queryName']}", [
+            q.get("description"),
+            q.get("table") and f"Loads table: {q['table']}",
+            q.get("usedBy") and "Used by tables: " + ", ".join(q["usedBy"]),
+            q.get("group") and f"Query folder: {q['group']}",
+            q.get("load") and f"Load status: {q['load']}",
+            q.get("sources") and "Sources: " + ", ".join(q["sources"])]))
+        targets.append({"target_id": qsid, "view_id": "pbi.query", "args": {"query": q["queryName"][:512]}})
 
     # sourceObjects has one row per (logical source, page usage); objects are the logical sources.
     grouped: dict[str, dict] = {}

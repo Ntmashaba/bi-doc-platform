@@ -275,6 +275,37 @@ Unquoted Oracle names are folded to upper case, so `billing.tariff` and
 `BILLING.TARIFF` are one source. Credentials in connection strings and URLs are
 never copied into source identities.
 
+## Power Query
+
+**Power Query** lists the queries of the file the way the Power Query Editor does: a queries pane on the
+left, the selected query on the right. There is one entry per query, including shared queries, functions and
+parameters, whichever file format supplied it.
+
+- **Queries pane.** Query folders are recreated when the file records them (TMDL, model.bim, PBIX and ABF
+  metadata, pbi-tools extracts), in the file's order, with the rest under *Other Queries*. A file with no
+  folders gives a flat list. A query that is not loaded to the model is in italics; functions and parameters
+  are marked.
+- **Header.** The table a query loads (and its partitions when there are several), the tables that use it
+  directly or through other queries, its load status, the queries it reads and the external sources it reaches.
+  A query used by several tables is listed once.
+- **Applied Steps**, in source order, and the **full M script** in a block that opens on request.
+- **Three statuses**, reported separately because they answer different questions:
+
+| Status | Values | Says |
+|---|---|---|
+| Expression extraction | complete, known partial, unavailable | whether the file held the whole expression. *Known partial*: the text stops inside a string, comment or bracket. *Unavailable*: the file names the query but holds no text for it |
+| Applied Steps | parsed, No top-level Applied Steps, unsupported syntax | whether the steps could be read. A literal, a parameter or a single call has no steps, which is a normal result |
+| Publication | included, cleaned, withheld | whether the script is in this copy of the document (see `docs/contracts/projection-v1.md`) |
+
+Load status is **loaded** (the query is a table's partition), **not loaded** (a shared expression) or
+**unknown** (a pre-2019 file whose table could not be matched to its query).
+
+Where a file supplies the same query twice, one rule decides what is listed (`pbidocgen/source_queries.py`):
+a table's partition expression is the query of record; a shared expression with the same name and text is the
+same query; the same name with different text is two queries, both listed; partitions of one table with
+identical text are one query. Tables that are not defined by Power Query (calculated tables, SQL partitions,
+Direct Lake entities) have no entry here.
+
 ## Cleanup: which columns and measures can be removed
 
 **Cleanup review** gives each column and measure an assessment:
@@ -421,8 +452,9 @@ node tests/browser_catalog.cjs
 ```
 
 `check_browser.py` builds the synthetic fixture and runs `browser_review.cjs` (every view, exports, comparison)
-and `browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
-a framing page). In this repository the `frontend` CI job runs it.
+`browser_navigation.cjs` (the finder, object links, Back and Forward, the Tables search and navigation from
+a framing page) and `browser_power_query.cjs` (the queries pane, statuses, steps, the pane filter and query
+links). In this repository the `frontend` CI job runs it.
 
 Samples for trying the tool or checking changes:
 

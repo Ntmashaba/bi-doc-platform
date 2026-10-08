@@ -80,6 +80,7 @@ These rules are a safety net over every string in the payload, including when `q
 | Power BI | `/sourceObjects/*/originalM`, `/sourceObjects/*/referencedM`, `/sourceQueries/*/mCode` | M |
 | Power BI | `/sourceObjects/*/sql` | native SQL |
 | Power BI | `/model/expressions/*/expression` | shared M queries and parameters |
+| Power BI | every other field of a `/sourceQueries/*` row (`kind`, `origin`, `table`, `usedBy`, `upstream`, `sources`, `group`, `load`, `extraction`, `steps.status` …) | facts about the query, never its text: published in both modes. Step names and step descriptions are read from `mCode` when the page is rendered, so they exist only where the code does |
 | ADF | any `query`, `sqlReaderQuery`, `script`, `preCopyScript` field | SQL / scripts |
 
 **Classified by content** (B03 correction). These fields hold M/SQL in some reports and DAX, a description or a source location in others. Measured on the 29 real reports:

@@ -276,6 +276,7 @@ const TABS = [
   {id:"measures", label:"Measures", group:"Model", avail:has.model, count:()=>M?.measures.length},
   {id:"rels",     label:"Relationships", group:"Model", avail:has.model, count:()=>M?.relationships.length},
   {id:"sources",  label:"Sources",  group:"Model", avail:has.model||!!DATA.liveSource},
+  {id:"power-query", label:"Power Query", group:"Model", avail:has.model, count:()=>PQ.queries.length||null},
   {id:"primary-sources", label:"Primary sources", group:"Model", avail:has.model, count:()=>(DATA.primarySources?.rows||[]).length||null},
   {id:"security", label:"Security", group:"Model", avail:has.model, count:()=>M?.roles.length||null},
   {id:"warnings", label:"Warnings", group:"Quality", avail:true, count:()=>allWarnings().length||null},
@@ -290,7 +291,7 @@ const reportManifest = () => (has.linked ? L.manifest : (R?.manifest||[])).map(e
 /* Six top-level sections; every existing view is a sub-tab of one of them. */
 const SECTIONS = [
   {id:"overview", label:"Overview",         tabs:["overview"]},
-  {id:"data",     label:"Data & sources",   tabs:["tables","columns","measures","rels","lineage","sources","primary-sources","security"]},
+  {id:"data",     label:"Data & sources",   tabs:["tables","columns","measures","rels","lineage","sources","power-query","primary-sources","security"]},
   {id:"visuals",  label:"Pages & visuals",  tabs:["layout","pages","filters","manifest"]},
   {id:"changes",  label:"Impact & usage", tabs:["impact","matrix","usage","compare"]},
   {id:"review",   label:"Review issues",    tabs:["cleanup","warnings"]},
@@ -368,6 +369,7 @@ function switchTab(id, recordHistory=true, fresh=false){
   if(id==="tables") fTbl(document.getElementById("table-search").value);
   if(id==="manifest") fMan(document.getElementById("manifest-search").value);
   if(id==="sources"&&M){ filterSourceList(); filterSourceObjects(); }
+  if(id==="power-query") pqFilter();
   if(id==="primary-sources") filterPrimarySources();
   if(id==="report-details") updateSaveBar();
   if(id==="measures") fMea(document.getElementById("measure-search").value);
@@ -937,9 +939,7 @@ function rSources(){
     <h2>Detailed inventories</h2>
     <p class="mut">External inputs per report page, with CSV export: <button class="xl" onclick="switchTab('primary-sources')">Primary sources</button>.</p>
     <details id="src-objects"><summary>Source objects by report page, with code</summary><div class="body">${rSourceObjects()}</div></details>
-    <details id="src-queries"><summary>All M queries</summary><div class="body"><button class="chip" onclick="downloadQueryCsv()">Export all M queries CSV</button>
-    <p class="mut">${(DATA.sourceQueries||[]).length} M queries and shared expressions across the complete model. This three-column export is independent of page selection.</p>
-    ${(DATA.sourceQueries||[]).map(q=>`<details id="${queryAnchor(q.queryName)}"><summary>${esc(q.queryName)}</summary><div class="body"><pre class="code">${esc(q.mCode)||'No M expression was read for this query.'}</pre></div></details>`).join('')}</div></details>`;
+    <p class="mut">${plural((DATA.sourceQueries||[]).length,"M query","M queries")} and shared expressions, with their steps and scripts: <button class="xl" onclick="switchTab('power-query')">Power Query</button>.</p>`;
 }
 
 /* ============================================================ security */
@@ -969,7 +969,7 @@ function rWarnings(){
 /* ============================================================ boot */
 const RENDER = {columns:rColumns, overview:rOverview, lineage:rLineage, usage:rUsage, pages:rPages,
   filters:rFilters, manifest:rManifest, tables:rTables, measures:rMeasures,
-  rels:rRels, sources:rSources, "primary-sources":()=>coupler()+rPrimarySources(), security:rSecurity, warnings:rWarnings};
+  rels:rRels, sources:rSources, "power-query":rPowerQuery, "primary-sources":()=>coupler()+rPrimarySources(), security:rSecurity, warnings:rWarnings};
 /*__EXPLORER_JS__*/
 /*__DOCUMENTATION_JS__*/
 buildNav();
@@ -984,6 +984,7 @@ const VIEWER_VIEWS = {
   "pbi.table": a => goRef("table", a.table, {history:false}) || (switchTab("tables"), viewerReveal("tbl-"+slug(a.table))),
   "pbi.measure": a => goRef("measure", a.measure, {history:false}) || (switchTab("measures"), viewerReveal("mea-"+slug(a.measure))),
   "pbi.page": a => goRef("page", a.page, {history:false}) || (switchTab("pages"), viewerReveal("pg-"+pageKey(a.page))),
+  "pbi.query": a => goRef("query", a.query, {history:false}),
   "pbi.source": a => {
     switchTab("sources");
     const same = (x, y) => !y || String(x||"") === y;

@@ -3,7 +3,7 @@
     python components/power-bi/tests/check_browser.py
 
 Needs Node and Playwright with Chromium (as the `frontend` CI job installs them for apps/library/frontend).
-Runs the long-standing regression script and the search and object-navigation checks.
+Runs the long-standing regression script, the search and object-navigation checks and the Power Query view checks.
 """
 import os
 import subprocess
@@ -17,7 +17,7 @@ sys.path.insert(0, str(HERE))
 
 from build_browser_fixture import build  # noqa: E402
 
-SCRIPTS = ("browser_review.cjs", "browser_navigation.cjs")
+SCRIPTS = ("browser_review.cjs", "browser_navigation.cjs", "browser_power_query.cjs")
 
 
 def main():
