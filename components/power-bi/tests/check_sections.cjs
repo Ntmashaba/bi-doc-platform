@@ -28,7 +28,7 @@ assert.ok(!run("SECTIONS.some(s=>s.tabs.includes('compare')||s.tabs.includes('re
 const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   sources:'sources','primary-sources':'sources','table-sources':'sources','source-objects':'sources',
   'power-query':'power-query',tables:'table',columns:'table',
-  rels:'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
+  rels:'model','rel-list':'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
   measures:'dax','calc-columns':'dax','calc-tables':'dax','calc-groups':'dax',
   pages:'report',layout:'report',filters:'report',manifest:'report',bookmarks:'report',
   compare:'utility','report-details':'utility'};
@@ -86,7 +86,8 @@ assert.match(node('column-count').textContent,/· 6 distinct columns · 1 column
 run("openCount('source-tables')");assert.equal(run('activeTab'),'tables');
 run("pageScope='x';openCount('measures')");assert.equal(run('pageScope'),'*','a number counts the whole file, whatever page was selected');
 // the relationship to an automatic date table is listed apart, and is in no count
-const rels=show('rels');
+const rels=show('rel-list');run('filterRelList()');
+assert.equal((node('rel-list-rows').innerHTML.match(/<tr>/g)||[]).length,1);assert.equal(node('rel-list-count').textContent,'1 relationship');
 assert.match(text(rels),/Relationships to automatic date tables 1 added by Power BI for date columns; in no headline count .* Sales \[Amount\] many → one LocalDateTable_1 \[Date\]/);
 assert.equal(run("TABS.find(t=>t.id==='rels').count()"),1);
 assert.equal(run('countedRelationships().length'),1);

@@ -16,7 +16,7 @@ const SECTIONS=[['overview','Overview',/^Overview\. A summary of this file/],
 const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
  sources:'sources','primary-sources':'sources','table-sources':'sources','source-objects':'sources',
  'power-query':'power-query',tables:'table',columns:'table',
- rels:'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
+ rels:'model','rel-list':'model',security:'model',lineage:'model',impact:'model',matrix:'model',usage:'model',
  measures:'dax','calc-columns':'dax','calc-tables':'dax','calc-groups':'dax',
  pages:'report',layout:'report',filters:'report',manifest:'report',bookmarks:'report',
  compare:'utility','report-details':'utility'};

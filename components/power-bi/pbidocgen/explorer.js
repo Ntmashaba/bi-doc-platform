@@ -40,7 +40,7 @@ function restoreView(id){
   {const el=document.getElementById('global-page');if(el) el.value=pageScope;}
 }
 function scopeBar(id){
-  const globalViews=['overview','rels','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups','bookmarks'];
+  const globalViews=['overview','rels','rel-list','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups','bookmarks'];
   const pages=[...(R?.pages||[])];
   if(id==='compare') for(const p of comparison?.report?.pages||[]) if(!pages.some(x=>x.id===p.id)) pages.push(p);
   if(id==='report-details') return '';

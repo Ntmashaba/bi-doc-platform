@@ -223,7 +223,7 @@ Power BI Desktop. Every view opens with one line saying which Power BI view it s
 | Data Sources | Data source settings | Sources, Sources by table, Primary sources, Source objects |
 | Power Query | Power Query Editor | Power Query (queries pane, Applied Steps, script) |
 | Table view | Table view | Tables, Columns |
-| Model view | Model view | Relationships, Security, Lineage, Impact inspector, Usage matrix, Table usage |
+| Model view | Model view | Relationships, Relationships list, Security, Lineage, Impact inspector, Usage matrix, Table usage |
 | DAX query view | DAX query view | Measures, Calculated Columns, Calculated Tables, Calculation Groups |
 | Report view | Report view | Pages, Page layout, Filters, Field manifest, Bookmarks |
 
@@ -244,7 +244,8 @@ Where each earlier view went (links and bookmarks to any of them still open the 
 | Data & sources › Primary sources | Data Sources › Primary sources |
 | Data & sources › Power Query | Power Query |
 | Data & sources › Tables, Columns | Table view › Tables, Columns |
-| Data & sources › Relationships, Security, Lineage | Model view › Relationships, Security, Lineage |
+| Data & sources › Relationships (diagram above a table) | Model view › Relationships (one surface: diagram and panel) and Relationships list |
+| Data & sources › Security, Lineage | Model view › Security, Lineage |
 | Impact & usage › Impact inspector, Usage matrix, Usage | Model view › Impact inspector, Usage matrix, Table usage |
 | Data & sources › Measures, Calculated Columns, Calculated Tables, Calculation Groups | DAX query view, same names |
 | Pages & visuals › Page layout, Pages, Filters, Field manifest | Report view, same names |
@@ -258,7 +259,7 @@ columns, Measures, Relationships, Power Query queries, Data sources, Security ro
 Bookmarks, Warnings. The numbers count the whole file, whatever report page is selected. **Automatic date
 tables** (the hidden tables Power BI adds for date columns) are in none of them, nor are their columns and
 relationships: they are listed, closed, at the end of Table view, and their relationships in a closed block
-under Relationships. The coverage ratios under *Documentation and quality* are shares of the visible objects,
+under Relationships list. The Relationships number opens the Relationships list. The coverage ratios under *Documentation and quality* are shares of the visible objects,
 as their note says.
 
 **Versions.** Beside the generation time the Overview names what generated the document: the `bidoc` version
@@ -273,7 +274,22 @@ always cover the whole report.
 
 Highlights:
 
-- **Relationships** draws the model as a diagram with zoom and a focus-table picker.
+- **Relationships** is one interactive surface, drawn as plain SVG inside the file (no library is loaded).
+  Tables are boxes, tinted by role; relationships are lines. Each line carries the cardinality at both ends
+  (`1` one, `*` many) and, at its middle, the cross-filter direction: one arrowhead pointing the way filters
+  flow, two arrowheads for both directions, a hollow dot when the file leaves the direction to Power BI
+  (`automatic`). An inactive relationship is dashed; filtering both ways also takes the warning colour, so the
+  kinds are told apart without relying on colour. Fact tables stand in the middle; what hangs off them is placed
+  whole on one side, one lane per step, and tables with no relationships wait at the foot. Selecting a table
+  (click, Enter or Space, or the *Table* picker) keeps its relationships, fades the rest and opens the panel
+  beside the diagram: the table's role and kind, a link to its columns, and each relationship with its columns,
+  cardinality, status and direction. Selecting a line shows that relationship alone. Escape, the same table
+  again, *Clear selection* or a click on the empty canvas clears it. The diagram opens as large as fits without
+  shrinking names past reading; a wider model scrolls inside its frame, and *Fit* shows all of it. On a narrow
+  screen the panel moves under the diagram.
+- **Relationships list** keeps every relationship as one row (searchable), with **Show** to open that
+  relationship on the diagram. Relationships to automatic date tables are in a closed block below it and are
+  never drawn.
 - **Lineage** shows sources → model tables → report pages; select a node to highlight its paths.
 - **Page layout** draws each page from saved visual positions (not rendered charts),
   colours visuals by kind and lists the measures (Σ) and columns each one uses.

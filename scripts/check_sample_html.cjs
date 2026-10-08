@@ -3,6 +3,7 @@ const {chromium}=require('playwright');
 const fs=require('fs'),path=require('path');
 const {pathToFileURL}=require('url');
 const {checkOverviewCounts}=require('../components/power-bi/tests/overview_counts.cjs');
+const {surfaceProblems}=require('../components/power-bi/tests/relationship_surface.cjs');
 (async()=>{
  const out=path.resolve(__dirname,'../samples/output');
  const results=JSON.parse(fs.readFileSync(path.join(out,'results.json'),'utf8'));
@@ -87,6 +88,10 @@ const {checkOverviewCounts}=require('../components/power-bi/tests/overview_count
     return !sectionOf(t.id).utility&&!(line&&line.textContent.trim().startsWith(sectionOf(t.id).label+'.'));}).map(t=>t.id));
    expect(!viewLines.length,r.file+': views that do not open with the line naming the Power BI view: '+viewLines);
    await checkOverviewCounts(page);
+   // Model view: the relationship surface keeps every table, overlaps nothing and joins each line to its tables.
+   const surface=await surfaceProblems(page);
+   expect(!surface.length,r.file+': relationship surface: '+surface.slice(0,5).join('; '));
+   await page.evaluate(()=>switchTab('overview'));
    const auto=await page.evaluate(()=>has.model?M.tables.filter(isAutoDate).length:0);
    if(auto){
     const sum=await page.locator('#count-source-tables .big, #count-calc-tables .big, #count-calc-groups .big, #count-other-tables .big').evaluateAll(els=>els.reduce((n,el)=>n+Number(el.textContent.replace(/,/g,'')),0));

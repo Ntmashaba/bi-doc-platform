@@ -67,29 +67,32 @@ assert.match(node('lineage-note').innerHTML,/does not mean a table is safe to de
 assert.equal(run('lineageGraph().edgesTP.length'),0);
 assert.doesNotMatch(node('lineage-board').innerHTML,/var\(--none\)/);
 run('L.tablePages=savedTablePages;resetLineage()');
-// Relationship focus filters details, preserves connected nodes, and bounds zoom.
+// Relationship surface: selecting a table presses its box and fills the panel beside the diagram; zoom is bounded.
 run("switchTab('rels')");
-assert.match(node('erd').innerHTML,/role="button"/);
+assert.match(node('rel-canvas').innerHTML,/role="button"/);
 const focusName=run('M.relationships[0].fromTable');
-run(`focusERD(${JSON.stringify(focusName)})`);
-assert.equal(node('erd-focus').value,focusName);
-assert.match(node('erd').innerHTML,/aria-pressed="true"/);
-assert.match(node('erd-selection').innerHTML,/Showing connections/);
-run('zoomERD(10)');assert.equal(node('erd-zoom-label').textContent,'250%');
-run('zoomERD(-10)');assert.equal(node('erd-zoom-label').textContent,'50%');
-run('resetERD()');assert.equal(node('erd-zoom-label').textContent,'100%');assert.equal(node('erd-focus').value,'');
-// Same-column and self relationships remain visible; empty models have an explicit state.
-run("savedRels=M.relationships;savedTables=M.tables;M.tables=[{name:'A',tableType:'fact'},{name:'B',tableType:'fact'}];M.relationships=[{fromTable:'A',toTable:'B',isActive:false,crossFilteringBehavior:'bothDirections'},{fromTable:'A',toTable:'A',isActive:true}];drawERD()");
-assert.match(node('erd').innerHTML,/stroke="var\(--warn\)"/);assert.match(node('erd').innerHTML,/stroke-dasharray="8 6"/);
-assert.ok(!node('erd').innerHTML.includes('NaN'));
-run('M.relationships=[];drawERD()');assert.match(node('erd').innerHTML,/No relationships in this model/);
-run('M.relationships=savedRels;M.tables=savedTables;resetERD()');
+run(`selectRelTable(${JSON.stringify(focusName)})`);
+assert.equal(node('rel-focus').value,focusName);
+assert.match(node('rel-canvas').innerHTML,/aria-pressed="true"/);
+assert.match(node('rel-panel').innerHTML,/Clear selection/);
+run('zoomRel(10)');assert.equal(node('rel-zoom-label').textContent,'250%');
+run('zoomRel(-10)');assert.equal(node('rel-zoom-label').textContent,'30%');
+run('fitRel();clearRelSelection()');assert.equal(node('rel-zoom-label').textContent,'100%');assert.equal(node('rel-focus').value,'');
+// Same-lane and self relationships remain visible; empty models have an explicit state.
+run("savedRels=M.relationships;savedTables=M.tables;M.tables=[{name:'A',tableType:'fact'},{name:'B',tableType:'fact'}];M.relationships=[{fromTable:'A',toTable:'B',isActive:false,crossFilteringBehavior:'bothDirections'},{fromTable:'A',toTable:'A',isActive:true}];drawRelSurface()");
+assert.match(node('rel-canvas').innerHTML,/class="rel-edge inactive filter-both"/);assert.match(node('rel-canvas').innerHTML,/stroke-dasharray="7 5"/);
+assert.equal((node('rel-canvas').innerHTML.match(/<path class="rel-line"/g)||[]).length,2);
+assert.ok(!/NaN|undefined|Infinity/.test(node('rel-canvas').innerHTML));
+run('M.relationships=[];drawRelSurface()');assert.match(node('rel-canvas').innerHTML,/No relationships in this model/);
+run('M.relationships=savedRels;M.tables=savedTables;clearRelSelection()');
 // Equivalent single-direction spellings render the same; both and automatic stay distinct.
 run("savedRels=M.relationships;savedTables=M.tables;M.tables=[{name:'A',tableType:'fact'},{name:'B',tableType:'fact'}];M.relationships=['singleDirection','oneDirection',undefined,'bothDirections','automatic'].map(b=>({fromTable:'A',fromColumn:'k',toTable:'B',toColumn:'k',isActive:true,crossFilteringBehavior:b}))");
-{const rows=run('relationshipRows()').split('</tr>').filter(r=>r.includes('<tr>')),cell=r=>r.split('</td>').slice(-2)[0].replace(/<[^>]*>/g,'').trim();
+{const rows=run('relationshipRows()').split('</tr>').filter(r=>r.includes('<tr>')),cell=r=>r.split('</td>').slice(-3)[0].replace(/<[^>]*>/g,'').trim();
  same(rows.map(cell),['single','single','single','both','automatic']);
- assert.equal((run('relationshipRows()').match(/b-warn/g)||[]).length,1);}
-run('M.relationships=savedRels;M.tables=savedTables;resetERD()');
+ assert.equal((run('relationshipRows()').match(/b-warn/g)||[]).length,1);
+ run('drawRelSurface()');
+ same([...node('rel-canvas').innerHTML.matchAll(/class="rel-edge active filter-(\w+)"/g)].map(m=>m[1]),['single','single','single','both','automatic']);}
+run('M.relationships=savedRels;M.tables=savedTables;clearRelSelection()');
 run("switchTab('columns')");node('column-search').value='Amount';run('filterColumns()');
 run("setPageScope('p2');switchTab('tables')");assert.equal(node('global-page').value,'p2');
 assert.equal(run("sourceRows('Orders').length"),1);

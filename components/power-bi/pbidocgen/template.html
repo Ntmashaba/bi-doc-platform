@@ -275,6 +275,7 @@ const TABS = [
   {id:"tables",   label:"Tables", avail:has.model, count:()=>countedTables().length},
   {id:"columns",  label:"Columns", avail:has.model, count:()=>countedColumns().length},
   {id:"rels",     label:"Relationships", avail:has.model, count:()=>countedRelationships().length},
+  {id:"rel-list", label:"Relationships list", avail:has.model},
   {id:"security", label:"Security", avail:has.model, count:()=>M?.roles.length||null},
   {id:"lineage",  label:"Lineage", avail:has.linked},
   {id:"usage",    label:"Table usage", avail:has.linked, count:()=>L.tableUsage.filter(u=>u.usage==="none").length ? L.tableUsage.filter(u=>u.usage==="none").length+" no references" : null},
@@ -305,7 +306,7 @@ const SECTIONS = [
    view:"The Power Query Editor in Power BI Desktop: the queries that connect to sources and shape the data before it reaches the model."},
   {id:"table", label:"Table view", tabs:["tables","columns"],
    view:"Table view in Power BI Desktop: each table of the model with its columns. No data rows: this document reads the file, not the data."},
-  {id:"model", label:"Model view", tabs:["rels","security","lineage","impact","matrix","usage"],
+  {id:"model", label:"Model view", tabs:["rels","rel-list","security","lineage","impact","matrix","usage"],
    view:"Model view in Power BI Desktop: how the tables relate, who may see which rows, and what depends on what."},
   {id:"dax", label:"DAX query view", tabs:["measures","calc-columns","calc-tables","calc-groups"],
    view:"DAX definitions for this model: measures, calculated columns, calculated tables and calculation items. DAX query view in Power BI Desktop is an editor for queries that return data; saved queries and their results are not part of this document."},
@@ -374,6 +375,7 @@ function switchTab(id, recordHistory=true, fresh=false){
   if(!tab || !tab.avail) return;
   if(!(fresh && activeTab===id)) rememberView();
   if(fresh) forgetView(id);
+  if(fresh && id==="rels") resetRelView();
   closeInspector();
   activeTab = id;
   if(window.location && window.history && recordHistory && window.location.hash!=="#"+id){
@@ -399,7 +401,8 @@ function switchTab(id, recordHistory=true, fresh=false){
     + subTabs(id) + scopeBar(id) + RENDER[id]();
   restoreView(id);
   window.scrollTo(0,0);
-  if(id==="rels") drawERD();
+  if(id==="rels"){ drawRelSurface(); relReveal(); }
+  if(id==="rel-list") filterRelList();
   if(id==="lineage") drawLineage();
   if(id==="columns") filterColumns();
   if(id==="tables") fTbl(document.getElementById("table-search").value);
@@ -520,7 +523,7 @@ const OVERVIEW_COUNTS = [
   {id:"columns", label:"Columns", when:()=>has.model, n:()=>countedColumns().length, open:()=>switchTab("columns",true,true)},
   {id:"calc-columns", label:"Calculated columns", when:()=>has.model, n:()=>calcColumns().length, open:()=>switchTab("calc-columns",true,true)},
   {id:"measures", label:"Measures", when:()=>has.model, n:()=>M.measures.length, open:()=>switchTab("measures",true,true)},
-  {id:"relationships", label:"Relationships", when:()=>has.model, n:()=>countedRelationships().length, open:()=>switchTab("rels",true,true)},
+  {id:"relationships", label:"Relationships", when:()=>has.model, n:()=>countedRelationships().length, open:()=>switchTab("rel-list",true,true)},
   {id:"queries", label:"Power Query queries", when:()=>has.model, n:()=>PQ.queries.length, open:()=>switchTab("power-query",true,true)},
   {id:"sources", label:"Data sources", when:()=>has.model, n:()=>sourceGroups().length, open:()=>switchTab("sources",true,true)},
   {id:"roles", label:"Security roles", when:()=>has.model&&M.roles.length>0, n:()=>M.roles.length, open:()=>switchTab("security")},
@@ -1005,88 +1008,7 @@ function fMea(q){
   });
 }
 
-/* ============================================================ relationships / ERD */
-let erdZoom=1, erdFocus='';
-function relationshipRows(){
- const relationships=countedRelationships().filter(r=>!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus);
- return relationships.map(relationshipRow).join("")||'<tr><td colspan="5">No relationships for this selection.</td></tr>';
-}
-function relationshipRow(r){
- return `<tr>
-    <td>${tblLink(r.fromTable)} <span class="ref">[${esc(r.fromColumn)}]</span>${fx(r.fromTable,r.fromColumn)}</td>
-    <td class="mut">${esc(r.fromCardinality)} → ${esc(r.toCardinality)}</td>
-    <td>${tblLink(r.toTable)} <span class="ref">[${esc(r.toColumn)}]</span>${fx(r.toTable,r.toColumn)}</td>
-    <td>${r.isActive?'<span class="badge b-direct">active</span>':'<span class="badge b-hidden">inactive</span>'}</td>
-    <td>${r.crossFilteringBehavior==="bothDirections"?'<span class="badge b-warn">both</span>':(!r.crossFilteringBehavior||r.crossFilteringBehavior==="oneDirection"||r.crossFilteringBehavior==="singleDirection")?"single":esc(r.crossFilteringBehavior)}</td></tr>`;
-}
-function rRels(){
- return `${coupler()}<h1>Relationships</h1>
- <p class="sub" style="margin-bottom:16px">Select a table to follow its connections. Zoom in for detail; scroll the canvas to explore.</p>
- <div class="card erd-card">
- <div class="erd-toolbar"><label>Focus table <select id="erd-focus" onchange="focusERD(this.value)"><option value="">All tables</option>${countedTables().map(t=>`<option value="${esc(t.name)}"${erdFocus===t.name?' selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
- <div class="erd-zoom" role="group" aria-label="Diagram zoom"><button type="button" aria-label="Zoom out" onclick="zoomERD(-0.25)">−</button><output id="erd-zoom-label" aria-live="polite">${Math.round(erdZoom*100)}%</output><button type="button" aria-label="Zoom in" onclick="zoomERD(0.25)">+</button><button type="button" onclick="resetERD()">Reset view</button></div></div>
- <div id="erd-viewport" class="erd-viewport" tabindex="0" role="region" aria-label="Relationship diagram; scroll to explore"><div id="erd"></div></div>
- <div id="erd-selection" class="erd-selection" role="status"></div>
- <div class="legend erd-legend"><span><i class="erd-line"></i>Active</span><span><i class="erd-line inactive"></i>Inactive</span><span><i class="erd-line both"></i>Filters both ways</span><span>1 = one · * = many</span></div></div>
- <div class="column-scroll"><table class="t"><thead><tr><th>From table / column</th><th>Cardinality</th><th>To table / column</th><th>Status</th><th>Cross-filter</th></tr></thead><tbody id="erd-rows">${relationshipRows()}</tbody></table></div>
- ${rAutoDateRelationships()}`;
-}
-function rAutoDateRelationships(){
- const auto=(M.relationships||[]).filter(autoDateRelationship);
- if(!auto.length) return '';
- return `<details class="rel-auto" id="rel-auto"><summary>Relationships to automatic date tables <span class="n">${auto.length}</span>
-   <span class="mut" style="font-weight:400">added by Power BI for date columns; in no headline count</span></summary>
-   <div class="body"><table class="t"><thead><tr><th>From table / column</th><th>Cardinality</th><th>To table / column</th><th>Status</th><th>Cross-filter</th></tr></thead><tbody>${auto.map(relationshipRow).join("")}</tbody></table></div></details>`;
-}
-function focusERD(name){erdFocus=name===erdFocus?'':name;drawERD();}
-function zoomERD(delta){erdZoom=Math.max(.5,Math.min(2.5,erdZoom+delta));drawERD();}
-function resetERD(){erdZoom=1;erdFocus='';drawERD();const viewport=document.getElementById('erd-viewport');viewport.scrollLeft=0;viewport.scrollTop=0;}
-function drawERD(){
- const host=document.getElementById('erd');if(!host)return;
- const inRel=new Set(countedRelationships().flatMap(r=>[r.fromTable,r.toTable]));
- const facts=countedTables().filter(t=>t.tableType==='fact'&&inRel.has(t.name)).map(t=>t.name);
- const dims=countedTables().filter(t=>['dimension','date dimension'].includes(t.tableType)&&inRel.has(t.name)).map(t=>t.name);
- const other=countedTables().filter(t=>inRel.has(t.name)&&!facts.includes(t.name)&&!dims.includes(t.name)).map(t=>t.name);
- const cols=[dims,facts,other].filter(c=>c.length);
- const rowH=100,boxW=260,boxH=64,pad=56;
- const viewport=document.getElementById('erd-viewport');
- const baseW=Math.max(cols.length*boxW+Math.max(0,cols.length-1)*180+pad*2,(viewport.clientWidth||0)-2);
- const H=Math.max(1,...cols.map(c=>c.length))*rowH+pad*2;
- const colW=cols.length>1?(baseW-pad*2-boxW)/(cols.length-1):0;
- const pos=new Map();cols.forEach((col,ci)=>col.forEach((name,i)=>pos.set(name,{x:pad+ci*colW,y:pad+i*rowH+(H-pad*2-col.length*rowH)/2})));
- const related=new Set([erdFocus]);for(const r of countedRelationships())if(r.fromTable===erdFocus||r.toTable===erdFocus){related.add(r.fromTable);related.add(r.toTable);}
- let svg=`<svg width="${baseW*erdZoom}" height="${H*erdZoom}" viewBox="0 0 ${baseW} ${H}" role="group" aria-label="Model table relationships" font-size="16">`;
- const cardinality=value=>String(value).toLowerCase()==='many'?'*':String(value).toLowerCase()==='one'?'1':'?';
- for(const [i,r] of countedRelationships().entries()){
-  const a=pos.get(r.fromTable),b=pos.get(r.toTable);if(!a||!b)continue;
-  const same=a.x===b.x,right=a.x<b.x;
-  const x1=same?a.x+boxW:a.x+(right?boxW:0),x2=same?b.x+boxW:b.x+(right?0:boxW);
-  const siblings=countedRelationships().filter(e=>e.fromTable===r.fromTable&&e.toTable===r.toTable);
-  const offset=(siblings.indexOf(r)-(siblings.length-1)/2)*12;
-  const y1=a.y+boxH/2+offset,y2=b.y+boxH/2+offset;
-  const selected=!erdFocus||r.fromTable===erdFocus||r.toTable===erdFocus;
-  const bend=same?Math.min(baseW-8,x1+30+(i%3)*8):(x1+x2)/2;
-  const path=r.fromTable===r.toTable?`M${x1},${y1-14} C${bend},${y1-40} ${bend},${y1+40} ${x2},${y2+14}`:`M${x1},${y1} C${bend},${y1} ${bend},${y2} ${x2},${y2}`;
-  const stroke=r.crossFilteringBehavior==='bothDirections'?'var(--warn)':'#526b87';
-  svg+=`<g opacity="${selected?1:.35}"><title>${esc(r.fromTable)}[${esc(r.fromColumn)}]${fxText(r.fromTable,r.fromColumn)} → ${esc(r.toTable)}[${esc(r.toColumn)}]${fxText(r.toTable,r.toColumn)} · ${r.isActive?'active':'inactive'}</title><path d="${path}" fill="none" stroke="${stroke}" stroke-width="${erdFocus&&selected?3:2}" ${r.isActive?'':'stroke-dasharray="8 6"'}/>`;
-  if(!same)svg+=`<text x="${x1+(right?12:-12)}" y="${y1-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.fromCardinality)}</text><text x="${x2+(right?-12:12)}" y="${y2-8}" text-anchor="middle" fill="${stroke}" font-weight="700">${cardinality(r.toCardinality)}</text>`;
-  svg+='</g>';
- }
- const colors={fact:['#eef0ff','#5261a1'],dimension:['#e8f5f1','#277965'],'date dimension':['#f2ebfc','#8054ae']};
- for(const [name,p] of pos){
-  const t=countedTables().find(t=>t.name===name),[fill,stroke]=colors[t.tableType]||['#edf2f7','#61748a'];
-  const selected=name===erdFocus,label=name.length>27?name.slice(0,26)+'…':name;
-  const activate=action('focusERD',name);
-  svg+=`<g class="erd-node" tabindex="0" role="button" aria-label="Focus ${esc(name)}" aria-pressed="${selected}" onclick="${activate}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${activate}}" opacity="1"><title>${esc(name)} · ${esc(t.tableType)}</title><rect x="${p.x}" y="${p.y}" width="${boxW}" height="${boxH}" rx="10" fill="${fill}" stroke="${selected?'#172434':stroke}" stroke-width="${selected?3:2}"/><text x="${p.x+16}" y="${p.y+27}" fill="#1c2430" font-weight="650">${esc(label)}</text><text x="${p.x+16}" y="${p.y+48}" fill="#4f5b67" font-size="12">${esc(t.tableType||'Table')}</text></g>`;
- }
- svg+='</svg>';
- host.innerHTML=cols.length?svg:'<div class="empty">No relationships in this model.</div>';
- const orphans=countedTables().filter(t=>!inRel.has(t.name));
- document.getElementById('erd-selection').innerHTML=(erdFocus?`Showing connections for <strong>${esc(erdFocus)}</strong> · ${tblLink(erdFocus)} <span class="mut">(table details)</span>`:'All connections shown. Select a table to highlight its relationships.')+(orphans.length?`<p class="mut">No relationships: ${orphans.map(t=>tblLink(t.name)).join(', ')}</p>`:'');
- document.getElementById('erd-focus').value=erdFocus;
- document.getElementById('erd-zoom-label').textContent=Math.round(erdZoom*100)+'%';
- document.getElementById('erd-rows').innerHTML=relationshipRows();
-}
+/* relationships: relationships.js (the Model view surface and the Relationships list) */
 
 /* ============================================================ sources */
 function rLiveSource(){

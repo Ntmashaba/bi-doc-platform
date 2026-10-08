@@ -17,7 +17,8 @@ sys.path.insert(0, str(HERE))
 
 from build_browser_fixture import build  # noqa: E402
 
-SCRIPTS = ("browser_review.cjs", "browser_navigation.cjs", "browser_power_query.cjs", "browser_model_kinds.cjs", "browser_sections.cjs")
+SCRIPTS = ("browser_review.cjs", "browser_navigation.cjs", "browser_power_query.cjs", "browser_model_kinds.cjs", "browser_sections.cjs",
+           "browser_relationships.cjs")
 
 
 def main():

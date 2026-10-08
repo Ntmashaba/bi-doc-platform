@@ -124,7 +124,8 @@ const step=name=>console.log('  ok '+name);
   counts.tables=await open('tables',()=>page.evaluate(()=>document.querySelectorAll('#tbl-list details[data-table]').forEach(d=>d.open=true)));
   counts.columns=await open('columns');
   counts.measures=await open('measures',()=>page.evaluate(()=>document.querySelectorAll('#mea-list details').forEach(d=>d.open=true)));
-  counts.rels=await open('rels');
+  counts.rels=await open('rels',()=>page.evaluate(()=>selectRelTable('Sales')));   // the panel beside the diagram
+  counts['rel-list']=await open('rel-list');
   counts.usage=await open('usage');
   counts.pages=await open('pages',()=>page.evaluate(()=>document.querySelectorAll('#main details').forEach(d=>d.open=true)));
   counts.filters=await open('filters');

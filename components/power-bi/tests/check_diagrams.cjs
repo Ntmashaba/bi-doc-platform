@@ -36,6 +36,33 @@ const run=s=>vm.runInContext(s,context);
 const same=(a,b)=>assert.equal(JSON.stringify(a),JSON.stringify(b));
 
 // Structural checks on the actual generated diagrams (not a browser paint test).
+function checkSurface(expected,selected){
+ const svg=node('rel-canvas').innerHTML;
+ if(!expected){assert.ok(!svg.includes('<rect'));return;}
+ assert.ok(!/NaN|Infinity|undefined/.test(svg),'the surface has invalid coordinates');
+ const bounds=svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);assert.ok(bounds,'the surface has a viewBox');
+ const width=+bounds[1],height=+bounds[2];
+ const rects=[...svg.matchAll(/<rect\b([^>]+)>/g)];assert.equal(rects.length,expected,'the surface keeps every table');
+ for(const [,attrs] of rects){
+  const number=k=>+attrs.match(new RegExp('\\b'+k+'="([\\d.-]+)"'))[1];
+  const x=number('x'),y=number('y'),w=number('width'),h=number('height');
+  assert.ok(x>=2&&y>=2&&x+w<=width-2&&y+h<=height-2,'a table box is clipped by the SVG bounds');
+  assert.ok(w>=160&&h>=48,'table boxes keep a readable size');
+  assert.ok(number('stroke-width')>=1.5,'a table box has a visible outline');
+ }
+ const boxes=[...svg.matchAll(/<g class="rel-box([^"]*)"([^>]*)>/g)];
+ assert.equal(boxes.length,expected);
+ for(const [,,attrs] of boxes){assert.match(attrs,/tabindex="0"/);assert.match(attrs,/role="button"/);}
+ // Selecting a table presses its box and fades what is not related to it; nothing is selected otherwise.
+ const pressed=boxes.filter(([,,attrs])=>/aria-pressed="true"/.test(attrs));
+ assert.equal(pressed.length,selected?1:0);
+ if(selected){assert.ok(pressed[0][2].includes(`data-table="${selected.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}"`),'the pressed box is the selected table');
+  assert.ok(!/opacity=/.test(pressed[0][2]),'the selected table is never faded');}
+ else assert.ok(!svg.includes('is-faded'),'nothing fades until something is selected');
+ // Every line precedes every box, so lines cannot paint over table names.
+ assert.ok(svg.lastIndexOf('<path class="rel-line"')<svg.indexOf('<g class="rel-box'));
+ checked++;
+}
 let checked=0;
 function checkSvg(id,expected){
  const svg=node(id).innerHTML;
@@ -71,11 +98,12 @@ if(run('has.linked')){
  }
 }
 if(run('has.model')){
+ // The relationship surface: every counted table is a box, whatever is selected or however far it is zoomed.
  run("pageScope='*';switchTab('rels')");
- const expected=run('M.tables.filter(t=>M.relationships.some(r=>r.fromTable===t.name||r.toTable===t.name)).length');
- checkSvg('erd',expected);
- for(const name of run('M.tables.map(t=>t.name)')){run(`focusERD(${JSON.stringify(name)})`);checkSvg('erd',expected);}
- run('zoomERD(-10)');checkSvg('erd',expected);run('zoomERD(10)');checkSvg('erd',expected);run('resetERD()');
+ const expected=run('countedRelationships().length?countedTables().length:0');
+ checkSurface(expected,'');
+ for(const name of run('countedTables().map(t=>t.name)')){run(`selectRelTable(${JSON.stringify(name)})`);checkSurface(expected,name);run('clearRelSelection()');}
+ run('zoomRel(-10)');checkSurface(expected,'');run('zoomRel(10)');checkSurface(expected,'');run('fitRel()');
 }
 if(run('has.report')){
  run("pageScope='*';switchTab('layout')");

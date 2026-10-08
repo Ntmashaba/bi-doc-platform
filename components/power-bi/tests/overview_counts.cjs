@@ -8,7 +8,7 @@ const SHOWN_IN={
  'columns':()=>Number(/· ([\d,]+) distinct columns/.exec(document.getElementById('column-count').textContent)[1].replace(/,/g,'')),
  'calc-columns':()=>document.querySelectorAll('#calc-column-list details.calc-col').length,
  'measures':()=>document.querySelectorAll('#mea-list details.measure').length,
- 'relationships':()=>document.querySelectorAll('#erd-rows tr').length,
+ 'relationships':()=>document.querySelectorAll('#rel-list-rows tr:not(.rel-none)').length,
  'queries':()=>document.querySelectorAll('.pq-item').length,
  'sources':()=>document.querySelectorAll('#source-list-rows tr').length,
  'roles':()=>document.querySelectorAll('#main [id^="role-"]').length,
@@ -18,7 +18,7 @@ const SHOWN_IN={
  'bookmarks':()=>document.querySelectorAll('#bookmark-list tbody tr').length,
  'warnings':()=>document.querySelectorAll('#main table.t tbody tr').length};
 const OPENS={'source-tables':'tables','calc-tables':'calc-tables','calc-groups':'calc-groups','other-tables':'tables',columns:'columns',
- 'calc-columns':'calc-columns',measures:'measures',relationships:'rels',queries:'power-query',sources:'sources',roles:'security',
+ 'calc-columns':'calc-columns',measures:'measures',relationships:'rel-list',queries:'power-query',sources:'sources',roles:'security',
  pages:'pages',visuals:'pages',filters:'filters',bookmarks:'bookmarks',warnings:'warnings'};
 // Returns the ids checked. `before` runs ahead of each count (for example to select a report page).
 async function checkOverviewCounts(page,{before}={}){
