@@ -53,6 +53,17 @@ class AdfGeneration(Base):
         self.assertEqual(lm["document_id"], sm["document_id"])             # one stream, two revisions
         self.assertNotEqual(lm["revision_id"], sm["revision_id"])
 
+    def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
+        """HTML, embedded payload and manifest: code as written, supported credential patterns cleaned."""
+        local, _ = self.artifact(self.run_adf(self.factory), adf.VIEW_IDS)
+        self.assertIn(ADF_MARKERS["script_api_key"].encode(), local)    # local output is the engine's own, unchanged
+        shared, m = self.artifact(self.run_adf(self.factory, profile="shared", query_code="included"), adf.VIEW_IDS)
+        for name in ("sql_literal", "precopy_literal"):
+            self.assertIn(ADF_MARKERS[name].encode(), shared, name)
+        for name in ("inline_password", "sas_signature", "url_password", "bearer_token", "script_api_key"):
+            self.assertNotIn(ADF_MARKERS[name].encode(), shared, name)
+        self.assertIn("credential", {o["reason"] for o in m["projection"]["omissions"]})
+
     def test_objects_bindings_and_search_text(self):
         _, m = self.artifact(self.run_adf(self.factory), adf.VIEW_IDS)
         by_id = {o["object_id"]: o for o in m["objects"]}
@@ -152,6 +163,25 @@ class PowerBIGeneration(Base):
         self.assertNotIn(str(self.tmp).encode(), shared)                 # no machine path
         local, _ = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
         self.assertIn(PBI_MARKERS["sql_literal"].encode(), local)
+
+    def test_shared_with_code_included_is_cleaned_across_the_whole_artifact(self):
+        """HTML, embedded payload, search index and manifest: code as written, credential patterns cleaned."""
+        shared, m = self.artifact(self.run_pbi(self.model, profile="shared", query_code="included"), power_bi.VIEW_IDS)
+        for name in ("sql_literal", "piped_literal"):
+            self.assertIn(PBI_MARKERS[name].encode(), shared, name)
+        for name in ("odbc_password", "web_token", "entered_row", "entered_base64", "url_password", "bearer_token",
+                     "api_key"):
+            self.assertNotIn(PBI_MARKERS[name].encode(), shared, name)
+        self.assertNotIn(str(self.tmp).encode(), shared)
+        reasons = {o["reason"] for o in m["projection"]["omissions"]}
+        self.assertLessEqual({"credential", "secret_bearing_url", "entered_data"}, reasons)
+
+    def test_local_output_is_not_projected(self):
+        """The local profile publishes the engine's payload as read: every seeded value, no omissions."""
+        local, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)
+        for name, marker in PBI_MARKERS.items():
+            self.assertIn(marker.encode(), local, name)
+        self.assertEqual((m["projection"]["profile"], m["projection"]["omissions"]), ("local", []))
 
     def test_lineage_tags_are_object_ids_and_sources_are_logical(self):
         _, m = self.artifact(self.run_pbi(self.model), power_bi.VIEW_IDS)

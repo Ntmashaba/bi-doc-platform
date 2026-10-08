@@ -8,6 +8,10 @@ PBI_MARKERS = {
     "entered_row": "SEEDROW_Alice_Smith",
     "entered_base64": "i45WSlTSUTJUitWJVjICM41hzFgA",
     "web_token": "SEEDTOKEN_sig_abc123",
+    "url_password": "SEEDPWD_Url_5521",
+    "bearer_token": "SEEDBEARER_9f8e7d6c5b4a",
+    "api_key": "SEEDAPIKEY_3c2b1a",
+    "piped_literal": "SEEDPIPE_Beta",
 }
 M = {
     "Creds": f'let S = Odbc.DataSource("Driver={{SQL Server}};Server=db1;Uid=svc;Pwd={PBI_MARKERS["odbc_password"]}") in S',
@@ -17,6 +21,13 @@ M = {
     "Compressed": 'let S = Table.FromRows(Json.Document(Binary.Decompress(Binary.FromText('
                   f'"{PBI_MARKERS["entered_base64"]}", BinaryEncoding.Base64), Compression.Deflate))) in S',
     "Api": f'let S = Json.Document(Web.Contents("https://api.contoso.com/data?token={PBI_MARKERS["web_token"]}")) in S',
+    # user:password@host in a URL, and credentials sent as request headers
+    "Userinfo": f'let S = Json.Document(Web.Contents("https://svc_reader:{PBI_MARKERS["url_password"]}@api.contoso.com/v1/orders")) in S',
+    "Headers": 'let S = Json.Document(Web.Contents("https://api.contoso.com/v1/stock", [Headers=['
+               f'Authorization="Bearer {PBI_MARKERS["bearer_token"]}", #"x-api-key"="{PBI_MARKERS["api_key"]}"]])) in S',
+    # " | " inside a literal: withholding must not stop at it
+    "Piped": 'let Source = Sql.Database("finance-sql.corp.local,1444", "FinanceDW"),\n'
+             f'    F = Table.SelectRows(Source, each [Status] = "A | {PBI_MARKERS["piped_literal"]}")\nin\n    F',
     "Sales": 'let Source = Sql.Database("finance-sql.corp.local,1444", "FinanceDW"),\n'
              '    T = Source{[Schema="dbo",Item="FactSales"]}[Data]\nin\n    T',
 }
@@ -41,7 +52,9 @@ def pbi_model(folder: Path) -> Path:
 
 
 ADF_MARKERS = {"inline_password": "SEEDPWD_Inline_4410", "sas_signature": "SEEDSIG_sv2022abc",
-               "sql_literal": "SEEDSSN_900-33-4444", "precopy_literal": "SEEDPRE_2024"}
+               "sql_literal": "SEEDSSN_900-33-4444", "precopy_literal": "SEEDPRE_2024",
+               "url_password": "SEEDPWD_AdfUrl_8802", "bearer_token": "SEEDBEARER_Adf_1a2b3c4d",
+               "script_api_key": "SEEDAPIKEY_Adf_77c1"}
 
 
 def _ls(name, typ, tp):
@@ -76,6 +89,13 @@ ADF_FACTORY = {
         {"name": "Lookup literal", "type": "Lookup", "typeProperties": {"dataset": _ref("DS_Sales"), "source": {
             "type": "AzureSqlSource", "sqlReaderQuery": f"SELECT MAX(id) AS m FROM dbo.People WHERE ssn = '{ADF_MARKERS['sql_literal']}'"}}},
         {"name": "Purge", "type": "Delete", "typeProperties": {"dataset": _ref("DS_Daily")}},
+        {"name": "Notify", "type": "WebActivity", "typeProperties": {
+            "url": f"https://svc_notify:{ADF_MARKERS['url_password']}@hooks.contoso.com/v1/loaded", "method": "POST",
+            "headers": {"Authorization": f"Bearer {ADF_MARKERS['bearer_token']}"}, "body": {"status": "loaded"}}},
+        {"name": "Refresh cache", "type": "Script", "linkedServiceName": {"referenceName": "LS_Sql", "type": "LinkedServiceReference"},
+         "typeProperties": {"scripts": [{"type": "NonQuery", "text":
+             "EXEC sys.sp_invoke_external_rest_endpoint @url = N'https://cache.contoso.com/refresh', "
+             f"@headers = N'{{\"x-api-key\": \"{ADF_MARKERS['script_api_key']}\"}}'"}]}},
     ]}}],
 }
 
