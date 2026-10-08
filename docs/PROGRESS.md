@@ -552,3 +552,8 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 - Owner: run `packaging/windows/verify-install.ps1` on a clean Windows machine (the hosted runner has Python on disk); it now also covers the bundled portable reader and, with `-AbfArchive`, the public AdventureWorks ABF backup (checksum-pinned, MIT, 2.1 MB). The full owner checklist (clean install, real pbi-tools, same-file comparison with `scripts/compare_extractors.py`) is `docs/validation/windows-validation-pack.md`; none of it has been run yet.
 - Portable extraction still to do: a same-file comparison against a real pbi-tools extract; a matched real thin-report and Tabular-backup pair (none is public); ABF in the hosted upload UI and the worker; dependency parity, so deletion recommendations can be enabled for portable output.
 - Repository: archive `pbi-doc-gen` and `adf-doc-gen` when you choose to (archiving keeps them readable; do not delete them or make them private while `samples/manifest.json` points at `pbi-doc-gen`). Optionally repoint its four sample downloads into this repository for independence.
+
+### 2026-10-08 — UI rework (branch `claude/ui-rework`)
+Steps 1–8 of the UI rework spec, one commit each, plus fixes from an independent review. Gate evidence and what
+is still open: `docs/ui-rework/GATES.md`. The final gate (walking the reporting user through their own file) is
+owner-run.
