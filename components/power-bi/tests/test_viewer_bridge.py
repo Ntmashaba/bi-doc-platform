@@ -28,8 +28,9 @@ class ViewerBridge(unittest.TestCase):
         self.assertIn("if(ev.source!==window.parent) return;", text)
         self.assertIn('m.protocol!=="bi-doc-viewer"', text)
         self.assertIn("if(window.parent===window", text)
-        self.assertIn("if(DATA.published) return rDocumentationReadOnly();", text)
-        self.assertIn("published, read-only copy", text)
+        self.assertIn("if(documentationSealed()) return rDocumentationReadOnly();", text)
+        self.assertIn("return !!(DATA.published || document.getElementById('pbidoc-manifest'));", text)
+        self.assertIn("carries the library\'s integrity check, so it cannot be edited here", text)
         self.assertIn('if(window.location.hash && window.parent===window)window.history.pushState', text)
 
 

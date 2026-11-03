@@ -125,7 +125,7 @@ const step = (name) => console.log("  ok " + name);
   await page.getByRole("link", { name: "Open it" }).click();
   const legacyFrame = page.frameLocator("iframe");
   await legacyFrame.getByText("Factory details", { exact: true }).first().click();
-  await legacyFrame.getByText("This is a published, read-only copy.", { exact: false }).waitFor({ timeout: 10000 });
+  await legacyFrame.getByText("This copy carries the library's integrity check", { exact: false }).waitFor({ timeout: 10000 });
   assert.strictEqual(await legacyFrame.getByRole("button", { name: "Download updated HTML" }).count(), 0);
   assert.strictEqual(await legacyFrame.locator("#det-owner").count(), 0);
   step("legacy import converts; published viewer is read-only (A37)");

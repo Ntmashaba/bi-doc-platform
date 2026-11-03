@@ -35,7 +35,7 @@ class LegacyImport(ApiTest):
         for value in ADF_MARKERS.values():
             self.assertNotIn(value.encode(), stored, value)
         self.assertIn(b'"source":{"kind":"legacy"', stored.replace(b" ", b""))
-        self.assertIn(b"published, read-only copy", stored)
+        self.assertIn("carries the library's integrity check, so it cannot be edited here".encode(), stored)
         again = self.upload(html, legacy_metadata=meta)                                   # byte duplicate
         self.assertEqual((again.status_code, again.json()["document_id"]), (200, doc["document_id"]))
 
