@@ -55,12 +55,64 @@ from a JSON file:
   beside the source is used when present: `Sales.pbix.bidoc-details.json` beside `Sales.pbix`, or
   `factory.bidoc-details.json` beside a `factory` folder. Keep it there and every regeneration records the same details.
 - The fields are the engines' own (`pbi-doc-gen --metadata`, `adf-doc-gen --details`). Unknown fields, a file that is
-  not JSON, or a value that looks like a password, key or token stop the generation with a message naming the file;
-  nothing is written. Record where a secret lives, never the secret.
+  not JSON, or a value that holds a credential (below) stop the generation with a message naming the file; nothing
+  is written. Record where a secret lives, never the secret.
 - In the shared profile the same cleaning as the rest of the document applies: a personal file location (for example
   under `C:\Users`) is withheld, keeping the file name and a stable reference.
 - The details are part of the document, not of its identity: adding or changing them makes a new revision of the
   same document.
+- A value is refused when it holds a credential rather than a reference to one: a credential setting with a value
+  (`Password=`, `pwd=`, `client_secret=`, `api_key=`, `AccountKey=`, `token=` and the like), a credential in a URL
+  query (`?sig=`, `&token=`), a password in a URL (`user:password@host`), an `Authorization` header value or a bearer
+  token. Account names, authentication types, Key Vault URLs and `@Microsoft.KeyVault(...)` references are fine. Both
+  engines apply the same rules, and the error names the field and the file, never the value.
+
+**Two environments.** The Factory details `environment` is text for readers of the document. `--environment` is
+different: it files the document in the library and is part of its identity, so `Production` and `Test` are separate
+documents. Neither sets the other. When the details name an environment that `--environment` does not, `bidoc` warns
+and files the document as `--environment` says.
+
+### Example: a factory with its details
+
+```text
+C:\Repos\
+  adf-sales\                       the factory (its Git folder)
+  adf-sales.bidoc-details.json     its details, beside it
+```
+
+`adf-sales.bidoc-details.json`:
+
+```json
+{
+  "environment": "Production",
+  "owner": "Data Platform",
+  "factory": "contoso-prod / rg-data / adf-sales",
+  "sourceLocation": "https://dev.azure.com/contoso/data/_git/adf-sales (main)",
+  "runbook": "https://wiki.contoso.com/data/adf-sales",
+  "folder": "Sales",
+  "notes": "Credentials are in Key Vault kv-data-prod."
+}
+```
+
+```powershell
+bidoc generate --engine adf --kind adf_git --source "C:\Repos\adf-sales" --output-dir "C:\Documentation" --environment Production
+```
+
+```text
+  validating: details from adf-sales.bidoc-details.json
+  ...
+Wrote C:\Documentation\adf sales--fe76dec4.html
+```
+
+Open the document and choose **Factory details** in the sidebar: the seven fields are shown as written, read-only.
+For a Power BI source the same file sits beside the `.pbix` or `.pbip` (`Sales.pbix.bidoc-details.json`) with
+`reportLocation`, `folder` and `connections`, and the values appear under **Document actions → Documentation
+details**. `bidoc batch C:\Repos --output-dir C:\Documentation` and the desktop app pick up the same file.
+Without `--environment Production` the document is still written, with this warning:
+
+```text
+  warning: adf-sales.bidoc-details.json gives the environment 'Production' for readers of the factory details, but the document is filed with no environment. Use --environment 'Production' to file it there; the environment is part of the document's identity.
+```
 
 ## PBIX extraction
 

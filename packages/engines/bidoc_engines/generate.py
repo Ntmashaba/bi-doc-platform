@@ -115,6 +115,23 @@ def _read_details(adapter, path: Path) -> dict:
         raise adapter.InputError(f"details file {path.name}: {exc}") from None
 
 
+def _environment_note(request: GenerateRequest, details: dict, path: Path) -> str | None:
+    """Factory details carry an `environment` for readers; the request's environment files the document in the
+    library and is part of its identity. One never sets the other. Say so when they disagree, or when only the
+    details name one, so a reader does not assume the document was filed under it."""
+    written = str(details.get("environment") or "").strip() if request.engine == "adf" else ""
+    filed = (request.environment or "").strip()
+    if not written or written.casefold() == filed.casefold():
+        return None
+    if not filed:
+        return (f"{path.name} gives the environment {written!r} for readers of the factory details, but the "
+                f"document is filed with no environment. Use --environment {written!r} to file it there; the "
+                f"environment is part of the document's identity.")
+    return (f"{path.name} gives the environment {written!r}, but the document is filed under {filed!r} "
+            f"(--environment). The factory details show {written!r}; the library and the document identity use "
+            f"{filed!r}.")
+
+
 def generate(request: GenerateRequest, progress=None, cancellation=None) -> GenerateResult:
     progress = progress or (lambda stage, message="": None)
     started, timings = time.monotonic(), {}
@@ -156,6 +173,9 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         if request.details_path or details_file.is_file():
             payload[adapter.DETAILS_KEY] = _read_details(adapter, details_file)
             progress("validating", f"details from {details_file.name}")
+            note = _environment_note(request, payload[adapter.DETAILS_KEY], details_file)
+            if note:
+                result.warnings.append(note)
         if isinstance(payload.get("producer"), dict):
             # The document says what generated it, beside its generation time.
             payload["producer"]["bidoc"] = request.bidoc_version or None

@@ -48,7 +48,7 @@ class CatalogTests(unittest.TestCase):
                       {'reportLocation': 'https://user:hunter2@x.example.com/r'},
                       {'folder': 'Password=hunter2'},
                       {'connections': [{'server': 's', 'authentication': 'Password=hunter2'}]},
-                      {'connections': [{'username': 'u', 'connectionName': 'Bearer abcdefghijkl'}]}):
+                      {'connections': [{'username': 'u', 'connectionName': 'Bearer abc123def456'}]}):
             with self.subTest(value=value), self.assertRaises(ValueError) as caught:
                 validate_metadata(value)
             self.assertIn('secret', str(caught.exception))

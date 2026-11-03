@@ -104,6 +104,86 @@ class Recorded(Base):
         self.assertNotIn(r"C:\Users\nt", shared)
 
 
+# One credential policy for both engines (pbidocgen and adfdocgen keep identical copies of credential_values.py).
+CREDENTIALS = ["Password=hunter2", "Server=sql;Database=dw;pwd=hunter2", "client_secret=examplevalue", "api_key=abc123",
+               "x-api-key=abc123", "AccountKey=YWJjZGVm==", "SharedAccessSignature=sv=2021-08-06", "token=abc123",
+               "https://x.example.com/report?token=abc123", "https://store.example.com/c?sv=2021&sig=abc123",
+               "https://user:hunter2@x.example.com/r", "Authorization: Basic dXNlcjpwYXNz", "Authorization: Bearer abc123",
+               "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9"]
+REFERENCES = ["svc-pbi-refresh", "Windows", "OAuth2 (password stored in Key Vault)",
+              "https://kv.vault.azure.net/secrets/sql-password", "@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/x)",
+              "https://user@dev.azure.com/contoso/data/_git/adf-sales", "Bearer authentication", "Basic authentication",
+              "Rotate the client secret quarterly", "Key Vault secret: sql-pwd", "Token-based access via managed identity"]
+
+
+class Credentials(Base):
+    def test_both_engines_keep_the_same_policy(self):
+        import adfdocgen.credential_values as adf_copy
+        import pbidocgen.credential_values as pbi_copy
+        self.assertEqual(Path(adf_copy.__file__).read_bytes(), Path(pbi_copy.__file__).read_bytes(),
+                         "pbidocgen and adfdocgen credential_values.py must stay identical")
+        from adfdocgen.details import validate_details
+        from pbidocgen.catalog import validate_metadata
+        for value in CREDENTIALS:
+            for check, details in ((validate_details, {"notes": value}), (validate_details, {"runbook": value}),
+                                   (validate_metadata, {"reportLocation": value}),
+                                   (validate_metadata, {"connections": [{"server": "s", "authentication": value}]})):
+                with self.subTest(value=value, field=next(iter(details))), self.assertRaises(ValueError) as caught:
+                    check(details)
+                self.assertIn("secret", str(caught.exception))
+        for value in REFERENCES:
+            with self.subTest(value=value):
+                self.assertEqual(validate_details({"notes": value})["notes"], value)
+                self.assertEqual(validate_metadata({"connections": [{"username": value}]})["connections"][0]["username"], value)
+
+    def test_a_credential_stops_generation_in_both_profiles_without_echoing_it(self):
+        for engine, details in (("power_bi", {"connections": [{"server": "s", "authentication": "client_secret=s3cr3tvalue"}]}),
+                                ("adf", {"notes": "client_secret=s3cr3tvalue"})):
+            for profile in ("local", "shared"):
+                with self.subTest(engine=engine, profile=profile):
+                    path = self.write(f"{engine}-{profile}.json", details)
+                    run = self.run_pbi if engine == "power_bi" else self.run_adf
+                    result = run(details_path=str(path), profile=profile, out=f"refused-{engine}-{profile}")
+                    self.assertEqual((result.status, result.errors[0]["code"]), ("failed", "INVALID_INPUT"))
+                    self.assertIn(path.name, result.errors[0]["message"])
+                    self.assertNotIn("s3cr3tvalue", result.errors[0]["message"])
+                    self.assertFalse((self.tmp / f"refused-{engine}-{profile}").exists() and
+                                     any((self.tmp / f"refused-{engine}-{profile}").glob("*.html")))
+
+
+class Environment(Base):
+    """Factory details' `environment` is for readers; --environment files the document and is part of its identity."""
+
+    def note(self, result):
+        return [w for w in result.warnings if "environment" in w and DETAILS_SIDECAR in w]
+
+    def test_details_alone_say_the_document_is_filed_with_no_environment(self):
+        plain = self.run_adf()
+        details_sidecar(self.factory).write_text(json.dumps({"environment": "Production"}), encoding="utf-8")
+        result = self.run_adf()
+        self.assertEqual(result.document_id, plain.document_id, "the details never change the identity")
+        self.assertEqual(self.note(result), [f"factory{DETAILS_SIDECAR} gives the environment 'Production' for readers "
+                                             "of the factory details, but the document is filed with no environment. Use "
+                                             "--environment 'Production' to file it there; the environment is part of the "
+                                             "document's identity."])
+        self.assertEqual(read_details(self.sealed(result)[0])["environment"], "Production")
+
+    def test_a_conflict_is_named_and_the_filing_environment_decides_identity(self):
+        filed = self.run_adf(environment="Test")
+        details_sidecar(self.factory).write_text(json.dumps({"environment": "Production"}), encoding="utf-8")
+        result = self.run_adf(environment="Test")
+        self.assertEqual(result.document_id, filed.document_id)
+        self.assertIn("filed under 'Test' (--environment)", self.note(result)[0])
+
+    def test_agreement_or_no_environment_in_the_details_needs_no_note(self):
+        details_sidecar(self.factory).write_text(json.dumps({"environment": "production", "owner": "x"}), encoding="utf-8")
+        self.assertEqual(self.note(self.run_adf(environment="Production")), [])
+        details_sidecar(self.factory).write_text(json.dumps({"owner": "x"}), encoding="utf-8")
+        self.assertEqual(self.note(self.run_adf()), [])
+        details_sidecar(self.model).write_text(json.dumps(PBI_DETAILS), encoding="utf-8")
+        self.assertEqual(self.note(self.run_pbi()), [])
+
+
 class Refused(Base):
     def assert_refused(self, result, *phrases):
         self.assertEqual(result.status, "failed")
