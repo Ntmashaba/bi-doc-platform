@@ -6,6 +6,11 @@ import re
 from urllib.parse import quote
 
 METADATA_ID = 'pbi-documentation-metadata'
+# A value that carries a credential rather than a reference to one: a password or key in a connection string, a
+# token in a URL query, user:password@ in a URL, a bearer token. Mirrors the Factory details check in adf-doc-gen.
+_SECRETISH = re.compile(r"(?i)(?:\b(?:password|pwd|secret|accountkey|account_key|sharedaccesskey|sharedaccesssignature|"
+                        r"token|apikey|api_key|client_secret)\s*[=:]\s*\S)|[?&](?:sig|token|access_token|code|key|apikey|"
+                        r"api_key|password|secret)=[^&\s]|://[^/\s:@]+:[^/\s@]+@|\bbearer\s+\S{8,}")
 
 
 def validate_metadata(value):
@@ -19,6 +24,8 @@ def validate_metadata(value):
         text = value.get(key, '')
         if not isinstance(text, str):
             raise ValueError(f'{key} must be text')
+        if _SECRETISH.search(text):
+            raise ValueError(f'{key} looks like it contains a secret (password, key or token); record where the secret lives instead')
         result[key] = text
     connections = value.get('connections', [])
     if not isinstance(connections, list):
@@ -30,6 +37,9 @@ def validate_metadata(value):
             raise ValueError('Connection metadata accepts identity, username and authentication fields only; no passwords or tokens')
         if any(not isinstance(v, str) for v in connection.values()):
             raise ValueError('Connection fields must be text')
+        if any(_SECRETISH.search(v) for v in connection.values()):
+            raise ValueError('A connection field looks like it contains a secret (password, key or token); record '
+                             'the account name and where the secret lives instead')
         result['connections'].append({key: connection.get(key, '') for key in sorted(fields)})
     return result
 

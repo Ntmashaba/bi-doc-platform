@@ -114,6 +114,23 @@ class Documents(ApiTest):
         self.assertEqual(self.client.get("/api/v1/documents", params={"document_type": "adf"}).json()["items"][0]
                          ["document_id"], out["document_id"])
 
+    def test_a_document_with_details_recorded_at_generation_is_published_with_them(self):
+        import json
+        from adfdocgen.details import read_details
+        from bidoc_engines.generate import details_sidecar
+        details_sidecar(self.factory).write_text(json.dumps({"owner": "Data Platform", "runbook": "https://wiki.example.com/adf",
+                                                             "environment": "Production"}), encoding="utf-8")
+        for profile in ("local", "shared"):
+            with self.subTest(profile=profile):
+                shutil.rmtree(self.tmp / "out", ignore_errors=True)
+                r = self.upload(self.artifact(profile=profile, environment=profile))   # one stream per profile
+                self.assertEqual(r.status_code, 201, r.text)
+                out = r.json()
+                dl = self.client.get(f"/api/v1/documents/{out['document_id']}/revisions/{out['revision_id']}/download")
+                validate_artifact(dl.content)
+                self.assertEqual({k: v for k, v in read_details(dl.content.decode()).items() if v},
+                                 {"owner": "Data Platform", "runbook": "https://wiki.example.com/adf", "environment": "Production"})
+
     def test_update_needs_etag(self):
         out = self.upload(self.artifact()).json()
         second = self.artifact()

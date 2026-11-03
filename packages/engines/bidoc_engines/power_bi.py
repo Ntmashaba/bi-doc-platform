@@ -29,6 +29,16 @@ class InputError(ValueError):
     pass
 
 
+# Documentation details (report location, catalogue folder, connection account references) as pbi-doc-gen's
+# --metadata takes them. The renderer embeds them; the shared profile's cleaner then sees them like any other text.
+DETAILS_KEY = "documentation"
+
+
+def validate_details(value) -> dict:
+    from pbidocgen.catalog import validate_metadata
+    return validate_metadata(value)
+
+
 def _has_embedded_model(pbix: Path) -> bool:
     """A live-connected (thin) PBIX has no DataModel part; without a PBIX to read, assume one."""
     try:

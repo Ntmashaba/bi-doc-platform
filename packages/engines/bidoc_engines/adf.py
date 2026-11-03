@@ -26,6 +26,18 @@ class InputError(ValueError):
     pass
 
 
+# Factory details (environment, owner, factory, sourceLocation, runbook, folder, notes) as adf-doc-gen's --details
+# takes them. The renderer embeds them; the shared profile's cleaner then sees them like any other text.
+DETAILS_KEY = "details"
+
+
+def validate_details(value) -> dict:
+    from adfdocgen.details import FIELDS, validate_details as check
+    if value in (None, ""):
+        raise ValueError(f"the details file is empty; accepted fields: {', '.join(FIELDS)}")
+    return check(value)
+
+
 def native_schema(payload) -> str:
     return f"{ENGINE}/{payload.get('schemaVersion')}"
 

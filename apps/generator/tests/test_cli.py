@@ -55,6 +55,35 @@ class Cli(unittest.TestCase):
         self.assertEqual(manifest["native_payload"]["data"]["producer"],
                          {"engine": "pbi-doc-gen", "engineVersion": pbidocgen.__version__, "bidoc": __version__})
 
+    def test_details_are_recorded_from_a_named_file_and_from_beside_each_batch_input(self):
+        from adfdocgen.details import read_details
+        from bidoc_contracts import validate_artifact
+        details = self.tmp / "details.json"
+        details.write_text(json.dumps({"owner": "Data Platform", "runbook": "https://wiki.example.com/adf"}), encoding="utf-8")
+        code, out, err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind", "adf_git",
+                              "--output-dir", str(self.tmp / "out"), "--details", str(details), "--json"])
+        self.assertEqual(code, 0, err)
+        html = Path(json.loads(out)["artifact_path"]).read_bytes()
+        validate_artifact(html)
+        self.assertEqual(read_details(html.decode())["owner"], "Data Platform")
+        # batch: each input's own file beside it
+        home = self.tmp / "home"
+        os.environ["BIDOC_HOME"] = str(home)
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        other = adf_factory(self.tmp / "other")
+        (self.tmp / "other.bidoc-details.json").write_text(json.dumps({"owner": "Finance BI"}), encoding="utf-8")
+        code, out, _ = run(["batch", str(self.factory), str(other), "--output-dir", str(self.tmp / "batch"), "--json"])
+        self.assertEqual(code, 0)
+        owners = [read_details(Path(i["artifact_path"]).read_text(encoding="utf-8"))["owner"] for i in json.loads(out)["items"]]
+        self.assertEqual(owners, ["", "Finance BI"])
+        # a refused file names itself and exits 2, writing nothing
+        details.write_text(json.dumps({"runbook": "https://x.example.com/?token=abc123"}), encoding="utf-8")
+        code, _, err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind", "adf_git",
+                            "--output-dir", str(self.tmp / "refused"), "--details", str(details)])
+        self.assertEqual(code, 2)
+        self.assertIn("details file details.json", err)
+        self.assertFalse(any((self.tmp / "refused").glob("*.html")) if (self.tmp / "refused").exists() else False)
+
     def test_invalid_input_exits_2(self):
         code, _, err = run(["generate", "--engine", "adf", "--source", str(self.tmp / "nope"), "--kind", "adf_git",
                             "--output-dir", str(self.tmp / "out")])
