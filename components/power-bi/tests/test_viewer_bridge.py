@@ -30,7 +30,7 @@ class ViewerBridge(unittest.TestCase):
         self.assertIn("if(window.parent===window", text)
         self.assertIn("if(documentationSealed()) return rDocumentationReadOnly();", text)
         self.assertIn("return !!(DATA.published || document.getElementById('pbidoc-manifest'));", text)
-        self.assertIn("carries the library\'s integrity check, so it cannot be edited here", text)
+        self.assertIn("This copy is protected against changes, so its details cannot be edited here", text)
         self.assertIn('if(window.location.hash && window.parent===window)window.history.pushState', text)
 
 

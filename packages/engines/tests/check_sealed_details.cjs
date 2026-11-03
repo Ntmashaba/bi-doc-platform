@@ -27,10 +27,11 @@ const scripts=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
 vm.runInContext(scripts[scripts.length-1],context);
 const run=s=>vm.runInContext(s,context);
 const view=engine==='power_bi'?run('rDocumentation()'):run('rDetails()');
-const note="This copy carries the library's integrity check, so it cannot be edited here: a changed copy would be refused when published. Its details are set when the documentation is generated.";
+const note="<strong>Read-only.</strong> This copy is protected against changes, so its details cannot be edited here. They are recorded when the documentation is generated.";
 if(expect==='sealed'){
   assert.ok(view.includes(note),'a sealed copy says why its details cannot be edited');
   assert.ok(!view.includes('Download updated HTML'),'and offers no save');
+  assert.ok(!/survive regeneration|Download the updated HTML|replace the original/.test(view),'nor instructions for saving that do not apply');
   assert.ok(!/<input|<textarea/.test(view.split('<h2>How this document was generated')[0]),'and no field to type in');
   run(engine==='power_bi'?'saveDocumentationHtml()':'saveDetailsHtml()');
   assert.equal(saved.length,0,'its save function writes nothing');

@@ -61,12 +61,14 @@ function connectionTitle(c,i){
  return `${c.sourceType?esc(c.sourceType)+' · ':''}${esc(name)}${where?`<div class="mut">${esc(where)}</div>`:''}`;
 }
 // A copy that carries the library's manifest (any bidoc output, published or not) is read-only: saving it from the
-// page rewrites every byte, so its integrity hash no longer matches and the library refuses it. DATA.published is
-// kept for copies marked that way by other hosts.
+// page rewrites every byte, so its integrity hash no longer matches and the library refuses it. DATA.published marks
+// legacy copies converted by the library. This is a safeguard against accidental edits in the page, not an integrity
+// check: the element's presence proves nothing about the manifest, and every consumer validates the artifact itself
+// (bidoc_contracts.validate_artifact) without regard to this state.
 function documentationSealed(){ return !!(DATA.published || document.getElementById('pbidoc-manifest')); }
 function rDocumentationReadOnly(){
  const rows=documentation.connections.map((c,i)=>`<tr><th>${connectionTitle(c,i)}</th><td>${esc(c.username||'')}</td><td>${esc(c.authentication||'')}</td></tr>`).join('');
- return `<h1>Documentation details</h1><p class="sub doc-readonly" role="note">This copy carries the library's integrity check, so it cannot be edited here: a changed copy would be refused when published. Its details are set when the documentation is generated.</p>
+ return `<h1>Documentation details</h1><p class="sub doc-readonly" role="note"><strong>Read-only.</strong> This copy is protected against changes, so its details cannot be edited here. They are recorded when the documentation is generated.</p>
 <div class="card doc-grid"><p><strong>Original report URL or file path:</strong> ${esc(documentation.reportLocation||'Not recorded')}</p><p><strong>Catalogue folder:</strong> ${esc(documentation.folder||'Not recorded')}</p></div>
 <h2>Connections and account references</h2>
 <table class="t doc-connections"><thead><tr><th>Connection</th><th>Username / service account</th><th>Authentication</th></tr></thead><tbody>${rows||'<tr><td colspan="3">No connections recorded.</td></tr>'}</tbody></table>`;}

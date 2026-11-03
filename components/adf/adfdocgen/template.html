@@ -1245,7 +1245,10 @@ const DETAIL_FIELDS = {environment:"Environment (e.g. Production)", owner:"Owner
   runbook:"Runbook or support page", folder:"Home page group (e.g. Finance / Daily)", notes:"Notes"};
 const SECRETISH = /(password|pwd|secret|accountkey|sharedaccess|token|apikey)\s*=|[?&](sig|token|code|key|apikey)=|bearer\s+\S{8,}|:\/\/[^\/\s@]+@/i;
 // A copy that carries the library's manifest (any bidoc output, published or not) is read-only: saving it from the
-// page rewrites every byte, so its integrity hash no longer matches and the library refuses it.
+// page rewrites every byte, so its integrity hash no longer matches and the library refuses it. DATA.published marks
+// legacy copies converted by the library. This is a safeguard against accidental edits in the page, not an integrity
+// check: the element's presence proves nothing about the manifest, and every consumer validates the artifact itself
+// (bidoc_contracts.validate_artifact) without regard to this state.
 function detailsSealed(){ return !!(DATA.published || document.getElementById("pbidoc-manifest")); }
 function readDetails(){ try{ return JSON.parse(document.getElementById("adf-documentation-details")?.textContent||"{}")||{}; }catch(e){ return {}; } }
 let DETAILS = Object.assign(Object.fromEntries(Object.keys(DETAIL_FIELDS).map(k=>[k,""])), readDetails());
@@ -1283,9 +1286,11 @@ function rDetails(){
     ? `<label class="field wide"><span>${esc(DETAIL_FIELDS[k])}</span><textarea id="det-${k}" rows="4" oninput="captureDetails()">${esc(DETAILS[k])}</textarea></label>`
     : `<label class="field"><span>${esc(DETAIL_FIELDS[k])}</span><input id="det-${k}" value="${esc(DETAILS[k])}" oninput="captureDetails()"></label>`;
   return `<h1>Factory details</h1>
-  <p class="sub">Who owns this factory, where its source lives and how to support it. These details are kept in this file, survive regeneration over the same file, and are shown on the documentation home. Record references only: never passwords, keys or tokens.</p>
   ${detailsSealed()
-    ? `<p class="sub det-readonly" role="note">This copy carries the library's integrity check, so it cannot be edited here: a changed copy would be refused when published. Its details are set when the documentation is generated.</p>
+    ? `<p class="sub">Who owns this factory, where its source lives and how to support it.</p>`
+    : `<p class="sub">Who owns this factory, where its source lives and how to support it. These details are kept in this file, survive regeneration over the same file, and are shown on the documentation home. Record references only: never passwords, keys or tokens.</p>`}
+  ${detailsSealed()
+    ? `<p class="sub det-readonly" role="note"><strong>Read-only.</strong> This copy is protected against changes, so its details cannot be edited here. They are recorded when the documentation is generated.</p>
   <div class="card kvl">${Object.keys(DETAIL_FIELDS).map(k=>`<div class="k">${esc(DETAIL_FIELDS[k])}</div><div>${esc(DETAILS[k]||"Not recorded")}</div>`).join("")}</div>`
     : `<div class="card details-grid">${Object.keys(DETAIL_FIELDS).map(field).join("")}</div>
   <div id="det-savebar" class="savebar"><p id="det-status" role="status"></p><button class="primary-btn" id="det-save" onclick="saveDetailsHtml()">Download updated HTML</button></div>`}

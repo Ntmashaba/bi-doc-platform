@@ -151,6 +151,8 @@ jobs:
         run: python apps/library/tests/check_browser.py
       - name: Power BI document in Chromium (search, object navigation, exports)
         run: python components/power-bi/tests/check_browser.py
+      - name: Library copies stay valid with details read-only in Chromium (both engines)
+        run: python packages/engines/tests/check_sealed_browser.py
       - name: Generator desktop UI compiles to the committed files
         working-directory: apps/generator/frontend
         run: |
