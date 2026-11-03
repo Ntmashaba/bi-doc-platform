@@ -29,8 +29,9 @@ class ViewerBridge(unittest.TestCase):
         self.assertIn('id="act-${slug(pipeline+"/"+a.activity)}"', text)
         self.assertIn("if(ev.source!==window.parent) return;", text)
         self.assertIn("if(window.parent===window", text)
-        self.assertIn("published, read-only copy", text)
-        self.assertIn("if(DATA.published) return;", text)
+        self.assertIn("This copy is protected against changes, so its details cannot be edited here", text)
+        self.assertIn("if(detailsSealed()) return;", text)
+        self.assertIn('return !!(DATA.published || document.getElementById("pbidoc-manifest"));', text)
 
 
 if __name__ == "__main__":

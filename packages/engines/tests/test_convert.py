@@ -44,7 +44,7 @@ class Reproject(unittest.TestCase):
         stored, manifest = reproject(self.manifests["local"])
         self.assertTrue(manifest["native_payload"]["data"]["published"])
         self.assertNotIn(b'"published": true', b"") ; self.assertIn(b'"published":true', stored.replace(b" ", b""))
-        self.assertIn(b"published, read-only copy", stored)
+        self.assertIn("This copy is protected against changes, so its details cannot be edited here".encode(), stored)
 
     def test_withheld_code_is_never_restored(self):
         shared = self.manifests["shared"]

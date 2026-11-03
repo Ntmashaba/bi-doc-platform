@@ -142,7 +142,9 @@ Each document has a **Factory details** section for things the JSON cannot
 tell you: environment, owner or team, the factory resource, where its source
 lives, its runbook, a home page group and notes. Edit them in the page and use
 **Download updated HTML**, then replace the original file; or supply them
-when generating:
+when generating. A document made by `bidoc` (the generator app) shows these
+details read-only: it carries the library's integrity check, and a copy saved
+from the page would no longer pass it.
 
 ```json
 {"environment": "Production", "owner": "Data Platform", "runbook": "https://wiki/adf-sales",

@@ -60,15 +60,20 @@ function connectionTitle(c,i){
  const where=file||c.connectionName?[c.server,c.database].filter(Boolean).join(' / '):'';
  return `${c.sourceType?esc(c.sourceType)+' · ':''}${esc(name)}${where?`<div class="mut">${esc(where)}</div>`:''}`;
 }
-// Published copies (DATA.published, set by the library) are read-only: the library owns metadata edits.
+// A copy that carries the library's manifest (any bidoc output, published or not) is read-only: saving it from the
+// page rewrites every byte, so its integrity hash no longer matches and the library refuses it. DATA.published marks
+// legacy copies converted by the library. This is a safeguard against accidental edits in the page, not an integrity
+// check: the element's presence proves nothing about the manifest, and every consumer validates the artifact itself
+// (bidoc_contracts.validate_artifact) without regard to this state.
+function documentationSealed(){ return !!(DATA.published || document.getElementById('pbidoc-manifest')); }
 function rDocumentationReadOnly(){
  const rows=documentation.connections.map((c,i)=>`<tr><th>${connectionTitle(c,i)}</th><td>${esc(c.username||'')}</td><td>${esc(c.authentication||'')}</td></tr>`).join('');
- return `<h1>Documentation details</h1><p class="sub doc-readonly" role="note">This is a published, read-only copy. Edit document metadata in the library, or regenerate the documentation from the source.</p>
+ return `<h1>Documentation details</h1><p class="sub doc-readonly" role="note"><strong>Read-only.</strong> This copy is protected against changes, so its details cannot be edited here. They are recorded when the documentation is generated.</p>
 <div class="card doc-grid"><p><strong>Original report URL or file path:</strong> ${esc(documentation.reportLocation||'Not recorded')}</p><p><strong>Catalogue folder:</strong> ${esc(documentation.folder||'Not recorded')}</p></div>
 <h2>Connections and account references</h2>
 <table class="t doc-connections"><thead><tr><th>Connection</th><th>Username / service account</th><th>Authentication</th></tr></thead><tbody>${rows||'<tr><td colspan="3">No connections recorded.</td></tr>'}</tbody></table>`;}
 function rDocumentation(){
- if(DATA.published) return rDocumentationReadOnly();
+ if(documentationSealed()) return rDocumentationReadOnly();
  const rows=documentation.connections.map((c,i)=>`<tr>
   <th>${connectionTitle(c,i)}</th>
   <td>${documentationInput('Username / service account',`doc-${i}-username`,c.username,'compact')}</td>
@@ -85,7 +90,7 @@ ${documentationInput('Catalogue folder (optional, e.g. Finance / Monthly)','doc-
 <p><button class="chip" onclick="addDocumentationConnection()">Add connection reference</button></p>
 <div id="doc-savebar" class="doc-savebar"><p id="doc-status" role="status"></p><button class="primary-btn" onclick="saveDocumentationHtml()">Download updated HTML</button></div>`;}
 function saveDocumentationHtml(){
- if(DATA.published) return;
+ if(documentationSealed()) return;
  captureDocumentation();
  const clone=document.documentElement.cloneNode(true);
  clone.querySelector('#pbi-documentation-metadata').textContent=JSON.stringify(cleanDocumentation(documentation)).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026');
