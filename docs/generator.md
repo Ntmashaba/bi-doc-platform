@@ -158,6 +158,46 @@ Without `--environment Production` the document is still written, with this warn
   warning: adf-sales.bidoc-details.json gives the environment 'Production' for readers of the factory details, but the document is filed with no environment. Use --environment 'Production' to file it there; the environment is part of the document's identity.
 ```
 
+## Pairing a live-connected report with its model
+
+A report that connects live to a model elsewhere (Power BI service, Analysis Services) has no model of its own, so its
+document lists the fields it uses as unresolved. Give it a model snapshot to resolve them against, per report:
+
+- **In the report's details file**, beside it, with the documentation details under `documentation`:
+
+  ```json
+  {
+    "documentation": {"reportLocation": "https://app.powerbi.com/groups/sales/reports/monthly", "folder": "Sales"},
+    "model": {"path": "../Models/Sales.abf"}
+  }
+  ```
+
+  For `Sales.Report` this is `Sales.Report.bidoc-details.json`; for `Sales.pbix`, `Sales.pbix.bidoc-details.json`.
+  `bidoc generate`, `bidoc batch`, `bidoc retry` and the desktop app all read it. Either part may be left out. A file
+  without a model keeps the flat form (the documentation fields at the top); a flat file that also has `"model"` is
+  refused, so the two forms are never confused.
+- **With `--model PATH`** on `bidoc generate`, for one report. It wins over the details file, and a note says the
+  file's model was not used.
+
+Rules:
+
+- A relative `path` is resolved against the details file's own folder (beside the report: the report's folder), never
+  the folder you run `bidoc` from. An absolute path works too.
+- The model can be an ABF backup, a PBIX, a `.bim` file, or a model folder (TMDL, or one holding `model.bim`). An ABF or
+  PBIX is extracted with the portable reader first.
+- The pairing is checked before anything is extracted or generated: a model that is missing, unreadable or not a model
+  stops that report with a message naming the details file (or `--model`), the model by its file name and the reason,
+  never its full path. In a batch, that report fails on its own, nothing is extracted for it, and the others run; fix
+  the file and `bidoc retry` it.
+- An ABF or PBIX model's extract is only an input to that run: it is removed when the report succeeds, fails or is
+  cancelled. A model that cannot be extracted is reported by name, with the error code, never the reader's own message.
+- Nothing is guessed: a report is paired only with the model its file or `--model` names, never one found by name.
+  Several reports can name the same model.
+- A report that has a model of its own is never given another one: the pairing is refused.
+- The document records which model was used and how it was chosen (`modelPairing` in its data, and a warning in the
+  document), and says the pairing is **not verified** against the report's live connection: the model's server identity
+  and how current it is are not checked, and an ABF backup is an offline snapshot.
+
 ## PBIX extraction
 
 PBIX files are read by pbi-tools Desktop, installed separately (AGPL-3.0; see ADR 0001), with
@@ -203,6 +243,17 @@ Inspect the report before sharing it. The script shows how the extractors differ
 
 ## Batches and history
 
+`bidoc batch` takes the same `--profile`, `--include-query-code`, `--environment`, `--business-area`, `--owner`,
+`--also` and `--extract-timeout` as `bidoc generate`, for every input, and `--backend auto|pbixray|pbi-tools` (or
+`--pbixray`) to choose the PBIX extractor for the whole batch. A batch keeps these choices: `bidoc retry` uses the
+same outputs and the same extractor. Details come from each input's own `<source name>.bidoc-details.json`.
+Errors and warnings in batch history, `--json` output and the desktop app never carry a personal location or a
+credential: written messages are filtered with the shared-publication cleaner, and an unexpected error is reported by
+its type only. Two
+`generate` option sets have no batch form: `--model` (in a batch, each live-connected report names its model in its
+own details file; see "Pairing a live-connected report with its model"), and `--title`/`--description`/`--tag`, which
+describe one document (a batch titles each document after its source).
+
 `bidoc batch` and the desktop app recognise inputs by shape:
 
 - `.pbix` files;
@@ -224,6 +275,11 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
   reports folder that merely has a subfolder with one of those names is still a container;
 - other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export)
   and `.xmla` (most are processing scripts; a CREATE script of a database is read when it is selected itself);
+- a **selected folder of loose Data Factory resource JSON** (saved from ADF Studio's "view code", not in a Git layout) is one
+  Data Factory input when the search finds nothing else in it and its own `.json` files hold at least one pipeline or data
+  flow, judged by content as the Data Factory engine reads them. It is the input `bidoc generate --kind adf_resources` takes.
+  Only a selected folder is judged this way, never one met while searching, and the generator's own files (identity and
+  details files, output records) are not read to decide;
 - the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar are left out, as a
   search target and as a selection (selecting one is a failed item that says why);
 - **links are never followed**: a symbolic link or Windows junction is reported and skipped whether it is a selection, a folder
@@ -265,7 +321,8 @@ not a background service. If the app closes while an item runs, that item is mar
 `bidoc desktop` opens a pywebview window (`pip install bi-doc-generator[desktop]`).
 `--no-window` serves the same app on loopback for a browser. The screens are:
 
-- a new batch with native file and folder pickers;
+- a new batch with native file and folder pickers, and a choice of the other outputs to write beside each document
+  (JSON extract, Word document, CSV, agent context; the same as `--also`);
 - prerequisites per input type;
 - review of the inputs before anything runs;
 - live per-item progress with elapsed time, warnings, errors, Open, Cancel and Retry;

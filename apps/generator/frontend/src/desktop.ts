@@ -69,7 +69,10 @@ function stopPolling() { if (timer !== undefined) { clearTimeout(timer); timer =
 // ---- start ----------------------------------------------------------------------
 
 const form = { inputs: "", output_dir: "", profile: "local", include_query_code: false, environment: "",
-  business_area: "", owner: "" };
+  business_area: "", owner: "", also: [] as string[] };
+// The other outputs written beside each document (bidoc --also); a shared document's are filtered the same way.
+const ALSO: [string, string][] = [["json", "JSON extract (Compare extracts reads it)"], ["word", "Word document"],
+  ["csv", "CSV"], ["agent", "Agent context (.agent.md)"]];
 
 async function startView(): Promise<void> {
   const inputs = h("textarea", { id: "inputs", spellcheck: "false", placeholder: "One path per line" }) as HTMLTextAreaElement;
@@ -80,6 +83,11 @@ async function startView(): Promise<void> {
   profile.value = form.profile;
   const code = h("input", { type: "checkbox", id: "code" }) as HTMLInputElement;
   code.checked = form.include_query_code;
+  const also = ALSO.map(([k]) => {
+    const box = h("input", { type: "checkbox", id: `also-${k}`, value: k }) as HTMLInputElement;
+    box.checked = form.also.includes(k);
+    return box;
+  });
   const fields = (["environment", "business_area", "owner"] as const).map(k =>
     h("input", { type: "text", id: k, value: form[k], maxlength: "200" }) as HTMLInputElement);
   const out = h("div", { id: "review", "aria-live": "polite" });
@@ -87,7 +95,8 @@ async function startView(): Promise<void> {
   output.addEventListener("input", () => stale());
   const save = () => {
     Object.assign(form, { inputs: inputs.value, output_dir: output.value.trim(), profile: profile.value,
-      include_query_code: code.checked, environment: fields[0].value, business_area: fields[1].value, owner: fields[2].value });
+      include_query_code: code.checked, environment: fields[0].value, business_area: fields[1].value, owner: fields[2].value,
+      also: also.filter(b => b.checked).map(b => b.value) });
   };
   const paths = () => inputs.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const bridge = host();
@@ -123,7 +132,7 @@ async function startView(): Promise<void> {
       try {
         const b = await api<Batch>("/api/batches", "POST", { inputs: reviewed, review_id: r.review_id, output_dir: form.output_dir,
           profile: form.profile, include_query_code: form.include_query_code, environment: form.environment,
-          business_area: form.business_area, owner: form.owner });
+          business_area: form.business_area, owner: form.owner, also: form.also });
         location.hash = `#/batch/${b.batch_id}`;
       } catch (e) { out.append(notice("error", (e as Error).message)); run.disabled = false; }
     } }, `Generate ${usable} of ${r.items.length}`);
@@ -149,7 +158,8 @@ async function startView(): Promise<void> {
       h("label", { for: "inputs" }, "Inputs"),
       h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
-        ".pbix and .abf files, .bim models and project folders. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."),
+        ".pbix and .abf files, .bim models and project folders; a folder you add that holds only Data Factory resource JSON " +
+        "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."),
       inputs,
       bridge ? h("p", { class: "actions" },
         h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"),
@@ -161,6 +171,10 @@ async function startView(): Promise<void> {
       h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")),
       h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +
         "When on, it is shared as written; obvious credentials are cleaned, but that is not a guarantee."),
+      h("fieldset", { class: "also" }, h("legend", {}, "Also write, beside each document"),
+        ...ALSO.map(([k, label], i) => h("p", { class: "check" }, also[i], h("label", { for: `also-${k}` }, label))),
+        h("p", { class: "muted small" }, "Each is made from the same content as its document: for shared output, as filtered " +
+          "for sharing. Only the document can be published to the library.")),
       h("div", { class: "row" },
         h("div", {}, h("label", { for: "environment" }, "Environment"), fields[0]),
         h("div", {}, h("label", { for: "business_area" }, "Business area"), fields[1]),

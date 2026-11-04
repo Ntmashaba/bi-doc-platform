@@ -9,6 +9,11 @@ A selection is one of:
   contents are never searched, so a model's own files or a factory's individual JSON files are not queued separately;
 * any **other folder**: a container, searched recursively for `.pbix` and `.abf` files, `.bim` models and recognised project
   folders. Other files are ignored (a stray `.json` is not assumed to be a Data Factory export).
+* a **selected folder of loose Data Factory resource JSON** (pipelines, datasets, linked services and the like saved from ADF
+  Studio's "view code", not in a Git layout): when the search finds nothing else and the folder's own `.json` files hold at
+  least one pipeline or data flow, as the Data Factory engine reads them, the folder is one `adf_resources` input, the
+  same input `bidoc generate --kind adf_resources` takes. Only a folder that was selected is judged this way; a folder
+  met while searching never is.
 
 Rules that apply to every path, selected or found:
 
@@ -155,8 +160,12 @@ def discover(paths, *, exclude=(), max_items: int = MAX_ITEMS, max_folders: int 
             try:
                 matched, problems = _visit(path, result, add, skipped, budget)
                 if matched == 0 and problems == 0:
-                    add(_problem(path, path.name, f"no supported inputs found in {path} (looked for .pbix, .abf and .bim "
-                                                  "files and project folders, in this folder and below)"))
+                    if _loose_resources(path):
+                        add({"source": str(path), "label": path.name, "engine": "adf", "kind": "adf_resources"})
+                    else:
+                        add(_problem(path, path.name, f"no supported inputs found in {path} (looked for .pbix, .abf and "
+                                                      ".bim files and project folders, in this folder and below, and "
+                                                      "for Data Factory pipelines or data flows in its own .json files)"))
             finally:
                 bucket.sort(key=lambda i: i["label"].casefold())
                 result.items.extend(bucket)
@@ -166,6 +175,39 @@ def discover(paths, *, exclude=(), max_items: int = MAX_ITEMS, max_folders: int 
         result.items.append(_problem(current, current.name, str(limit)))
     result.folders_scanned = budget.folders
     return result
+
+
+LOOSE_JSON_LIMIT = 500                    # files looked at in one selected folder
+LOOSE_JSON_BYTES = 20 * 1024 * 1024       # a resource definition larger than this is not read to decide
+
+
+def _loose_resources(folder: Path) -> bool:
+    """True when `folder`'s own .json files include a Data Factory pipeline or data flow (by content, as the engine reads
+    them). Generator files (identity and details sidecars, output records) and links are never read."""
+    import json
+    from adfdocgen.loader import classify_resource  # noqa: PLC0415
+    try:
+        entries = sorted(os.scandir(folder), key=lambda e: e.name)
+    except OSError:
+        return False
+    looked = 0
+    for entry in entries:
+        name = entry.name.lower()
+        if not name.endswith(".json") or ".bidoc-" in name or name.endswith(".outputs.json"):
+            continue
+        try:
+            if entry.is_symlink() or not entry.is_file(follow_symlinks=False) or entry.stat().st_size > LOOSE_JSON_BYTES:
+                continue
+            looked += 1
+            if looked > LOOSE_JSON_LIMIT:
+                return False
+            with open(entry.path, encoding="utf-8-sig") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and classify_resource(doc, Path(entry.name).stem)[0] in ("pipeline", "dataflow"):
+            return True
+    return False
 
 
 def _visit(root: Path, result: Discovery, add, skipped: list[str], budget: _Budget):

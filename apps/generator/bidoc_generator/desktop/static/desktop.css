@@ -16,6 +16,7 @@ input[type=text], textarea, select { width: 100%; padding: 7px 9px; border: 1px 
 textarea { min-height: 110px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; } .row > * { flex: 1 1 200px; }
 .check { display: flex; gap: 8px; align-items: center; } .check label { margin: 0; font-weight: 400; }
+fieldset.also { border: 0; padding: 0; margin: 10px 0 0; min-width: 0; } fieldset.also legend { font-weight: 600; padding: 0; margin: 0 0 4px; } fieldset.also .check { margin: 4px 0; }
 button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
   color: var(--fg); cursor: pointer; } button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }

@@ -55,6 +55,7 @@ class BatchIn(BaseModel):
     environment: str = Field("", max_length=200)
     business_area: str = Field("", max_length=200)
     owner: str = Field("", max_length=200)
+    also: list[Literal["json", "word", "csv", "agent"]] = Field(default_factory=list, max_length=4)   # beside each document
     review_id: Optional[str] = Field(None, max_length=100)    # queue exactly the list that review showed
 
 
@@ -153,7 +154,8 @@ def create_app(runner: Runner, *, session_secret: str, port: int, doctor=None) -
             raise ApiError(400, "INVALID_REQUEST", "choose an absolute output folder")
         opts = Options(output_dir=str(out), profile=body.profile,
                        query_code="included" if body.include_query_code else "withheld",
-                       environment=body.environment, business_area=body.business_area, owner=body.owner)
+                       environment=body.environment, business_area=body.business_area, owner=body.owner,
+                       also=tuple(dict.fromkeys(body.also)))
         if body.review_id:
             with reviews_lock:
                 reviewed = reviews.get(body.review_id)

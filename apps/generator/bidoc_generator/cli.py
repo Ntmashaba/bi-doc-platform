@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .backend import for_runner, select_backend
+from .public import public_errors, public_text
 from .doctor import diagnose, home
 
 EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0, 2, 3, 4, 5, 130
@@ -70,7 +71,8 @@ def _parser():
     g.add_argument("--owner", default="")
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
-    g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
+    g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server "
+                                   "identity. Wins over a model named in the report's details file")
     g.add_argument("--also", action="append", type=_also_value, metavar="OUTPUTS", help=ALSO_HELP)
     g.add_argument("--details", metavar="JSON",
                    help="details the source cannot give, recorded in the document before it is sealed. Power BI: "
@@ -90,7 +92,8 @@ def _parser():
                        description="Inputs are recognised by their shape: .pbix and .abf files, PBIP project folders, "
                                    "TMDL/PBIR folders, model.bim, an SSMS CREATE script of a tabular database "
                                    "(.xmla, only when named itself), pbi-tools extracts, ADF Git folders and "
-                                   "ARM or resource JSON. Each input's details (see 'bidoc generate --details') are read "
+                                   "ARM or resource JSON. A selected folder holding only Data Factory resource JSON (pipelines or data flows, "
+                                   "by content) is one Data Factory input. Each input's details (see 'bidoc generate --details') are read "
                                    "from <input name>.bidoc-details.json beside it, when present. Any other folder is searched recursively for .pbix and "
                                    ".abf files, .bim models and project folders (a project folder is one input and is "
                                    "not searched inside; other files, .xmla included, are ignored; links, the output "
@@ -106,6 +109,12 @@ def _parser():
     b.add_argument("--pbi-tools")
     b.add_argument("--extract-timeout", type=float, default=900)
     b.add_argument("--also", action="append", type=_also_value, metavar="OUTPUTS", help=ALSO_HELP)
+    b.add_argument("--backend", choices=("auto", "pbixray", "pbi-tools"), default="auto",
+                   help="PBIX extractor for every PBIX in the batch, as for 'bidoc generate --backend'. auto (default): "
+                        "a pbi-tools that can run here, else the portable pbixray reader. pbi-tools: require it (PBIX "
+                        "items fail, saying why, if it cannot run). pbixray: the portable reader. 'bidoc retry' uses "
+                        "the batch's choice")
+    b.add_argument("--pbixray", action="store_true", help="Alias for --backend pbixray")
     b.add_argument("--json", action="store_true")
 
     h = sub.add_parser("history", help="list recent batches and their items")
@@ -200,6 +209,18 @@ def _generate(args) -> int:
             print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
             return EXIT_INPUT
         args.backend = "pbixray"
+    paired_work = None
+    from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
+    from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
+    try:
+        # --model, or the model named in the report's details file (resolved against that file's folder), checked
+        # before anything is extracted
+        pairing = resolve_pairing(args.engine, Path(args.source), args.details, args.model)
+    except PairingError as exc:
+        print(f"error: {public_text(str(exc))}", file=sys.stderr)
+        return EXIT_INPUT
+    for note in pairing.notes:
+        print(f"note: {note}", file=sys.stderr)
     extracted, workspace = None, None
     if args.kind in ("pbix", "abf"):
         if args.engine != "power_bi":
@@ -227,25 +248,28 @@ def _generate(args) -> int:
         except ExtractionCancelled:
             return EXIT_CANCELLED
         except ExtractionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            print(f"error: {public_text(str(exc))}", file=sys.stderr)
             return EXIT_INPUT if exc.code == "INVALID_INPUT" else EXIT_FAILED
         except KeyboardInterrupt:
             return EXIT_CANCELLED
-    paired_work = None
-    paired = args.model
-    if paired and Path(paired).suffix.lower() in (".abf", ".pbix"):
+    paired = pairing.path
+    if pairing.needs_extraction:
         import tempfile  # noqa: PLC0415
-        from .extract import ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
+        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         # Keep the paired extract until generate returns.
         paired_work = tempfile.TemporaryDirectory(prefix="bidoc-paired-")
         try:
             paired = str(extract_pbix(paired, paired_work.name, check_tool("pbixray"), timeout=args.extract_timeout)
                          / "Model" / "database.json")
-        except ExtractionError as exc:
+        except (ExtractionError, ExtractionCancelled, KeyboardInterrupt) as exc:
             paired_work.cleanup()
             if workspace:
                 history.release_workspace(workspace)
-            print(f"error: {exc}", file=sys.stderr)
+            if not isinstance(exc, ExtractionError):
+                return EXIT_CANCELLED
+            print(f"error: The model {pairing.name} named {'with --model' if pairing.selected_by == '--model' else 'in ' + pairing.selected_by} "
+                  f"could not be extracted ({exc.code}). Check it opens in Power BI Desktop or SSMS, or name another "
+                  f"model.", file=sys.stderr)
             return EXIT_PREREQ if exc.code == "PREREQUISITE_MISSING" else EXIT_FAILED
     request = GenerateRequest(
         engine=args.engine, source_path=args.source, source_kind=args.kind, output_dir=args.output_dir,
@@ -253,7 +277,8 @@ def _generate(args) -> int:
         document_id=args.document_id, identity_choice=args.identity, title=args.title,
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
-        extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__,
+        extracted_path=str(extracted) if extracted else None, model_path=paired, model_selected_by=pairing.selected_by,
+        model_name=pairing.name, bidoc_version=__version__,
         details_path=args.details, also=_also(args.also))
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",
@@ -271,6 +296,8 @@ def _generate(args) -> int:
             paired_work.cleanup()
         if workspace:
             history.release_workspace(workspace)
+    # The same filter as batch history: no personal path or credential in what is printed.
+    result.errors, result.warnings = public_errors(result.errors), public_errors(result.warnings)
     if args.json:
         print(json.dumps(result.__dict__, indent=1))
     else:
@@ -293,10 +320,10 @@ def _generate(args) -> int:
     return EXIT_INPUT if codes & {"INVALID_INPUT", "IDENTITY_DECISION_REQUIRED"} else EXIT_FAILED
 
 
-def _runner(pbi_tools):
+def _runner(pbi_tools, backend: str = "auto"):
     from .batch import Runner  # noqa: PLC0415
     from .history import History  # noqa: PLC0415
-    tool, pbix_ready, selection = for_runner(pbi_tools)
+    tool, pbix_ready, selection = for_runner(pbi_tools, backend)
     return Runner(History(home()), pbi_tools=tool, pbix_ready=pbix_ready, backend=selection)
 
 
@@ -344,11 +371,16 @@ def _scan_line(scan) -> str:
 
 def _batch(args) -> int:
     from .batch import Options  # noqa: PLC0415
-    runner = _runner(args.pbi_tools)
+    if args.pbixray:
+        if args.backend == "pbi-tools" or args.pbi_tools:
+            print("error: --pbixray and pbi-tools are alternatives; use one", file=sys.stderr)
+            return EXIT_INPUT
+        args.backend = "pbixray"
+    runner = _runner(args.pbi_tools, args.backend)
     opts = Options(output_dir=str(Path(args.output_dir).resolve()), profile=args.profile,
                    query_code="included" if args.include_query_code else "withheld",
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
-                   extract_timeout=args.extract_timeout, also=_also(args.also))
+                   extract_timeout=args.extract_timeout, also=_also(args.also), backend=args.backend)
     scan = runner.discover(list(args.inputs), opts.output_dir)       # as given: discovery normalises them, and sees links
     if not args.json:
         print(_scan_line(scan), file=sys.stderr)
@@ -387,7 +419,13 @@ def _history(args) -> int:
 
 
 def _retry(args) -> int:
-    runner = _runner(args.pbi_tools)
+    from .history import History  # noqa: PLC0415
+    try:                                       # the extractor the item's batch asked for
+        batch = History(home()).batch(History(home()).item(args.item_id)["batch_id"])
+        backend = (batch or {}).get("options", {}).get("backend") or "auto"
+    except (KeyError, TypeError):
+        backend = "auto"
+    runner = _runner(args.pbi_tools, backend)
     try:
         item = runner.retry(args.item_id)
         _announce_backend(runner, [item])
