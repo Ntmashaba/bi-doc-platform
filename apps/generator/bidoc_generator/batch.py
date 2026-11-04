@@ -15,6 +15,8 @@ import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
+from .public import public_errors, unexpected
+
 from . import __version__
 from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix
 from .history import History, now
@@ -255,6 +257,11 @@ class Runner:
         started = time.monotonic()
 
         def finish(state, **fields):
+            # Everything stored here is shown by `bidoc history`, `--json` and the desktop app: no personal path or
+            # credential, whatever wrote the message.
+            for key in ("errors", "warnings"):
+                if key in fields:
+                    fields[key] = public_errors(fields[key])
             self.history.update(item_id, state=state, finished_at=now(),
                                 elapsed_seconds=round(time.monotonic() - started, 3), **fields)
 
@@ -327,7 +334,7 @@ class Runner:
         except ExtractionError as exc:
             finish("failed", errors=[{"code": exc.code, "message": str(exc)}])
         except Exception as exc:  # noqa: BLE001 - one item's bug must not stop the batch
-            finish("failed", errors=[{"code": "INTERNAL_ERROR", "message": f"{type(exc).__name__}: {exc}"}])
+            finish("failed", errors=[{"code": "INTERNAL_ERROR", "message": unexpected(exc)}])
         finally:
             # An extracted model is only an input to this run: never kept, whether it succeeded, failed or was cancelled.
             self.history.release_workspace(f"{item_id}-model")

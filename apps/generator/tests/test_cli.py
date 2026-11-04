@@ -116,6 +116,26 @@ class Cli(unittest.TestCase):
         self.assertIn("unknown output pdf", err)
         self.assertFalse((self.tmp / "never").exists())
 
+    def test_an_unexpected_failure_is_shown_without_its_sensitive_text(self):
+        from bidoc_engines.generate import GenerateResult  # noqa: PLC0415
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        leak = "cannot write /home/someone/SEEDPATH/out.html: Password=hunter2-SEEDLEAK"
+        with mock.patch("bidoc_engines.generate.generate", side_effect=RuntimeError(leak)):
+            code, out, err = run(["batch", str(self.factory), "--output-dir", str(self.tmp / "b"), "--json"])
+        _, history, _ = run(["history", "--json"])
+        returned = GenerateResult(status="failed", errors=[{"code": "IO_ERROR", "message": leak}])
+        with mock.patch("bidoc_engines.generate.generate", return_value=returned):
+            gen_code, gen_out, gen_err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind",
+                                              "adf_git", "--output-dir", str(self.tmp / "g"), "--json"])
+            _, text_out, text_err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind",
+                                         "adf_git", "--output-dir", str(self.tmp / "g")])
+        self.assertEqual(json.loads(out)["items"][0]["errors"][0]["code"], "INTERNAL_ERROR")
+        self.assertEqual(json.loads(gen_out)["errors"][0]["code"], "IO_ERROR")
+        for shown in (out, err, history, gen_out, gen_err, text_out, text_err):
+            self.assertNotIn("SEEDPATH", shown)
+            self.assertNotIn("SEEDLEAK", shown)
+
     def test_a_failed_output_never_shows_its_exception_text_in_output_or_history(self):
         home = self.tmp / "home"
         os.environ["BIDOC_HOME"] = str(home)

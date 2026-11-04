@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from .backend import for_runner, select_backend
+from .public import public_errors, public_text
 from .doctor import diagnose, home
 
 EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0, 2, 3, 4, 5, 130
@@ -216,7 +217,7 @@ def _generate(args) -> int:
         # before anything is extracted
         pairing = resolve_pairing(args.engine, Path(args.source), args.details, args.model)
     except PairingError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {public_text(str(exc))}", file=sys.stderr)
         return EXIT_INPUT
     for note in pairing.notes:
         print(f"note: {note}", file=sys.stderr)
@@ -247,7 +248,7 @@ def _generate(args) -> int:
         except ExtractionCancelled:
             return EXIT_CANCELLED
         except ExtractionError as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            print(f"error: {public_text(str(exc))}", file=sys.stderr)
             return EXIT_INPUT if exc.code == "INVALID_INPUT" else EXIT_FAILED
         except KeyboardInterrupt:
             return EXIT_CANCELLED
@@ -295,6 +296,8 @@ def _generate(args) -> int:
             paired_work.cleanup()
         if workspace:
             history.release_workspace(workspace)
+    # The same filter as batch history: no personal path or credential in what is printed.
+    result.errors, result.warnings = public_errors(result.errors), public_errors(result.warnings)
     if args.json:
         print(json.dumps(result.__dict__, indent=1))
     else:

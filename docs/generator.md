@@ -246,7 +246,10 @@ Inspect the report before sharing it. The script shows how the extractors differ
 `bidoc batch` takes the same `--profile`, `--include-query-code`, `--environment`, `--business-area`, `--owner`,
 `--also` and `--extract-timeout` as `bidoc generate`, for every input, and `--backend auto|pbixray|pbi-tools` (or
 `--pbixray`) to choose the PBIX extractor for the whole batch. A batch keeps these choices: `bidoc retry` uses the
-same outputs and the same extractor. Details come from each input's own `<source name>.bidoc-details.json`. Two
+same outputs and the same extractor. Details come from each input's own `<source name>.bidoc-details.json`.
+Errors and warnings in batch history, `--json` output and the desktop app never carry a personal location or a
+credential: written messages are filtered with the shared-publication cleaner, and an unexpected error is reported by
+its type only. Two
 `generate` option sets have no batch form: `--model` (in a batch, each live-connected report names its model in its
 own details file; see "Pairing a live-connected report with its model"), and `--title`/`--description`/`--tag`, which
 describe one document (a batch titles each document after its source).

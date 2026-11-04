@@ -128,5 +128,82 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.workspaces(), [])
 
 
+SENSITIVE = "cannot open /home/someone/SEEDPATH/Sales.pbix with Server=db;Password=hunter2-SEEDLEAK"
+
+
+class PublicErrors(Lifecycle):
+    """Whatever an error's own text says, history and every view of it carry no personal path or credential."""
+
+    def assert_clean(self, *texts):
+        for text in texts:
+            self.assertNotIn("SEEDPATH", text)
+            self.assertNotIn("SEEDLEAK", text)
+
+    def test_unexpected_errors_in_pairing_extraction_and_generation(self):
+        from bidoc_engines import generate as engine  # noqa: PLC0415
+        real_pair, real_generate = engine.resolve_pairing, engine.generate
+
+        def pair(engine_name, source, *a, **k):          # fails for the report only; the factory pairs as usual
+            if Path(source).name == "Sales.Report":
+                raise RuntimeError(SENSITIVE)
+            return real_pair(engine_name, source, *a, **k)
+
+        def make(request, *a, **k):
+            if Path(request.source_path).name == "Sales.Report":
+                raise ValueError(SENSITIVE)
+            return real_generate(request, *a, **k)
+        stages = {
+            "pairing": mock.patch.object(engine, "resolve_pairing", side_effect=pair),
+            "extraction": mock.patch.object(batch, "extract_pbix", side_effect=OSError(13, SENSITIVE)),
+            "generation": mock.patch.object(engine, "generate", side_effect=make),
+        }
+        for stage, patch in stages.items():
+            with self.subTest(stage=stage), patch, mock.patch.object(batch, "check_tool", return_value="pbixray"):
+                if stage == "generation":
+                    extra = mock.patch.object(batch, "extract_pbix", side_effect=self.fake_extract)
+                else:
+                    extra = mock.patch.object(batch, "check_tool", return_value="pbixray")
+                with extra:
+                    factory = adf_factory(self.tmp / f"factory-{stage}")
+                    items = self.run_batch(self.report, factory)
+                item = items["Sales.Report"]
+                self.assertEqual((item["state"], item["errors"][0]["code"]), ("failed", "INTERNAL_ERROR"))
+                self.assertTrue(item["errors"][0]["message"].startswith(
+                    "Documenting this input stopped on an unexpected error ("), item["errors"][0]["message"])
+                self.assertIn("The other inputs are not affected.", item["errors"][0]["message"])
+                self.assert_clean(json.dumps(self.runner.history.batches(5)))
+                self.assertEqual(items[f"factory-{stage}"]["state"], "completed", "the rest of the batch runs")
+                self.assert_no_model_workspace()
+
+    def test_written_messages_keep_their_meaning_without_the_sensitive_part(self):
+        from bidoc_engines import generate as engine  # noqa: PLC0415
+        source = self.tmp / "Reports" / "Thin.pbix"
+        source.write_bytes(b"PK thin")
+        failure = ExtractionError("EXTRACTION_FAILED", f"Extraction exited with code 2. {SENSITIVE}")
+        with mock.patch.object(batch, "extract_pbix", side_effect=failure), \
+             mock.patch.object(batch, "check_tool", return_value="pbixray"):
+            item = self.run_batch(source)["Thin.pbix"]
+        message = item["errors"][0]["message"]
+        self.assertEqual(item["errors"][0]["code"], "EXTRACTION_FAILED")
+        self.assertIn("Extraction exited with code 2.", message)
+        self.assertIn("Sales.pbix", message)                              # the file name stays, its location does not
+        self.assert_clean(message)
+        returned = engine.GenerateResult(status="failed", errors=[{"code": "IO_ERROR", "message": SENSITIVE}],
+                                         warnings=[f"Could not tidy {SENSITIVE}"])
+        with mock.patch.object(engine, "generate", return_value=returned):
+            item = self.run_batch(adf_factory(self.tmp / "factory"))["factory"]
+        self.assertEqual(item["errors"][0]["code"], "IO_ERROR")
+        self.assert_clean(json.dumps(item))
+
+    def test_retry_after_an_unexpected_error_still_works(self):
+        from bidoc_engines import generate as engine  # noqa: PLC0415
+        with mock.patch.object(engine, "generate", side_effect=RuntimeError(SENSITIVE)):
+            item = self.run_batch(adf_factory(self.tmp / "factory"))["factory"]
+        self.assertEqual(item["state"], "failed")
+        self.runner.retry(item["item_id"])
+        self.runner.wait()
+        self.assertEqual(self.runner.history.item(item["item_id"])["state"], "completed")
+
+
 if __name__ == "__main__":
     unittest.main()

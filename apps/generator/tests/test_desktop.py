@@ -1,4 +1,5 @@
 """Desktop app API: loopback-only, session secret for changes, sandboxed document preview."""
+import json
 import os
 import shutil
 import sys
@@ -69,6 +70,18 @@ class Desktop(unittest.TestCase):
         item = self.wait_batch(b.json()["batch_id"])["items"][0]
         html = Path(item["artifact_path"])
         self.assertTrue(html.with_suffix(".agent.md").is_file() and html.with_suffix(".json").is_file())
+
+    def test_a_failure_shown_by_the_app_carries_no_personal_path_or_credential(self):
+        from unittest import mock  # noqa: PLC0415
+        factory = str(adf_factory(self.tmp / "factory"))
+        leak = RuntimeError("cannot open /home/someone/SEEDPATH/x.json with Password=hunter2-SEEDLEAK")
+        with mock.patch("bidoc_engines.generate.generate", side_effect=leak):
+            b = self.c.post("/api/batches", json={"inputs": [factory], "output_dir": str(self.tmp / "out")}, headers=MUTATE)
+            batch = self.wait_batch(b.json()["batch_id"])
+        shown = json.dumps(batch) + self.c.get("/api/batches").text
+        self.assertEqual(batch["items"][0]["errors"][0]["code"], "INTERNAL_ERROR")
+        self.assertNotIn("SEEDPATH", shown)
+        self.assertNotIn("SEEDLEAK", shown)
 
     def test_review_run_view_and_retry(self):
         factory = str(adf_factory(self.tmp / "factory"))
