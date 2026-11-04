@@ -53,13 +53,31 @@ def _owned_names(stem: str) -> set:
             | {f"{stem}-csv/{n}.csv" for n in ("objects", "usage", "edges", "issues")})
 
 
-def _failure(kind: str, exc: Exception) -> str:
-    """Why an extra was not written, without the exception's own text: it can quote a value or a local path."""
+def _cause(exc: BaseException) -> str:
+    """An error in general terms: its type and, for a system error, the system's description. Never the exception's
+    own text, which can quote a value or a local path (an OSError keeps the file name apart from its strerror)."""
     cause = type(exc).__name__
     if isinstance(exc, OSError) and exc.strerror:
-        cause += f", {exc.strerror}"                 # the system's description; the file name is kept apart from it
-    return (f"The {_EXTRA_NAMES[kind]} could not be written ({cause}). The document and any other outputs were "
+        cause += f", {exc.strerror}"
+    return cause
+
+
+def _failure(kind: str, exc: BaseException) -> str:
+    return (f"The {_EXTRA_NAMES[kind]} could not be written ({_cause(exc)}). The document and any other outputs were "
             f"written; run again to retry.")
+
+
+# File-system steps, named so tests can make one fail.
+def _replace(src: Path, dst: Path) -> None:
+    os.replace(src, dst)
+
+
+def _rename(src: Path, dst: Path) -> None:
+    os.rename(src, dst)
+
+
+def _remove(path: Path) -> None:
+    path.unlink(missing_ok=True)
 
 
 def _read_record(record: Path, document: Path) -> dict | None:
@@ -73,7 +91,49 @@ def _read_record(record: Path, document: Path) -> dict | None:
     return data
 
 
+def _publish_folder(work: Path, folder: Path, name: str, owned: set) -> None:
+    """Put the folder work/<name> in place of folder/<name> as a whole, so it never mixes two runs' files.
+
+    The old folder (only ever this document's own files) is moved aside, the new one renamed in, and the old one
+    discarded. If the new one cannot be put in place, the old one is put back and the caller treats it as stale.
+    """
+    import shutil
+    import tempfile
+    final, built = folder / name, work / name
+    if final.exists():
+        inside = {f"{name}/{p.name}" for p in final.iterdir()}
+        if not final.is_dir() or not inside <= owned or any(p.is_dir() for p in final.iterdir()):
+            raise FileExistsError(17, "The folder holds other files, so it was not replaced")
+        aside = Path(tempfile.mkdtemp(prefix=".bidoc-extras-old-", dir=folder)) / name
+        try:
+            _rename(final, aside)
+        except BaseException:
+            shutil.rmtree(aside.parent, ignore_errors=True)
+            raise
+        try:
+            _rename(built, final)
+        except BaseException:
+            try:
+                _rename(aside, final)        # put the earlier folder back; the caller then removes it as stale
+            except OSError:
+                pass                         # it was only this document's own earlier CSVs: discard them below
+            shutil.rmtree(aside.parent, ignore_errors=True)
+            raise
+        shutil.rmtree(aside.parent, ignore_errors=True)
+    else:
+        _rename(built, final)
+
+
 def _write_extras(adapter, payload: dict, path: Path, kinds, result, profile: str) -> None:
+    """Write the extras; whatever happens here, the document already written stays a success."""
+    try:
+        _write_extras_unguarded(adapter, payload, path, kinds, result, profile)
+    except Exception as exc:                     # a last line: never fail a written document over its extras
+        result.warnings.append(f"The other outputs could not be finished ({_cause(exc)}). The document was written; "
+                               f"run again to retry.")
+
+
+def _write_extras_unguarded(adapter, payload: dict, path: Path, kinds, result, profile: str) -> None:
     import shutil
     import tempfile
     folder = path.parent
@@ -88,38 +148,62 @@ def _write_extras(adapter, payload: dict, path: Path, kinds, result, profile: st
             try:
                 written, notes = adapter.write_extras(payload, work / path.name, (kind,))
                 made = [Path(w).relative_to(work).as_posix() for w in written]
+                if any(m not in owned for m in made):
+                    raise ValueError("an output was written under a name that is not one of the document's extras")
+                files = [m for m in made if "/" not in m]
+                folders = sorted({m.split("/", 1)[0] for m in made if "/" in m})
+                for relative in files:           # one file: a single atomic replace
+                    _replace(work / relative, folder / relative)
+                for name in folders:             # several files: the folder is replaced whole
+                    _publish_folder(work, folder, name, owned)
             except Exception as exc:             # an extra never costs the document or the other extras
                 result.warnings.append(_failure(kind, exc))
                 failed.append(kind)
                 continue
-            for relative in made:                # complete: move every file of this output into place
-                target = folder / relative
-                target.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(work / relative, target)
-                result.extra_paths.append(str(target))
+            result.extra_paths += [str(folder / m) for m in made]
             current += made
             result.warnings += notes
         finally:
             shutil.rmtree(work, ignore_errors=True)
     stale = sorted(previous - set(current))
-    for relative in stale:
+    kept = []
+    for relative in stale:                       # only this document's own extras, as its record lists them
         target = folder / relative
-        target.unlink(missing_ok=True)
+        try:
+            _remove(target)
+        except OSError as exc:
+            kept.append(relative)
+            result.warnings.append(f"An earlier output, {relative}, could not be removed ({_cause(exc)}); it is "
+                                   f"older than the document. Remove it, or run again.")
+            continue
         if target.parent != folder:
             try:
                 target.parent.rmdir()            # the CSV folder, once nothing is left in it
             except OSError:
                 pass
-    if failed and stale:
+    if failed and len(kept) < len(stale):
         result.warnings.append("Removed the earlier copy of each output that could not be written this time, so "
                                "no file beside the document is older than it.")
-    if current:
-        record.write_text(json.dumps({
-            "schema": _RECORD_SCHEMA, "document": path.name, "document_id": result.document_id,
-            "revision_id": result.revision_id, "profile": profile, "generated_at": _now(),
-            "outputs": current}, indent=1), encoding="utf-8")
-    elif earlier is not None:
-        record.unlink(missing_ok=True)           # nothing beside the document is ours any more
+    listed = current + kept                      # still ours: the next run tries again to remove what stayed
+    try:
+        if listed:
+            text = json.dumps({"schema": _RECORD_SCHEMA, "document": path.name, "document_id": result.document_id,
+                               "revision_id": result.revision_id, "profile": profile, "generated_at": _now(),
+                               "outputs": listed, "stale": kept}, indent=1)
+            fd, tmp = tempfile.mkstemp(prefix=".bidoc-extras-", suffix=".json", dir=folder)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+                _replace(Path(tmp), record)
+            except BaseException:
+                Path(tmp).unlink(missing_ok=True)
+                raise
+        elif earlier is not None:
+            _remove(record)                      # nothing beside the document is ours any more
+    except OSError as exc:
+        result.warnings.append(f"The record of this document's other outputs could not be updated ({_cause(exc)}). "
+                               f"The document and its outputs were written; a later run may not remove outputs this "
+                               f"one wrote.")
 
 
 def _now() -> str:

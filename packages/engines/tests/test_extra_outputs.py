@@ -204,6 +204,131 @@ class Regeneration(Base):
         self.assertEqual(result.extra_paths, [])
 
 
+class Finalisation(Base):
+    """Failures after an output was made (moving it into place, removing an earlier one, updating the record) cost at
+    most that output: the document stays written and valid, and no raw exception text is reported."""
+
+    def setUp(self):
+        super().setUp()
+        import bidoc_engines.generate as gen
+        self.gen = gen
+
+    def failing(self, name, when, exc=None):
+        """Patch the generator's file step `name` to fail when `when(path args)` is true; otherwise do the real step."""
+        real = getattr(self.gen, name)
+        exc = exc or OSError(13, "Permission denied", f"{LOCAL}/x")
+
+        def step(*args):
+            if when(*args):
+                raise exc
+            return real(*args)
+        return mock.patch.object(self.gen, name, side_effect=step)
+
+    def assert_document_ok(self, result):
+        self.assertEqual(result.status, "completed", result.errors)
+        validate_artifact(Path(result.artifact_path).read_bytes())
+        everything = json.dumps(result.__dict__)
+        self.assertNotIn("SEEDPATH", everything)
+        self.assertNotIn("SEEDLEAK", everything)
+
+    def csv_texts(self, result):
+        folder = Path(result.artifact_path).with_name(Path(result.artifact_path).stem + "-csv")
+        return {p.name: p.read_text(encoding="utf-8-sig") for p in folder.iterdir()} if folder.exists() else {}
+
+    def leftovers(self, result):
+        return [p.name for p in Path(result.artifact_path).parent.iterdir() if p.name.startswith(".bidoc-extras-")]
+
+    def test_a_file_that_cannot_be_moved_into_place_costs_only_itself(self):
+        first = self.run_engine("adf", also=("word", "json"))
+        docx = Path(first.artifact_path).with_suffix(".docx")
+        with self.failing("_replace", lambda src, dst: str(dst).endswith(".docx")):
+            result = self.run_engine("adf", also=("word", "json"))
+        self.assert_document_ok(result)
+        self.assertIn("The Word document could not be written (PermissionError, Permission denied).", " ".join(result.warnings))
+        self.assertFalse(docx.exists(), "the earlier Word document is older than the document, so it is removed")
+        self.assertTrue(docx.with_suffix(".json").is_file())
+        self.assertEqual(self.leftovers(result), [])
+
+    def test_the_csv_folder_is_replaced_whole(self):
+        first = self.run_engine("adf", also=("csv",))
+        old = self.csv_texts(first)
+        self.assertEqual(sorted(old), ["edges.csv", "issues.csv", "objects.csv", "usage.csv"])
+
+        def newer(payload, folder):
+            folder.mkdir(parents=True, exist_ok=True)
+            return [self._write(folder / f"{n}.csv", f"revision 2 {n}") for n in ("objects", "usage", "edges", "issues")]
+        with mock.patch("adfdocgen.cli.write_csv", side_effect=newer):
+            result = self.run_engine("adf", also=("csv",))
+        self.assert_document_ok(result)
+        self.assertEqual(set(self.csv_texts(result).values()),
+                         {f"revision 2 {n}" for n in ("objects", "usage", "edges", "issues")}, "all four from this run")
+        self.assertEqual(self.leftovers(result), [])
+
+    def _write(self, path, text):
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_a_csv_folder_that_cannot_be_swapped_never_mixes_two_runs(self):
+        for failing_step in ("aside", "in", "in and back"):
+            with self.subTest(step=failing_step):
+                out = f"swap-{failing_step}"
+                first = self.run_engine("adf", out=out, also=("csv", "json"))
+                csv_dir = Path(first.artifact_path).with_name(Path(first.artifact_path).stem + "-csv")
+
+                def when(src, dst, step=failing_step):
+                    moving_aside = Path(src) == csv_dir
+                    moving_in = Path(dst) == csv_dir and ".bidoc-extras-old-" not in str(src)
+                    moving_back = ".bidoc-extras-old-" in str(src) and Path(dst) == csv_dir
+                    return {"aside": moving_aside, "in": moving_in, "in and back": moving_in or moving_back}[step]
+                with self.failing("_rename", when):
+                    result = self.run_engine("adf", out=out, also=("csv", "json"))
+                self.assert_document_ok(result)
+                self.assertIn("The CSV could not be written (PermissionError, Permission denied).", " ".join(result.warnings))
+                self.assertEqual(self.csv_texts(result), {}, "no CSV folder at all, rather than one mixing two runs")
+                self.assertTrue(Path(first.artifact_path).with_suffix(".json").is_file())
+                self.assertEqual(self.leftovers(result), [])
+
+    def test_a_csv_folder_holding_other_files_is_not_replaced(self):
+        first = self.run_engine("adf", also=("csv",))
+        csv_dir = Path(first.artifact_path).with_name(Path(first.artifact_path).stem + "-csv")
+        (csv_dir / "my-notes.txt").write_text("mine", encoding="utf-8")
+        result = self.run_engine("adf", also=("csv",))
+        self.assert_document_ok(result)
+        self.assertIn("The CSV could not be written (FileExistsError, The folder holds other files, so it was not "
+                      "replaced).", " ".join(result.warnings))
+        self.assertEqual((csv_dir / "my-notes.txt").read_text(encoding="utf-8"), "mine")
+        self.assertEqual(sorted(p.name for p in csv_dir.iterdir()), ["my-notes.txt"], "only the earlier CSVs are removed")
+
+    def test_an_earlier_output_that_cannot_be_removed_is_named_and_tried_again(self):
+        first = self.run_engine("adf", also=("word", "json"))
+        docx = Path(first.artifact_path).with_suffix(".docx")
+        with self.failing("_remove", lambda path: str(path).endswith(".docx")):
+            result = self.run_engine("adf", also=("json",))
+        self.assert_document_ok(result)
+        self.assertIn(f"An earlier output, {docx.name}, could not be removed (PermissionError, Permission denied); it is older "
+                      "than the document.", " ".join(result.warnings))
+        record = json.loads(docx.with_suffix(".outputs.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["stale"], [docx.name])
+        self.run_engine("adf", also=("json",))        # the next run removes it
+        self.assertFalse(docx.exists())
+
+    def test_a_record_that_cannot_be_updated_is_a_warning(self):
+        with self.failing("_replace", lambda src, dst: str(dst).endswith(".outputs.json")):
+            result = self.run_engine("adf", also=("json",))
+        self.assert_document_ok(result)
+        self.assertTrue(Path(result.artifact_path).with_suffix(".json").is_file())
+        self.assertIn("The record of this document's other outputs could not be updated (PermissionError, Permission denied).",
+                      " ".join(result.warnings))
+        self.assertEqual(self.leftovers(result), [], "the record's temporary file is removed too")
+
+    def test_anything_unexpected_leaves_the_document_a_success(self):
+        with mock.patch.object(self.gen, "_read_record", side_effect=RuntimeError(f"{SECRET} {LOCAL}")):
+            result = self.run_engine("adf", also=("json",))
+        self.assert_document_ok(result)
+        self.assertIn("The other outputs could not be finished (RuntimeError). The document was written; run again to "
+                      "retry.", result.warnings)
+
+
 class Shared(Base):
     """A29 across the extras: what the shared document withholds, its extras withhold too."""
 
