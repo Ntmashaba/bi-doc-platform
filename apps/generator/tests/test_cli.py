@@ -84,6 +84,38 @@ class Cli(unittest.TestCase):
         self.assertIn("details file details.json", err)
         self.assertFalse(any((self.tmp / "refused").glob("*.html")) if (self.tmp / "refused").exists() else False)
 
+    def test_also_writes_the_other_outputs_beside_each_document(self):
+        code, out, err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind", "adf_git",
+                              "--output-dir", str(self.tmp / "out"), "--also", "json,agent", "--also", "word", "--json"])
+        self.assertEqual(code, 0, err)
+        result = json.loads(out)
+        stem = Path(result["artifact_path"]).with_suffix("")
+        self.assertEqual(result["extra_paths"], [f"{stem}.json", f"{stem}.agent.md", f"{stem}.docx"])
+        self.assertTrue(all(Path(p).is_file() for p in result["extra_paths"]))
+        code, out, err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind", "adf_git",
+                              "--output-dir", str(self.tmp / "text"), "--also", "csv"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sum(line.startswith("Wrote ") for line in out.splitlines()), 5)    # the document and 4 CSVs
+        # batch: each document gets them, and a retried item keeps the batch's choice
+        home = self.tmp / "home"
+        os.environ["BIDOC_HOME"] = str(home)
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        code, out, _ = run(["batch", str(self.factory), str(self.tmp / "later"), "--output-dir", str(self.tmp / "batch"),
+                            "--also", "agent", "--json"])
+        self.assertEqual(code, 5)
+        items = json.loads(out)["items"]
+        self.assertTrue(Path(items[0]["artifact_path"]).with_suffix(".agent.md").is_file())
+        adf_factory(self.tmp / "later")
+        code, out, _ = run(["retry", items[1]["item_id"], "--json"])
+        self.assertEqual(code, 0)
+        self.assertTrue(Path(json.loads(out)["artifact_path"]).with_suffix(".agent.md").is_file())
+        # an unknown output is refused while the arguments are read
+        code, _, err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind", "adf_git",
+                            "--output-dir", str(self.tmp / "never"), "--also", "json,pdf"])
+        self.assertEqual(code, 2)
+        self.assertIn("unknown output pdf", err)
+        self.assertFalse((self.tmp / "never").exists())
+
     def test_invalid_input_exits_2(self):
         code, _, err = run(["generate", "--engine", "adf", "--source", str(self.tmp / "nope"), "--kind", "adf_git",
                             "--output-dir", str(self.tmp / "out")])

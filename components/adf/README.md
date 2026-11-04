@@ -187,6 +187,10 @@ Views and procedures are matched by their own name only; the page never claims
 the tables underneath a view. Native SQL queries in Power BI are read for the
 tables they name.
 
+With the generator app, `bidoc generate --also json,word,csv,agent` (or
+`bidoc batch --also …`) writes the JSON, Word, CSV and agent outputs below
+beside the document; see `docs/generator.md`.
+
 ### The agent context document (`--agent`)
 
 `adf-doc-gen` began life as `adf_distill.py`, a distiller that wrote compact

@@ -27,11 +27,39 @@ bidoc desktop                                                                   
 | `--document-id` | Explicitly reuse a known document identity |
 | `--title`, `--description`, `--tag`, `--business-area`, `--owner` | Catalogue metadata |
 | `--details FILE` | Details the source cannot give, shown in the document (see below) |
+| `--also json,word,csv,agent` | Other outputs beside the document (see below); also on `bidoc batch` |
 | `--json` | Machine-readable result |
 
 Exit codes: `0` success, `2` invalid input or configuration, `3` prerequisites missing, `4` generation failure (a batch where every item failed), `5` partial batch failure, `130` cancelled.
 
 Output is `<title>--<document id prefix>.html` (`.shared.html` for the shared profile), written atomically so a previous good file is only replaced by a complete one. If the input was not read completely (for example ADF files that could not be parsed), the document is still written as `<title>.local.html`, without a publication manifest, and cannot be published.
+
+## Other outputs beside the document (`--also`)
+
+`bidoc generate` and `bidoc batch` write the HTML document. `--also` adds the engines' other outputs beside it,
+named after it:
+
+| Output | File | What it is |
+|---|---|---|
+| `json` | `<document>.json` | The extract: everything the document shows, as data. A Power BI document's **Compare extracts** takes an earlier one as its baseline |
+| `word` | `<document>.docx` | The narrative subset, for handovers and sign-off |
+| `csv` | Power BI: `<document>.columns.csv`; Data Factory: `<document>-csv/` with `objects.csv`, `usage.csv`, `edges.csv`, `issues.csv` | Column usage per report page (needs a model); the factory's objects, usage, lineage edges and review issues |
+| `agent` | `<document>.agent.md` | Compact Markdown for an LLM agent's context |
+
+```powershell
+bidoc generate --engine power_bi --kind pbip --source "C:\Projects\Sales\Sales.pbip" --output-dir "C:\Documentation" --also json,word,agent
+bidoc batch "C:\Reports" --output-dir "C:\Documentation" --also agent
+```
+
+- Every output is made from the content the document was rendered from. For `--profile shared` that is the content
+  as filtered for sharing: what the document withholds (query code unless `--include-query-code`, credentials,
+  personal locations, entered data), its extras withhold too.
+- The extras are files for your own use beside the document. Only the HTML document carries the integrity
+  check and can be published to the library.
+- A failed extra is a warning; the document and the other extras are still written. An unknown output name is
+  refused before anything is read.
+- A batch keeps its `--also` choice, so `bidoc retry` writes the same outputs. With `--json`, `bidoc generate` lists
+  the files in `extra_paths`.
 
 ## Details the source cannot give
 

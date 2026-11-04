@@ -330,7 +330,7 @@ function compareExtracts(before,after){
 }
 function validateExtract(value){
   if(value?.schemaVersion && ![1,2].includes(value.schemaVersion)) throw new Error('Unsupported extract schema version: '+value.schemaVersion);
-  if(!value||typeof value!=='object'||Array.isArray(value)||(!value.model&&!value.report)) throw new Error('Choose a JSON extract produced by --json.');
+  if(!value||typeof value!=='object'||Array.isArray(value)||(!value.model&&!value.report)) throw new Error('Choose a JSON extract: one written by bidoc generate --also json, or by generate_docs.py --json.');
   if(value.model&&(!Array.isArray(value.model.tables)||!Array.isArray(value.model.measures))) throw new Error('The model definition is incomplete.');
   if(value.report&&(!Array.isArray(value.report.pages)||value.report.pages.some(p=>!p||typeof p.id!=='string'||!Array.isArray(p.visuals)))) throw new Error('The report pages are incomplete.');
   snapshot(value); // Reject malformed nested definitions before replacing an existing comparison.

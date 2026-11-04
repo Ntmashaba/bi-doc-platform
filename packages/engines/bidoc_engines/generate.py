@@ -32,6 +32,24 @@ def details_sidecar(source: Path) -> Path:
     return source.with_name(source.name + DETAILS_SIDECAR)
 
 
+# The engines' other outputs, written beside the document when asked for. Each is made from the payload the document
+# was rendered from, so a shared copy's extras carry exactly what its document does (projected, query code withheld
+# unless included). They are files for local use: they carry no manifest and the library does not take them.
+EXTRAS = ("json", "word", "csv", "agent")
+_EXTRA_NAMES = {"json": "JSON extract", "word": "Word document", "csv": "CSV", "agent": "agent context"}
+
+
+def _write_extras(adapter, payload: dict, path: Path, kinds, result) -> None:
+    for kind in kinds:
+        try:
+            written, notes = adapter.write_extras(payload, path, (kind,))
+        except Exception as exc:                 # an extra never costs the document that was already written
+            result.warnings.append(f"The {_EXTRA_NAMES[kind]} could not be written: {type(exc).__name__}: {exc}")
+            continue
+        result.extra_paths += written
+        result.warnings += notes
+
+
 ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
 STAGES = ("validating", "analysing", "rendering", "completed")
 
@@ -57,6 +75,7 @@ class GenerateRequest:
     extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
     bidoc_version: str | None = None       # the bidoc generator running this request; shown in the document
     details_path: str | None = None        # details JSON; without it, <source name>.bidoc-details.json if present
+    also: tuple = ()                       # other outputs beside the document: any of EXTRAS
 
 
 PUBLICATION_LIMITS = Limits()      # what the library accepts by default; checked after the document is written
@@ -73,6 +92,7 @@ class GenerateResult:
     timings: dict = field(default_factory=dict)
     tool_versions: dict = field(default_factory=dict)
     publication: dict | None = None        # set when the document was written but the library would reject it
+    extra_paths: list = field(default_factory=list)   # the other outputs written beside the document
 
 
 class Cancelled(Exception):
@@ -157,6 +177,10 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
                                      f"use one of {', '.join(ENGINE_KINDS[request.engine])}")
     if request.profile not in ("local", "shared") or request.query_code not in ("withheld", "included"):
         return fail("INVALID_INPUT", "profile must be local or shared; query_code withheld or included")
+    unknown = [k for k in request.also if k not in EXTRAS]
+    if unknown:
+        return fail("INVALID_INPUT", f"unknown output {', '.join(map(repr, unknown))}; use any of {', '.join(EXTRAS)}")
+    also = tuple(dict.fromkeys(request.also))
     source = Path(request.source_path)
     try:
         stage("validating")
@@ -200,6 +224,7 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
                                                           f"{GENERATION_LIMITS.html_bytes}-byte generation ceiling.")
             _write_atomically(path, rendered)
             result.status, result.artifact_path = "local_only", str(path)
+            _write_extras(adapter, payload, path, also, result)
             result.warnings.append("The input was not read completely, so the document has no publication "
                                    "manifest and cannot be published. See its coverage section.")
             stage("completed")
@@ -222,6 +247,7 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         path = out_dir / f"{_safe_name(manifest['title'])}--{identity.document_id[:8]}{suffix}.html"
         _write_atomically(path, artifact)
         result.status, result.artifact_path = "completed", str(path)
+        _write_extras(adapter, manifest["native_payload"]["data"], path, also, result)
         result.document_id, result.revision_id = manifest["document_id"], manifest["revision_id"]
         problem = publication_problem(artifact, adapter.VIEW_IDS, PUBLICATION_LIMITS)
         if problem:
