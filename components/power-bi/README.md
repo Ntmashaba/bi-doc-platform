@@ -1,5 +1,12 @@
 # Power BI Documentation Generator
 
+> **Which command is this?** This guide documents the Power BI engine and its own command, `python generate_docs.py`
+> (run from this folder), with its own options. Most people use the platform command `bidoc` instead
+> (`bidoc generate`, `bidoc batch`), which runs this engine and adds batches, history, the desktop app, the offline
+> catalogue and publishing; see the [root README](../../README.md) and the [generator guide](../../docs/generator.md).
+> The two take different options: a flag shown here does not necessarily exist on `bidoc`. The features of the
+> documents themselves, described below, are the same either way.
+
 Generates one self-contained, interactive HTML page per Power BI report: what the
 semantic model contains, where its data comes from, how the report uses the model,
 what could be removed, and what to watch out for. A **report library** page
@@ -19,7 +26,7 @@ works offline and can be emailed, put on SharePoint or committed to a repo.
 5. [Sources](#sources)
 6. [Cleanup: which columns and measures can be removed](#cleanup-which-columns-and-measures-can-be-removed)
 7. [Warnings](#warnings)
-8. [The report library and documentation details](#the-report-library-and-report-details)
+8. [The report library and documentation details](#the-report-library-and-documentation-details)
 9. [Other outputs: CSV, JSON, Word, agent context](#other-outputs-csv-json-word-agent-context)
 10. [Command-line reference](#command-line-reference)
 11. [Limitations](#limitations)
@@ -234,7 +241,7 @@ Power BI Desktop. Every view opens with one line saying which Power BI view it s
 A section the file has nothing for stays in the rail, disabled, and says why (for example, no report was
 supplied). Below the sections, under the label *Document actions*, are two actions on the document itself:
 **Compare extracts** and **Documentation details** (report location, library folder and connection notes, see
-[below](#the-report-library-and-report-details)).
+[below](#the-report-library-and-documentation-details)).
 
 Where each earlier view went (links and bookmarks to any of them still open the same view):
 
@@ -536,7 +543,7 @@ report uses that the model does not have. Each broken binding says where it is
 used ("Used on: Pipeline Trends — Page filter"), and a reference used only by
 formatting reads "A formatting rule refers to …".
 
-## The report library and report details
+## The report library and documentation details
 
 Every run refreshes `pbi-home.html` beside the output. It has three views:
 

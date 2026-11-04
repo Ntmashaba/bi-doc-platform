@@ -1,5 +1,12 @@
 # adf-doc-gen
 
+> **Which command is this?** This guide documents the Azure Data Factory engine and its own command, `python generate_docs.py`
+> (run from this folder), with its own options. Most people use the platform command `bidoc` instead
+> (`bidoc generate`, `bidoc batch`), which runs this engine and adds batches, history, the desktop app, the offline
+> catalogue and publishing; see the [root README](../../README.md) and the [generator guide](../../docs/generator.md).
+> The two take different options: a flag shown here does not necessarily exist on `bidoc`. The features of the
+> documents themselves, described below, are the same either way.
+
 Generate **living documentation** from Azure Data Factory JSON — a single
 self-contained interactive HTML file, plus optional Word, JSON, and **agent
 context** (markdown) outputs — built for the person (or LLM agent) who

@@ -227,7 +227,7 @@ An error such as `pbi-tools started but the extraction failed (exit code -9 (0xF
 failed on that file; a missing or unusable pbi-tools is reported separately as `PREREQUISITE_MISSING`. The message quotes the
 first lines pbi-tools printed that name a problem (its stack trace comes last and is not the cause); the whole output stays in
 `pbi-tools.log` in the item's workspace. The platform never retries with another extractor after a failure: choose
-`--pbix-backend pbixray` yourself if you want the portable reader.
+`--backend pbixray` yourself (on `bidoc generate` or `bidoc batch`) if you want the portable reader.
 
 To compare the extractors on one file without sharing it, run on the Windows machine that has the file:
 
