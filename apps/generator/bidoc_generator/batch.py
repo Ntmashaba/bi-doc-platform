@@ -273,6 +273,14 @@ class Runner:
                     return finish("failed", errors=found["errors"])
                 self.history.update(item_id, engine=found["engine"], kind=found["kind"], source=found["source"])
                 item = {**item, **{k: found[k] for k in ("engine", "kind", "source")}}
+            # The model a report is paired with comes from its own details file, never from the batch. It is checked
+            # first, before the report is extracted: a bad pairing fails this item alone and costs no extraction.
+            from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
+            from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
+            try:
+                pairing = resolve_pairing(item["engine"], Path(item["source"]))
+            except PairingError as exc:
+                return finish("failed", errors=[{"code": "INVALID_INPUT", "message": str(exc)}])
             extracted = None
             if item["kind"] in ("pbix", "abf"):
                 if item["kind"] == "pbix" and self.pbix_ready is not None:
@@ -283,19 +291,17 @@ class Runner:
                 extracted = extract_pbix(item["source"], workspace, tool,
                                          timeout=opts.extract_timeout, cancellation=cancel,
                                          command=self.tool_command)
-            # The model a report is paired with comes from its own details file, never from the batch: checked here, so
-            # a bad pairing fails this item alone, and an ABF or PBIX model is extracted like the report.
-            from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
-            from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
-            try:
-                pairing = resolve_pairing(item["engine"], Path(item["source"]))
-            except PairingError as exc:
-                return finish("failed", errors=[{"code": "INVALID_INPUT", "message": str(exc)}])
             paired = pairing.path
             if pairing.needs_extraction:
                 self.history.update(item_id, state="extracting")
-                paired = str(extract_pbix(paired, self.history.workspace(f"{item_id}-model"), check_tool("pbixray"),
-                                          timeout=opts.extract_timeout, cancellation=cancel) / "Model" / "database.json")
+                model_work = self.history.workspace(f"{item_id}-model")
+                try:
+                    paired = str(extract_pbix(paired, model_work, check_tool("pbixray"), timeout=opts.extract_timeout,
+                                              cancellation=cancel) / "Model" / "database.json")
+                except ExtractionError as exc:      # the model's own failure, said without its path or raw message
+                    return finish("failed", errors=[{"code": exc.code, "message":
+                                  f"The model {pairing.name} named in {pairing.selected_by} could not be extracted "
+                                  f"({exc.code}). Check it opens in Power BI Desktop or SSMS, or name another model."}])
             request = GenerateRequest(
                 engine=item["engine"], source_path=item["source"], source_kind=item["kind"],
                 output_dir=opts.output_dir, profile=opts.profile, query_code=opts.query_code,
@@ -316,8 +322,6 @@ class Runner:
             finish({"completed": "completed", "local_only": "local_only"}.get(result.status, "failed"), **fields)
             if result.status in ("completed", "local_only"):
                 self.history.release_workspace(item_id)
-            if pairing.needs_extraction:
-                self.history.release_workspace(f"{item_id}-model")
         except ExtractionCancelled:
             finish("cancelled")
         except ExtractionError as exc:
@@ -325,6 +329,8 @@ class Runner:
         except Exception as exc:  # noqa: BLE001 - one item's bug must not stop the batch
             finish("failed", errors=[{"code": "INTERNAL_ERROR", "message": f"{type(exc).__name__}: {exc}"}])
         finally:
+            # An extracted model is only an input to this run: never kept, whether it succeeded, failed or was cancelled.
+            self.history.release_workspace(f"{item_id}-model")
             with self._lock:
                 self._cancel.pop(item_id, None)
 

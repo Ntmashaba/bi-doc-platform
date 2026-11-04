@@ -208,6 +208,18 @@ def _generate(args) -> int:
             print("error: --pbixray and --pbi-tools are alternatives; use one", file=sys.stderr)
             return EXIT_INPUT
         args.backend = "pbixray"
+    paired_work = None
+    from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
+    from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
+    try:
+        # --model, or the model named in the report's details file (resolved against that file's folder), checked
+        # before anything is extracted
+        pairing = resolve_pairing(args.engine, Path(args.source), args.details, args.model)
+    except PairingError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    for note in pairing.notes:
+        print(f"note: {note}", file=sys.stderr)
     extracted, workspace = None, None
     if args.kind in ("pbix", "abf"):
         if args.engine != "power_bi":
@@ -239,33 +251,24 @@ def _generate(args) -> int:
             return EXIT_INPUT if exc.code == "INVALID_INPUT" else EXIT_FAILED
         except KeyboardInterrupt:
             return EXIT_CANCELLED
-    paired_work = None
-    from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
-    from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
-    try:
-        # --model, or the model named in the report's details file (resolved against that file's folder), checked first
-        pairing = resolve_pairing(args.engine, Path(args.source), args.details, args.model)
-    except PairingError as exc:
-        if workspace:
-            history.release_workspace(workspace)
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_INPUT
-    for note in pairing.notes:
-        print(f"note: {note}", file=sys.stderr)
     paired = pairing.path
     if pairing.needs_extraction:
         import tempfile  # noqa: PLC0415
-        from .extract import ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
+        from .extract import ExtractionCancelled, ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         # Keep the paired extract until generate returns.
         paired_work = tempfile.TemporaryDirectory(prefix="bidoc-paired-")
         try:
             paired = str(extract_pbix(paired, paired_work.name, check_tool("pbixray"), timeout=args.extract_timeout)
                          / "Model" / "database.json")
-        except ExtractionError as exc:
+        except (ExtractionError, ExtractionCancelled, KeyboardInterrupt) as exc:
             paired_work.cleanup()
             if workspace:
                 history.release_workspace(workspace)
-            print(f"error: {exc}", file=sys.stderr)
+            if not isinstance(exc, ExtractionError):
+                return EXIT_CANCELLED
+            print(f"error: The model {pairing.name} named {'with --model' if pairing.selected_by == '--model' else 'in ' + pairing.selected_by} "
+                  f"could not be extracted ({exc.code}). Check it opens in Power BI Desktop or SSMS, or name another "
+                  f"model.", file=sys.stderr)
             return EXIT_PREREQ if exc.code == "PREREQUISITE_MISSING" else EXIT_FAILED
     request = GenerateRequest(
         engine=args.engine, source_path=args.source, source_kind=args.kind, output_dir=args.output_dir,

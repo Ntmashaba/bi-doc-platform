@@ -185,9 +185,12 @@ Rules:
   the folder you run `bidoc` from. An absolute path works too.
 - The model can be an ABF backup, a PBIX, a `.bim` file, or a model folder (TMDL, or one holding `model.bim`). An ABF or
   PBIX is extracted with the portable reader first.
-- The pairing is checked before anything is generated: a model that is missing, unreadable or not a model stops that
-  report with a message naming the details file. In a batch, that report fails on its own and the others run; fix the
-  file and `bidoc retry` it.
+- The pairing is checked before anything is extracted or generated: a model that is missing, unreadable or not a model
+  stops that report with a message naming the details file (or `--model`), the model by its file name and the reason,
+  never its full path. In a batch, that report fails on its own, nothing is extracted for it, and the others run; fix
+  the file and `bidoc retry` it.
+- An ABF or PBIX model's extract is only an input to that run: it is removed when the report succeeds, fails or is
+  cancelled. A model that cannot be extracted is reported by name, with the error code, never the reader's own message.
 - Nothing is guessed: a report is paired only with the model its file or `--model` names, never one found by name.
   Several reports can name the same model.
 - A report that has a model of its own is never given another one: the pairing is refused.

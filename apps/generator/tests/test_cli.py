@@ -251,8 +251,8 @@ class Cli(unittest.TestCase):
         other = shutil.copy(model, self.tmp / "Other.bim")
         code, out, err = run(base + ["--output-dir", str(self.tmp / "b"), "--model", str(other)])
         self.assertEqual(code, 0, err)
-        self.assertIn("note: --model was given, so the model '../Models/Sales/model.bim' named in "
-                      "Sales.Report.bidoc-details.json is not used.", err)
+        self.assertIn("note: --model was given, so the model model.bim named in Sales.Report.bidoc-details.json is "
+                      "not used.", err)
         data = validate_artifact(Path(json.loads(out)["artifact_path"]).read_bytes())["native_payload"]["data"]
         self.assertEqual((data["modelPairing"]["model"], data["modelPairing"]["selectedBy"]), ("Other.bim", "--model"))
         side.write_text(json.dumps({"model": {"path": "../Models/Gone.bim"}}), encoding="utf-8")
@@ -260,6 +260,19 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("which was not found", err)
         self.assertFalse((self.tmp / "c").exists())
+
+    def test_generate_checks_the_pairing_before_extracting_the_report(self):
+        source = self.tmp / "Thin.pbix"
+        source.write_bytes(b"PK thin")
+        source.with_name("Thin.pbix.bidoc-details.json").write_text(
+            json.dumps({"model": {"path": "/home/someone/SEEDPATH/Gone.abf"}}), encoding="utf-8")
+        with mock.patch("bidoc_generator.extract.extract_pbix") as extract:
+            code, _, err = run(["generate", "--engine", "power_bi", "--kind", "pbix", "--source", str(source),
+                                "--output-dir", str(self.tmp / "out"), "--pbixray"])
+        self.assertEqual(code, 2)
+        self.assertIn("Thin.pbix.bidoc-details.json pairs the model Gone.abf, which was not found.", err)
+        self.assertNotIn("SEEDPATH", err)
+        extract.assert_not_called()
 
     def test_a_batch_pairs_each_report_from_its_own_file_and_one_bad_pairing_fails_alone(self):
         os.environ["BIDOC_HOME"] = str(self.tmp / "home")
@@ -274,7 +287,7 @@ class Cli(unittest.TestCase):
         items = {Path(i["source"]).name: i for i in json.loads(out)["items"]}
         self.assertEqual(items["Sales.Report"]["state"], "completed")
         self.assertEqual(items["Margin.Report"]["state"], "failed")
-        self.assertIn("Margin.Report.bidoc-details.json pairs the model '../Models/Margin/model.bim', which was not found",
+        self.assertIn("Margin.Report.bidoc-details.json pairs the model model.bim, which was not found.",
                       items["Margin.Report"]["errors"][0]["message"])
         from fixtures import pbi_model  # noqa: PLC0415
         pbi_model(self.tmp / "Models" / "Margin")

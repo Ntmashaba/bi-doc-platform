@@ -91,7 +91,7 @@ class Paired(Base):
         other = shutil.copy(self.model, self.tmp / "Other.bim")
         pairing = resolve_pairing("power_bi", self.report, explicit=str(other))
         self.assertEqual((Path(pairing.path).name, pairing.selected_by), ("Other.bim", "--model"))
-        self.assertEqual(pairing.notes, ["--model was given, so the model '../Models/Sales/model.bim' named in "
+        self.assertEqual(pairing.notes, ["--model was given, so the model model.bim named in "
                                          "Sales.Report.bidoc-details.json is not used."])
         data = self.data(self.run_report(model_path=pairing.path, model_selected_by=pairing.selected_by,
                                          model_name=pairing.name))
@@ -115,13 +115,46 @@ class Paired(Base):
 class Refused(Base):
     def test_a_missing_or_unsupported_model(self):
         self.pair({"model": {"path": "../Models/Gone.abf"}})
-        self.refused("Sales.Report.bidoc-details.json pairs the model '../Models/Gone.abf', which was not found")
+        self.refused("Sales.Report.bidoc-details.json pairs the model Gone.abf, which was not found. A relative path is "
+                     "read from the details file's own folder.")
         (self.tmp / "notes.txt").write_text("x")
         self.pair({"model": {"path": "../notes.txt"}})
         self.refused("which is not a supported model")
         (self.tmp / "Empty").mkdir()
         self.pair({"model": {"path": "../Empty"}})
         self.refused("a folder with no model.bim or TMDL definition in it")
+
+    def test_a_pairing_error_names_the_file_and_the_model_but_never_a_full_path(self):
+        from unittest import mock
+        private = "/home/someone/SEEDPATH/Models"
+        cases = [({"model": {"path": f"{private}/Gone.abf"}}, None,
+                  "Sales.Report.bidoc-details.json pairs the model Gone.abf, which was not found."),
+                 ({"model": {"path": f"{self.tmp}/SEEDPATH/notes.txt"}}, "notes.txt",
+                  "Sales.Report.bidoc-details.json pairs the model notes.txt, which is not a supported model"),
+                 ({"model": {"path": f"{self.tmp}/SEEDPATH/Locked.bim"}}, "Locked.bim",
+                  "Sales.Report.bidoc-details.json pairs the model Locked.bim, which cannot be read "
+                  "(PermissionError, Permission denied)")]
+        real_open = Path.open
+
+        def guarded(path, *a, **k):
+            if path.name == "Locked.bim":
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, *a, **k)
+        for value, make, expected in cases:
+            with self.subTest(expected=expected):
+                if make:
+                    (self.tmp / "SEEDPATH").mkdir(exist_ok=True)
+                    (self.tmp / "SEEDPATH" / make).write_text("{}")
+                self.pair(value)
+                with mock.patch.object(Path, "open", guarded):
+                    result = self.run_report(out="refused")
+                message = result.errors[0]["message"]
+                self.assertIn(expected, message)
+                self.assertNotIn("SEEDPATH", message)
+                self.assertNotIn(str(self.tmp), message)
+        with self.assertRaises(InputError) as caught:
+            resolve_pairing("power_bi", self.report, explicit=f"{private}/Gone.bim")
+        self.assertEqual(str(caught.exception), "--model names the model Gone.bim, which was not found.")
 
     def test_a_badly_formed_pairing(self):
         self.pair({"folder": "Sales", "model": {"path": "x.bim"}})

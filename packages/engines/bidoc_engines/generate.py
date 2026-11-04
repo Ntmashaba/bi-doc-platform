@@ -341,22 +341,38 @@ class Pairing:
         return bool(self.path) and Path(self.path).suffix.lower() in _NEEDS_EXTRACTION
 
 
-def _check_model(path: Path, said: str, where: str, error) -> None:
-    if not path.exists():
-        raise error(f"{where} pairs the model {said}, which was not found (looked for {path})")
-    if path.is_file():
+def _check_model(path: Path, where: str, error) -> None:
+    """Refuse a model that is missing, unreadable or not a model, before anything is extracted or written.
+
+    The message names where the pairing came from (the details file, or --model), the model by its file or folder name,
+    and the reason. Never the full path (it can be a personal location) or an exception's text.
+    """
+    name = path.name or str(path)
+    lead = f"{where} pairs the model {name}" if where != "--model" else f"--model names the model {name}"
+    try:
+        exists, is_file = path.exists(), path.is_file()
+    except OSError as exc:
+        raise error(f"{lead}, which cannot be read ({_cause(exc)})") from None
+    if not exists:
+        hint = (" A relative path is read from the details file's own folder." if where != "--model" else "")
+        raise error(f"{lead}, which was not found.{hint}")
+    if is_file:
         if path.suffix.lower() not in MODEL_SUFFIXES:
-            raise error(f"{where} pairs the model {said}, which is not a supported model: use an ABF backup, a PBIX, a "
-                        f".bim file, or a model folder (TMDL or model.bim)")
+            raise error(f"{lead}, which is not a supported model: use an ABF backup, a PBIX, a .bim file, or a model "
+                        f"folder (TMDL or model.bim)")
         try:
             with path.open("rb"):
                 pass
         except OSError as exc:
-            raise error(f"{where} pairs the model {said}, which cannot be read ({type(exc).__name__})") from None
+            raise error(f"{lead}, which cannot be read ({_cause(exc)})") from None
         return
     from pbidocgen.tmdl_reader import find_definition_dir  # noqa: PLC0415
-    if not ((path / "model.bim").is_file() or (path / "definition" / "model.bim").is_file() or find_definition_dir(path)):
-        raise error(f"{where} pairs the model {said}, a folder with no model.bim or TMDL definition in it")
+    try:
+        found = (path / "model.bim").is_file() or (path / "definition" / "model.bim").is_file() or find_definition_dir(path)
+    except OSError as exc:
+        raise error(f"{lead}, a folder that cannot be read ({_cause(exc)})") from None
+    if not found:
+        raise error(f"{lead}, a folder with no model.bim or TMDL definition in it")
 
 
 def resolve_pairing(engine: str, source: Path, details_path: str | None = None, explicit: str | None = None) -> Pairing:
@@ -381,15 +397,16 @@ def resolve_pairing(engine: str, source: Path, details_path: str | None = None, 
         named = _load_details_file(power_bi, file)[1]
     if explicit:
         model = Path(explicit)
-        _check_model(model, explicit, "--model", InputError)
+        _check_model(model, "--model", InputError)
         if named:
-            pairing.notes.append(f"--model was given, so the model {named['path']!r} named in {file.name} is not used.")
+            pairing.notes.append(f"--model was given, so the model {Path(named['path'].strip()).name} named in "
+                                 f"{file.name} is not used.")
         return Pairing(str(model.resolve()), "--model", model.name, pairing.notes)
     if not named:
         return pairing
     model = Path(named["path"].strip())
     model = model if model.is_absolute() else (file.parent / model)
-    _check_model(model, repr(named["path"]), file.name, InputError)
+    _check_model(model, file.name, InputError)
     model = model.resolve()
     return Pairing(str(model), file.name, model.name)
 
