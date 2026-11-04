@@ -133,6 +133,13 @@ bidoc generate --engine power_bi --kind pbir --source "C:\Reports\Sales.Report" 
 Pairing is explicit and unverified: the document states that the snapshot's server identity and freshness are not checked. A
 report that already has its own model is not given a different one.
 
+### Details the source cannot give
+
+Report location, catalogue folder and connection account references (Power BI), or owner, environment, runbook and
+source location (Data Factory), go in a JSON file passed with `--details`, or kept beside the source as
+`<source name>.bidoc-details.json`, which `batch` and the desktop app also read. The document shows them read-only. Fields
+and rules: [`docs/generator.md`](docs/generator.md#details-the-source-cannot-give).
+
 ## Windows
 
 [`packaging/windows`](packaging/windows) builds an unsigned per-user installer. The hosted CI installs, uses, upgrades and

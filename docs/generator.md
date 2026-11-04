@@ -26,11 +26,93 @@ bidoc desktop                                                                   
 | `--identity existing\|new` | Required when a source was copied or moved and carries another source's identity |
 | `--document-id` | Explicitly reuse a known document identity |
 | `--title`, `--description`, `--tag`, `--business-area`, `--owner` | Catalogue metadata |
+| `--details FILE` | Details the source cannot give, shown in the document (see below) |
 | `--json` | Machine-readable result |
 
 Exit codes: `0` success, `2` invalid input or configuration, `3` prerequisites missing, `4` generation failure (a batch where every item failed), `5` partial batch failure, `130` cancelled.
 
 Output is `<title>--<document id prefix>.html` (`.shared.html` for the shared profile), written atomically so a previous good file is only replaced by a complete one. If the input was not read completely (for example ADF files that could not be parsed), the document is still written as `<title>.local.html`, without a publication manifest, and cannot be published.
+
+## Details the source cannot give
+
+A document's **Documentation details** (Power BI) or **Factory details** (Data Factory) are read-only in the page,
+because saving the page would break the integrity check the library relies on. Record them at generation instead,
+from a JSON file:
+
+```json
+{"reportLocation": "https://app.powerbi.com/groups/finance/reports/sales", "folder": "Finance / Monthly",
+ "connections": [{"sourceType": "SQL Server", "server": "sql.example.local", "database": "SalesDW",
+                  "username": "svc-pbi-refresh", "authentication": "Windows"}]}
+```
+
+```json
+{"environment": "Production", "owner": "Data Platform", "factory": "", "runbook": "https://wiki/adf-sales",
+ "sourceLocation": "https://dev.azure.com/contoso/data/_git/adf-sales (main)", "folder": "Sales", "notes": ""}
+```
+
+- `bidoc generate --details FILE` uses that file.
+- Without `--details`, and in `bidoc batch` and the desktop app, a file named `<source name>.bidoc-details.json`
+  beside the source is used when present: `Sales.pbix.bidoc-details.json` beside `Sales.pbix`, or
+  `factory.bidoc-details.json` beside a `factory` folder. Keep it there and every regeneration records the same details.
+- The fields are the engines' own (`pbi-doc-gen --metadata`, `adf-doc-gen --details`). Unknown fields, a file that is
+  not JSON, or a value that holds a credential (below) stop the generation with a message naming the file; nothing
+  is written. Record where a secret lives, never the secret.
+- In the shared profile the same cleaning as the rest of the document applies: a personal file location (for example
+  under `C:\Users`) is withheld, keeping the file name and a stable reference.
+- The details are part of the document, not of its identity: adding or changing them makes a new revision of the
+  same document.
+- A value is refused when it holds a credential rather than a reference to one: a credential setting with a value
+  (`Password=`, `pwd=`, `client_secret=`, `api_key=`, `AccountKey=`, `token=` and the like), a credential in a URL
+  query (`?sig=`, `&token=`), a password in a URL (`user:password@host`), an `Authorization` header value or a bearer
+  token. Account names, authentication types, Key Vault URLs and `@Microsoft.KeyVault(...)` references are fine. Both
+  engines apply the same rules, and the error names the field and the file, never the value.
+
+**Two environments.** The Factory details `environment` is text for readers of the document. `--environment` is
+different: it files the document in the library and is part of its identity, so `Production` and `Test` are separate
+documents. Neither sets the other. When the details name an environment that `--environment` does not, `bidoc` warns
+and files the document as `--environment` says.
+
+### Example: a factory with its details
+
+```text
+C:\Repos\
+  adf-sales\                       the factory (its Git folder)
+  adf-sales.bidoc-details.json     its details, beside it
+```
+
+`adf-sales.bidoc-details.json`:
+
+```json
+{
+  "environment": "Production",
+  "owner": "Data Platform",
+  "factory": "contoso-prod / rg-data / adf-sales",
+  "sourceLocation": "https://dev.azure.com/contoso/data/_git/adf-sales (main)",
+  "runbook": "https://wiki.contoso.com/data/adf-sales",
+  "folder": "Sales",
+  "notes": "Credentials are in Key Vault kv-data-prod."
+}
+```
+
+```powershell
+bidoc generate --engine adf --kind adf_git --source "C:\Repos\adf-sales" --output-dir "C:\Documentation" --environment Production
+```
+
+```text
+  validating: details from adf-sales.bidoc-details.json
+  ...
+Wrote C:\Documentation\adf sales--fe76dec4.html
+```
+
+Open the document and choose **Factory details** in the sidebar: the seven fields are shown as written, read-only.
+For a Power BI source the same file sits beside the `.pbix` or `.pbip` (`Sales.pbix.bidoc-details.json`) with
+`reportLocation`, `folder` and `connections`, and the values appear under **Document actions → Documentation
+details**. `bidoc batch C:\Repos --output-dir C:\Documentation` and the desktop app pick up the same file.
+Without `--environment Production` the document is still written, with this warning:
+
+```text
+  warning: adf-sales.bidoc-details.json gives the environment 'Production' for readers of the factory details, but the document is filed with no environment. Use --environment 'Production' to file it there; the environment is part of the document's identity.
+```
 
 ## PBIX extraction
 

@@ -10,7 +10,7 @@ import json
 from html.parser import HTMLParser
 from typing import Any, Optional
 
-from .redact import scrub_text
+from .credential_values import looks_like_credential
 
 DETAILS_ID = "adf-documentation-details"
 FIELDS = {
@@ -41,7 +41,7 @@ def validate_details(value: Any) -> dict:
             raise ValueError(f"{key} must be text")
         if len(text) > MAX_LEN:
             raise ValueError(f"{key} is longer than {MAX_LEN} characters")
-        if scrub_text(text)[1]:
+        if looks_like_credential(text):
             raise ValueError(f"{key} looks like it contains a secret (password, key or token); "
                              f"record where the secret lives instead")
         out[key] = text

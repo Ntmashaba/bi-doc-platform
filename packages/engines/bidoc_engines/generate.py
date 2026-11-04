@@ -6,6 +6,7 @@ untrusted request input.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import time
@@ -18,6 +19,18 @@ from . import __version__
 from .build import ADAPTERS, NotPublishable, build_artifact
 from .envelope import GENERATION_LIMITS, publication_problem, publication_warning, size_breakdown
 from .identity import IdentityDecisionRequired, environment_key, resolve
+
+# Details a document cannot read from its source (Power BI: report location, catalogue folder, connection account
+# references; Data Factory: owner, environment, runbook and the like) are recorded before the document is sealed, so they
+# survive the integrity check that makes the page read-only. They come from the request's file or, without one, from a
+# file beside the source, like the identity sidecar: <source name>.bidoc-details.json. That file stays with the source,
+# so every regeneration (generate, batch, the desktop app) records the same details.
+DETAILS_SIDECAR = ".bidoc-details.json"
+
+
+def details_sidecar(source: Path) -> Path:
+    return source.with_name(source.name + DETAILS_SIDECAR)
+
 
 ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
 STAGES = ("validating", "analysing", "rendering", "completed")
@@ -43,6 +56,7 @@ class GenerateRequest:
     model_path: str | None = None           # explicit external model pairing
     extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
     bidoc_version: str | None = None       # the bidoc generator running this request; shown in the document
+    details_path: str | None = None        # details JSON; without it, <source name>.bidoc-details.json if present
 
 
 PUBLICATION_LIMITS = Limits()      # what the library accepts by default; checked after the document is written
@@ -87,6 +101,37 @@ def _write_atomically(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
+def _read_details(adapter, path: Path) -> dict:
+    """The details in `path`, checked by the engine's own rules; any problem names the file and stops generation."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        raise adapter.InputError(f"details file not found: {path}") from None
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise adapter.InputError(f"details file {path.name} could not be read as JSON: {exc}") from None
+    try:
+        return adapter.validate_details(raw)
+    except ValueError as exc:
+        raise adapter.InputError(f"details file {path.name}: {exc}") from None
+
+
+def _environment_note(request: GenerateRequest, details: dict, path: Path) -> str | None:
+    """Factory details carry an `environment` for readers; the request's environment files the document in the
+    library and is part of its identity. One never sets the other. Say so when they disagree, or when only the
+    details name one, so a reader does not assume the document was filed under it."""
+    written = str(details.get("environment") or "").strip() if request.engine == "adf" else ""
+    filed = (request.environment or "").strip()
+    if not written or written.casefold() == filed.casefold():
+        return None
+    if not filed:
+        return (f"{path.name} gives the environment {written!r} for readers of the factory details, but the "
+                f"document is filed with no environment. Use --environment {written!r} to file it there; the "
+                f"environment is part of the document's identity.")
+    return (f"{path.name} gives the environment {written!r}, but the document is filed under {filed!r} "
+            f"(--environment). The factory details show {written!r}; the library and the document identity use "
+            f"{filed!r}.")
+
+
 def generate(request: GenerateRequest, progress=None, cancellation=None) -> GenerateResult:
     progress = progress or (lambda stage, message="": None)
     started, timings = time.monotonic(), {}
@@ -124,6 +169,13 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         else:
             payload = (adapter.load(source, request.source_kind, request.title, model_path=request.model_path)
                        if request.engine == "power_bi" else adapter.load(source, request.source_kind, request.title))
+        details_file = Path(request.details_path) if request.details_path else details_sidecar(source)
+        if request.details_path or details_file.is_file():
+            payload[adapter.DETAILS_KEY] = _read_details(adapter, details_file)
+            progress("validating", f"details from {details_file.name}")
+            note = _environment_note(request, payload[adapter.DETAILS_KEY], details_file)
+            if note:
+                result.warnings.append(note)
         if isinstance(payload.get("producer"), dict):
             # The document says what generated it, beside its generation time.
             payload["producer"]["bidoc"] = request.bidoc_version or None

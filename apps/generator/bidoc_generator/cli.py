@@ -51,6 +51,12 @@ def _parser():
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
     g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
+    g.add_argument("--details", metavar="JSON",
+                   help="details the source cannot give, recorded in the document before it is sealed. Power BI: "
+                        "reportLocation, folder, connections (sourceType, server, database, connectionName, username, "
+                        "authentication). Data Factory: environment, owner, factory, sourceLocation, runbook, folder, "
+                        "notes. References only: a value that looks like a password, key or token is refused. Without "
+                        "this option, <source name>.bidoc-details.json beside the source is used when present")
     g.add_argument("--extract-timeout", type=float, default=900, help="PBIX only: seconds before extraction is stopped")
     g.add_argument("--pbixray", action="store_true", help="Alias for --backend pbixray")
     g.add_argument("--backend", choices=("auto", "pbixray", "pbi-tools"), default="auto",
@@ -63,7 +69,8 @@ def _parser():
                        description="Inputs are recognised by their shape: .pbix and .abf files, PBIP project folders, "
                                    "TMDL/PBIR folders, model.bim, an SSMS CREATE script of a tabular database "
                                    "(.xmla, only when named itself), pbi-tools extracts, ADF Git folders and "
-                                   "ARM or resource JSON. Any other folder is searched recursively for .pbix and "
+                                   "ARM or resource JSON. Each input's details (see 'bidoc generate --details') are read "
+                                   "from <input name>.bidoc-details.json beside it, when present. Any other folder is searched recursively for .pbix and "
                                    ".abf files, .bim models and project folders (a project folder is one input and is "
                                    "not searched inside; other files, .xmla included, are ignored; links, the output "
                                    "folder and .git/.venv are skipped). Items run one at a time. Exit code 5 means some "
@@ -224,7 +231,8 @@ def _generate(args) -> int:
         document_id=args.document_id, identity_choice=args.identity, title=args.title,
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
-        extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__)
+        extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__,
+        details_path=args.details)
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",
               file=sys.stderr)

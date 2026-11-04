@@ -164,7 +164,9 @@ In any report, open **Documentation details** (below the sections in the left ra
 under that folder, and the details survive the next batch run. A document
 made by `bidoc` (the generator app) shows these details read-only: it carries
 the library's integrity check, and a copy saved from the page would no longer
-pass it.
+pass it. Give `bidoc` the same
+details with `--details FILE`, or a `<source name>.bidoc-details.json` file
+beside the source (see `docs/generator.md`).
 
 ### 8. JSON, CSV, Word and agent outputs (PBIP)
 

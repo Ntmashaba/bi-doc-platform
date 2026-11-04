@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 from urllib.parse import quote
 
+from .credential_values import looks_like_credential
+
 METADATA_ID = 'pbi-documentation-metadata'
 
 
@@ -19,6 +21,8 @@ def validate_metadata(value):
         text = value.get(key, '')
         if not isinstance(text, str):
             raise ValueError(f'{key} must be text')
+        if looks_like_credential(text):
+            raise ValueError(f'{key} looks like it contains a secret (password, key or token); record where the secret lives instead')
         result[key] = text
     connections = value.get('connections', [])
     if not isinstance(connections, list):
@@ -30,6 +34,9 @@ def validate_metadata(value):
             raise ValueError('Connection metadata accepts identity, username and authentication fields only; no passwords or tokens')
         if any(not isinstance(v, str) for v in connection.values()):
             raise ValueError('Connection fields must be text')
+        if any(looks_like_credential(v) for v in connection.values()):
+            raise ValueError('A connection field looks like it contains a secret (password, key or token); record '
+                             'the account name and where the secret lives instead')
         result['connections'].append({key: connection.get(key, '') for key in sorted(fields)})
     return result
 

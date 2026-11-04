@@ -42,6 +42,21 @@ class CatalogTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_metadata(value)
 
+    def test_rejects_a_secret_written_into_a_value(self):
+        # A field may hold a reference to an account or a location, never the credential itself.
+        for value in ({'reportLocation': 'https://x.example.com/r?token=abc123'},
+                      {'reportLocation': 'https://user:hunter2@x.example.com/r'},
+                      {'folder': 'Password=hunter2'},
+                      {'connections': [{'server': 's', 'authentication': 'Password=hunter2'}]},
+                      {'connections': [{'username': 'u', 'connectionName': 'Bearer abc123def456'}]}):
+            with self.subTest(value=value), self.assertRaises(ValueError) as caught:
+                validate_metadata(value)
+            self.assertIn('secret', str(caught.exception))
+        # ...while account names, authentication types and plain locations are what the fields are for
+        kept = validate_metadata({'reportLocation': r'\\fileserver\Reports\Sales.pbix', 'folder': 'Finance / Monthly',
+                                  'connections': [{'username': 'svc-pbi-refresh', 'authentication': 'OAuth2 (password stored in Key Vault)'}]})
+        self.assertEqual(kept['connections'][0]['username'], 'svc-pbi-refresh')
+
     def test_catalog_existing_legacy_plain_new_and_malformed(self):
         render_html(dict(self.payload(), documentation={'folder': 'Finance/Monthly'}), self.root / 'Sales #1.html')
         (self.root / 'legacy.html').write_text('<script>const DATA = {"title":"Legacy", "generated":"Yesterday"};\n</script>')

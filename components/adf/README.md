@@ -144,7 +144,9 @@ lives, its runbook, a home page group and notes. Edit them in the page and use
 **Download updated HTML**, then replace the original file; or supply them
 when generating. A document made by `bidoc` (the generator app) shows these
 details read-only: it carries the library's integrity check, and a copy saved
-from the page would no longer pass it.
+from the page would no longer pass it. Give `bidoc` the same
+details with `--details FILE`, or a `<source name>.bidoc-details.json` file
+beside the source (see `docs/generator.md`).
 
 ```json
 {"environment": "Production", "owner": "Data Platform", "runbook": "https://wiki/adf-sales",
