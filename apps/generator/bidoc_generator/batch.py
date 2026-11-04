@@ -31,6 +31,7 @@ class Options:
     business_area: str = ""
     owner: str = ""
     extract_timeout: float = 900
+    also: tuple = ()                    # other outputs beside each document: any of json, word, csv, agent
     pbix_backend: dict | None = None    # set once per batch that has PBIX items: which extractor, and any fallback reason
 
 
@@ -286,7 +287,7 @@ class Runner:
                 output_dir=opts.output_dir, profile=opts.profile, query_code=opts.query_code,
                 environment=opts.environment, business_area=opts.business_area, owner=opts.owner,
                 extracted_path=str(extracted) if extracted else None,
-                mapping_dir=str(self.history.home / "identity"), bidoc_version=__version__)
+                mapping_dir=str(self.history.home / "identity"), bidoc_version=__version__, also=tuple(opts.also))
 
             def progress(stage, message=""):
                 if stage in ("analysing", "rendering"):

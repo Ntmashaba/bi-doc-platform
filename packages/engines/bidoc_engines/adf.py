@@ -38,6 +38,33 @@ def validate_details(value) -> dict:
     return check(value)
 
 
+def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
+    """The engine's other outputs beside the document, from the payload the document was rendered from.
+
+    Returns (paths written, notes): json, word, csv (objects, usage, edges and issues, in <document>-csv/),
+    agent (context for LLM agents).
+    """
+    import json
+    written, notes = [], []
+    for kind in kinds:
+        if kind == "json":
+            path = html_path.with_suffix(".json")
+            path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            written.append(str(path))
+        elif kind == "word":
+            from adfdocgen.word_writer import render_docx
+            written.append(str(render_docx(payload, html_path.with_suffix(".docx"))))
+        elif kind == "csv":
+            from adfdocgen.cli import write_csv
+            written += [str(p) for p in write_csv(payload, html_path.with_name(html_path.stem + "-csv"))]
+        elif kind == "agent":
+            from adfdocgen.agent_writer import render_agent_md
+            written.append(str(render_agent_md(payload, html_path.with_suffix(".agent.md"))))
+        else:
+            raise ValueError(f"unknown output {kind!r}")
+    return written, notes
+
+
 def native_schema(payload) -> str:
     return f"{ENGINE}/{payload.get('schemaVersion')}"
 

@@ -20,6 +20,26 @@ EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0,
 KINDS = ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted", "adf_git", "adf_arm", "adf_resources")
 
 
+ALSO_HELP = ("also write the engine's other outputs beside each document, from the same content (for a shared "
+             "document, as filtered for sharing): json (the extract, which a Power BI document's Compare extracts "
+             "reads), word (.docx), csv (Power BI: column usage per page; Data Factory: objects, usage, edges and "
+             "issues in a <document>-csv folder), agent (.agent.md for LLM agents). Comma-separated or repeated")
+
+
+def _also_value(text: str) -> tuple:
+    """One --also value: a comma-separated list of outputs, checked while the arguments are read."""
+    from bidoc_engines.generate import EXTRAS  # noqa: PLC0415
+    kinds = tuple(k.strip().lower() for k in text.split(",") if k.strip())
+    unknown = [k for k in kinds if k not in EXTRAS]
+    if unknown or not kinds:
+        raise argparse.ArgumentTypeError(f"unknown output {', '.join(unknown) or repr(text)}; use any of {', '.join(EXTRAS)}")
+    return kinds
+
+
+def _also(values) -> tuple:
+    return tuple(dict.fromkeys(k for v in values or () for k in v))
+
+
 def _parser():
     ap = argparse.ArgumentParser(prog="bidoc", description="BI Documentation Platform generator.")
     ap.add_argument("--version", action="version", version=f"bidoc {__version__}")
@@ -51,6 +71,7 @@ def _parser():
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
     g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
+    g.add_argument("--also", action="append", type=_also_value, metavar="OUTPUTS", help=ALSO_HELP)
     g.add_argument("--details", metavar="JSON",
                    help="details the source cannot give, recorded in the document before it is sealed. Power BI: "
                         "reportLocation, folder, connections (sourceType, server, database, connectionName, username, "
@@ -84,6 +105,7 @@ def _parser():
     b.add_argument("--owner", default="")
     b.add_argument("--pbi-tools")
     b.add_argument("--extract-timeout", type=float, default=900)
+    b.add_argument("--also", action="append", type=_also_value, metavar="OUTPUTS", help=ALSO_HELP)
     b.add_argument("--json", action="store_true")
 
     h = sub.add_parser("history", help="list recent batches and their items")
@@ -232,7 +254,7 @@ def _generate(args) -> int:
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
         extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__,
-        details_path=args.details)
+        details_path=args.details, also=_also(args.also))
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",
               file=sys.stderr)
@@ -254,6 +276,8 @@ def _generate(args) -> int:
     else:
         if result.artifact_path:
             print(f"Wrote {result.artifact_path}")
+        for extra in result.extra_paths:
+            print(f"Wrote {extra}")
         for w in result.warnings:
             print(f"  warning: {w}", file=sys.stderr)
         for e in result.errors:
@@ -324,7 +348,7 @@ def _batch(args) -> int:
     opts = Options(output_dir=str(Path(args.output_dir).resolve()), profile=args.profile,
                    query_code="included" if args.include_query_code else "withheld",
                    environment=args.environment, business_area=args.business_area, owner=args.owner,
-                   extract_timeout=args.extract_timeout)
+                   extract_timeout=args.extract_timeout, also=_also(args.also))
     scan = runner.discover(list(args.inputs), opts.output_dir)       # as given: discovery normalises them, and sees links
     if not args.json:
         print(_scan_line(scan), file=sys.stderr)

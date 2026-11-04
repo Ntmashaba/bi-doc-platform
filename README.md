@@ -133,6 +133,12 @@ bidoc generate --engine power_bi --kind pbir --source "C:\Reports\Sales.Report" 
 Pairing is explicit and unverified: the document states that the snapshot's server identity and freshness are not checked. A
 report that already has its own model is not given a different one.
 
+### Word, JSON, CSV and agent outputs
+
+The document is always HTML. Add `--also json,word,csv,agent` to `bidoc generate` or `bidoc batch` for the engines'
+other outputs beside it (a shared document's are filtered the same way). Details:
+[`docs/generator.md`](docs/generator.md#other-outputs-beside-the-document---also).
+
 ### Details the source cannot give
 
 Report location, catalogue folder and connection account references (Power BI), or owner, environment, runbook and

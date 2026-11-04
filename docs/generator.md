@@ -27,11 +27,55 @@ bidoc desktop                                                                   
 | `--document-id` | Explicitly reuse a known document identity |
 | `--title`, `--description`, `--tag`, `--business-area`, `--owner` | Catalogue metadata |
 | `--details FILE` | Details the source cannot give, shown in the document (see below) |
+| `--also json,word,csv,agent` | Other outputs beside the document (see below); also on `bidoc batch` |
 | `--json` | Machine-readable result |
 
 Exit codes: `0` success, `2` invalid input or configuration, `3` prerequisites missing, `4` generation failure (a batch where every item failed), `5` partial batch failure, `130` cancelled.
 
 Output is `<title>--<document id prefix>.html` (`.shared.html` for the shared profile), written atomically so a previous good file is only replaced by a complete one. If the input was not read completely (for example ADF files that could not be parsed), the document is still written as `<title>.local.html`, without a publication manifest, and cannot be published.
+
+## Other outputs beside the document (`--also`)
+
+`bidoc generate` and `bidoc batch` write the HTML document. `--also` adds the engines' other outputs beside it,
+named after it:
+
+| Output | File | What it is |
+|---|---|---|
+| `json` | `<document>.json` | The extract: everything the document shows, as data. A Power BI document's **Compare extracts** takes an earlier one as its baseline |
+| `word` | `<document>.docx` | The narrative subset, for handovers and sign-off |
+| `csv` | Power BI: `<document>.columns.csv`; Data Factory: `<document>-csv/` with `objects.csv`, `usage.csv`, `edges.csv`, `issues.csv` | Column usage per report page (needs a model); the factory's objects, usage, lineage edges and review issues |
+| `agent` | `<document>.agent.md` | Compact Markdown for an LLM agent's context |
+
+```powershell
+bidoc generate --engine power_bi --kind pbip --source "C:\Projects\Sales\Sales.pbip" --output-dir "C:\Documentation" --also json,word,agent
+bidoc batch "C:\Reports" --output-dir "C:\Documentation" --also agent
+```
+
+- Every output is made from the content the document was rendered from. For `--profile shared` that is the content
+  as filtered for sharing: what the document withholds (query code unless `--include-query-code`, credentials,
+  personal locations, entered data), its extras withhold too.
+- The extras are files for your own use beside the document. Only the HTML document carries the integrity
+  check and can be published to the library.
+- A failed extra is a warning naming the output and the kind of error (for a system error, its description, such as
+  "No space left on device"); the document and the other extras are still written. The warning never repeats the
+  error's own text, which could quote a value or a local path. An unknown output name is refused before anything is
+  read.
+- Each extra is written in a temporary folder beside the document and moved into place only once it is complete. A
+  half-written file never replaces a good one. The four Data Factory CSVs are replaced as a folder: the earlier
+  folder is set aside, the new one renamed in, then the earlier one discarded, so the folder never mixes two runs. A
+  CSV folder that also holds other files is not replaced (a warning says so) and those files are left alone.
+- Nothing after the document is written can make the run fail: a file that cannot be moved into place, an earlier
+  output that cannot be removed, or a record that cannot be updated is a warning, and the document stays valid.
+- `<document>.outputs.json` beside the document records which extras this run wrote, with the document's ID,
+  revision and profile. Running again over the same document removes the extras that record lists and this run did
+  not write again: one you no longer ask for, or one that failed this time (an older copy would read as current).
+  Only files that record lists, under the extras' own names, are ever removed; anything else in the folder, including
+  extras written by `generate_docs.py`, is left alone. An earlier output that cannot be removed is named in a
+  warning and kept in the record (under `stale`), so the next run tries again. With no extras left, the record goes
+  too, so HTML-only output is just the document. The record is a separate file: the document, its integrity check and publication are not
+  affected by it.
+- A batch keeps its `--also` choice, so `bidoc retry` writes the same outputs. With `--json`, `bidoc generate` lists
+  the files in `extra_paths`.
 
 ## Details the source cannot give
 

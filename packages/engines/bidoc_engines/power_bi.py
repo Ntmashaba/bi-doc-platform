@@ -39,6 +39,36 @@ def validate_details(value) -> dict:
     return validate_metadata(value)
 
 
+def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
+    """The engine's other outputs beside the document, from the payload the document was rendered from.
+
+    Returns (paths written, notes): json (the extract that "Compare extracts" reads), word, csv (column usage
+    per page; needs a model), agent (context for LLM agents).
+    """
+    import json
+    written, notes = [], []
+    for kind in kinds:
+        if kind == "json":
+            path = html_path.with_suffix(".json")
+            path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        elif kind == "word":
+            from pbidocgen.word_writer import render_docx
+            path = render_docx(payload, html_path.with_suffix(".docx"))
+        elif kind == "csv":
+            if not (payload.get("columns") or {}).get("rows"):
+                notes.append("No column usage CSV: the document has no semantic model to report columns from.")
+                continue
+            from pbidocgen.column_usage import write_column_csv
+            path = write_column_csv(payload["columns"], html_path.with_suffix(".columns.csv"))
+        elif kind == "agent":
+            from pbidocgen.agent_writer import render_agent_md
+            path = render_agent_md(payload, html_path.with_suffix(".agent.md"))
+        else:
+            raise ValueError(f"unknown output {kind!r}")
+        written.append(str(path))
+    return written, notes
+
+
 def _has_embedded_model(pbix: Path) -> bool:
     """A live-connected (thin) PBIX has no DataModel part; without a PBIX to read, assume one."""
     try:

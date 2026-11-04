@@ -581,7 +581,9 @@ same file name and PBIX batch reruns. They can also be applied with
 - **`--word PATH`**: a `.docx` narrative of the same analysis for handovers and sign-off.
 - **`--agent [PATH]`**: a compact Markdown version for LLM agents.
 
-All renderings come from one analysis, so they cannot disagree.
+All renderings come from one analysis, so they cannot disagree. With the
+generator app, `bidoc generate --also json,word,csv,agent` (or `bidoc batch
+--also …`) writes the same files beside the document; see `docs/generator.md`.
 
 ## Command-line reference
 
