@@ -116,6 +116,23 @@ class Cli(unittest.TestCase):
         self.assertIn("unknown output pdf", err)
         self.assertFalse((self.tmp / "never").exists())
 
+    def test_a_failed_output_never_shows_its_exception_text_in_output_or_history(self):
+        home = self.tmp / "home"
+        os.environ["BIDOC_HOME"] = str(home)
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        leak = RuntimeError("Password=hunter2-SEEDLEAK in /home/someone/SEEDPATH")
+        with mock.patch("adfdocgen.word_writer.render_docx", side_effect=leak):
+            code, out, err = run(["batch", str(self.factory), "--output-dir", str(self.tmp / "b"), "--also", "word,json"])
+            gen_code, gen_out, gen_err = run(["generate", "--engine", "adf", "--source", str(self.factory), "--kind",
+                                              "adf_git", "--output-dir", str(self.tmp / "g"), "--also", "word"])
+        self.assertEqual((code, gen_code), (0, 0))
+        _, history, _ = run(["history", "--json"])
+        everything = out + err + gen_out + gen_err + history
+        self.assertIn("The Word document could not be written (RuntimeError)", history, "recorded in the batch history")
+        self.assertIn("The Word document could not be written (RuntimeError)", gen_err)
+        self.assertNotIn("SEEDLEAK", everything)
+        self.assertNotIn("SEEDPATH", everything)
+
     def test_invalid_input_exits_2(self):
         code, _, err = run(["generate", "--engine", "adf", "--source", str(self.tmp / "nope"), "--kind", "adf_git",
                             "--output-dir", str(self.tmp / "out")])

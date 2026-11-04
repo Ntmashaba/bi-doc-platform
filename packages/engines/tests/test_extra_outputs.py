@@ -90,13 +90,118 @@ class Written(Base):
             result = self.run_engine("adf", also=("json", "word", "agent"))
         self.assertEqual(result.status, "completed")
         self.assertEqual([Path(p).suffix for p in result.extra_paths], [".json", ".md"])
-        self.assertIn("The Word document could not be written: RuntimeError: disk full", result.warnings)
+        self.assertIn("The Word document could not be written (RuntimeError). The document and any other outputs were "
+                      "written; run again to retry.", result.warnings)
         validate_artifact(Path(result.artifact_path).read_bytes())
 
     def test_column_usage_needs_a_model(self):
         written, notes = power_bi.write_extras({"columns": None}, self.tmp / "report.html", ("csv",))
         self.assertEqual(written, [])
         self.assertEqual(notes, ["No column usage CSV: the document has no semantic model to report columns from."])
+
+
+SECRET, LOCAL = "Password=hunter2-SEEDLEAK", "/home/someone/private/SEEDPATH"
+
+
+class Failures(Base):
+    """A failed output says which one and why in general terms; never the exception's text, which can quote secrets."""
+
+    def test_a_failure_message_never_quotes_the_exception(self):
+        for exc, expected in ((RuntimeError(f"cannot render {SECRET} at {LOCAL}"), "(RuntimeError)"),
+                              (OSError(28, "No space left on device", f"{LOCAL}/x.docx"),
+                               "(OSError, No space left on device)"),
+                              (ValueError(f"bad value {SECRET}"), "(ValueError)")):
+            with self.subTest(exc=type(exc).__name__), mock.patch("adfdocgen.word_writer.render_docx", side_effect=exc):
+                result = self.run_engine("adf", out=type(exc).__name__, also=("word",))
+                note = [w for w in result.warnings if "Word document" in w]
+                self.assertEqual(len(note), 1)
+                self.assertIn(expected, note[0])
+                joined = json.dumps(result.__dict__)
+                self.assertNotIn("SEEDLEAK", joined)
+                self.assertNotIn("SEEDPATH", joined)
+
+
+class Regeneration(Base):
+    """Running again into the same folder: the extras beside the document are this run's, or gone."""
+
+    def files(self, result):
+        folder = Path(result.artifact_path).parent
+        return sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
+
+    def record(self, result):
+        return json.loads(Path(result.artifact_path).with_suffix(".outputs.json").read_text(encoding="utf-8"))
+
+    def test_fewer_outputs_remove_the_ones_no_longer_asked_for(self):
+        first = self.run_engine("adf", also=ALL)
+        stem = Path(first.artifact_path).stem
+        self.assertEqual(self.record(first)["outputs"], [f"{stem}.json", f"{stem}.docx"] +
+                         [f"{stem}-csv/{n}.csv" for n in ("objects", "usage", "edges", "issues")] + [f"{stem}.agent.md"])
+        second = self.run_engine("adf", also=("json",))
+        self.assertEqual(self.files(second), sorted([f"{stem}.html", f"{stem}.json", f"{stem}.outputs.json"]))
+        self.assertEqual(self.record(second)["outputs"], [f"{stem}.json"])
+        third = self.run_engine("adf")
+        self.assertEqual(self.files(third), [f"{stem}.html"], "HTML only again: no extras and no record")
+
+    def test_files_the_generator_did_not_write_are_never_touched(self):
+        first = self.run_engine("adf")
+        folder, stem = Path(first.artifact_path).parent, Path(first.artifact_path).stem
+        mine = {f"{stem}.docx": "made by generate_docs.py", "notes.txt": "mine", f"{stem}.outputs.json.bak": "mine",
+                "other--12345678.json": "another document's"}
+        for name, text in mine.items():
+            (folder / name).write_text(text, encoding="utf-8")
+        self.run_engine("adf", also=("json",))
+        self.run_engine("adf")
+        for name, text in mine.items():
+            self.assertEqual((folder / name).read_text(encoding="utf-8"), text, name)
+        # a record that names files outside this document's own extras is not obeyed
+        (folder / f"{stem}.outputs.json").write_text(json.dumps({"schema": "bidoc-outputs/1", "document": f"{stem}.html",
+                                                                 "outputs": ["notes.txt", "../outside.txt"]}), encoding="utf-8")
+        (self.tmp / "outside.txt").write_text("outside", encoding="utf-8")
+        self.run_engine("adf")
+        self.assertTrue((folder / "notes.txt").is_file())
+        self.assertTrue((self.tmp / "outside.txt").is_file())
+
+    def test_an_output_that_fails_on_regeneration_leaves_no_stale_copy(self):
+        first = self.run_engine("adf", also=("word", "json"))
+        docx = Path(first.artifact_path).with_suffix(".docx")
+        self.assertTrue(docx.is_file())
+        with mock.patch("adfdocgen.word_writer.render_docx", side_effect=RuntimeError("boom")):
+            second = self.run_engine("adf", also=("word", "json"))
+        self.assertFalse(docx.exists(), "an earlier Word document would read as current")
+        self.assertTrue(Path(first.artifact_path).with_suffix(".json").is_file())
+        self.assertIn("Removed the earlier copy of each output that could not be written this time, so no file beside "
+                      "the document is older than it.", second.warnings)
+
+    def test_csv_files_move_together_or_not_at_all(self):
+        from adfdocgen import cli as adf_cli
+        real = adf_cli.write_csv
+
+        def half(payload, folder):
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "objects.csv").write_text("partial", encoding="utf-8")
+            raise OSError(5, "Input/output error")
+        with mock.patch.object(adf_cli, "write_csv", side_effect=half):
+            result = self.run_engine("adf", also=("csv",))
+        self.assertEqual(self.files(result), [Path(result.artifact_path).name], "no partial CSV folder, no record")
+        self.assertFalse(any(p.name.startswith(".bidoc-extras-") for p in Path(result.artifact_path).parent.iterdir()))
+        self.assertIs(adf_cli.write_csv, real)
+
+    def test_the_record_names_the_document_and_revision_and_the_document_is_untouched(self):
+        for profile in ("local", "shared"):
+            with self.subTest(profile=profile):
+                result = self.run_engine("power_bi", out=profile, profile=profile, also=("json", "agent"))
+                record = self.record(result)
+                self.assertEqual((record["schema"], record["document"], record["document_id"], record["revision_id"],
+                                  record["profile"]),
+                                 ("bidoc-outputs/1", Path(result.artifact_path).name, result.document_id,
+                                  result.revision_id, profile))
+                manifest = validate_artifact(Path(result.artifact_path).read_bytes())
+                self.assertEqual(manifest["revision_id"], record["revision_id"])
+
+    def test_html_only_generation_is_unchanged(self):
+        result = self.run_engine("adf")
+        self.assertEqual(self.files(result), [Path(result.artifact_path).name])
+        self.assertEqual(result.extra_paths, [])
 
 
 class Shared(Base):

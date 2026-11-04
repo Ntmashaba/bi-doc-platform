@@ -35,19 +35,95 @@ def details_sidecar(source: Path) -> Path:
 # The engines' other outputs, written beside the document when asked for. Each is made from the payload the document
 # was rendered from, so a shared copy's extras carry exactly what its document does (projected, query code withheld
 # unless included). They are files for local use: they carry no manifest and the library does not take them.
+#
+# Each output is written in a private folder beside the document and moved into place only once it is complete (the
+# four Data Factory CSVs move together). A record beside the document, <document>.outputs.json, lists what this run
+# wrote, with the document's identity and revision. The next run over the same document removes the extras the record
+# lists that it did not write again: one no longer asked for, or one that failed and so cannot be current. Files the
+# record does not list (written by generate_docs.py, or by anyone else) are never touched.
 EXTRAS = ("json", "word", "csv", "agent")
 _EXTRA_NAMES = {"json": "JSON extract", "word": "Word document", "csv": "CSV", "agent": "agent context"}
+OUTPUTS_RECORD = ".outputs.json"
+_RECORD_SCHEMA = "bidoc-outputs/1"
 
 
-def _write_extras(adapter, payload: dict, path: Path, kinds, result) -> None:
+def _owned_names(stem: str) -> set:
+    """Every name an extra of the document <stem>.html can have, relative to its folder."""
+    return ({f"{stem}.json", f"{stem}.docx", f"{stem}.columns.csv", f"{stem}.agent.md"}
+            | {f"{stem}-csv/{n}.csv" for n in ("objects", "usage", "edges", "issues")})
+
+
+def _failure(kind: str, exc: Exception) -> str:
+    """Why an extra was not written, without the exception's own text: it can quote a value or a local path."""
+    cause = type(exc).__name__
+    if isinstance(exc, OSError) and exc.strerror:
+        cause += f", {exc.strerror}"                 # the system's description; the file name is kept apart from it
+    return (f"The {_EXTRA_NAMES[kind]} could not be written ({cause}). The document and any other outputs were "
+            f"written; run again to retry.")
+
+
+def _read_record(record: Path, document: Path) -> dict | None:
+    """This document's outputs record, or None when there is none, or the file is not one written for it."""
+    try:
+        data = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("schema") != _RECORD_SCHEMA or data.get("document") != document.name:
+        return None
+    return data
+
+
+def _write_extras(adapter, payload: dict, path: Path, kinds, result, profile: str) -> None:
+    import shutil
+    import tempfile
+    folder = path.parent
+    record = folder / f"{path.stem}{OUTPUTS_RECORD}"
+    earlier = _read_record(record, path)
+    owned = _owned_names(path.stem)
+    previous = {o for o in (earlier or {}).get("outputs") or [] if isinstance(o, str) and o in owned}
+    current, failed = [], []
     for kind in kinds:
+        work = Path(tempfile.mkdtemp(prefix=".bidoc-extras-", dir=folder))
         try:
-            written, notes = adapter.write_extras(payload, path, (kind,))
-        except Exception as exc:                 # an extra never costs the document that was already written
-            result.warnings.append(f"The {_EXTRA_NAMES[kind]} could not be written: {type(exc).__name__}: {exc}")
-            continue
-        result.extra_paths += written
-        result.warnings += notes
+            try:
+                written, notes = adapter.write_extras(payload, work / path.name, (kind,))
+                made = [Path(w).relative_to(work).as_posix() for w in written]
+            except Exception as exc:             # an extra never costs the document or the other extras
+                result.warnings.append(_failure(kind, exc))
+                failed.append(kind)
+                continue
+            for relative in made:                # complete: move every file of this output into place
+                target = folder / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(work / relative, target)
+                result.extra_paths.append(str(target))
+            current += made
+            result.warnings += notes
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    stale = sorted(previous - set(current))
+    for relative in stale:
+        target = folder / relative
+        target.unlink(missing_ok=True)
+        if target.parent != folder:
+            try:
+                target.parent.rmdir()            # the CSV folder, once nothing is left in it
+            except OSError:
+                pass
+    if failed and stale:
+        result.warnings.append("Removed the earlier copy of each output that could not be written this time, so "
+                               "no file beside the document is older than it.")
+    if current:
+        record.write_text(json.dumps({
+            "schema": _RECORD_SCHEMA, "document": path.name, "document_id": result.document_id,
+            "revision_id": result.revision_id, "profile": profile, "generated_at": _now(),
+            "outputs": current}, indent=1), encoding="utf-8")
+    elif earlier is not None:
+        record.unlink(missing_ok=True)           # nothing beside the document is ours any more
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
@@ -224,7 +300,7 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
                                                           f"{GENERATION_LIMITS.html_bytes}-byte generation ceiling.")
             _write_atomically(path, rendered)
             result.status, result.artifact_path = "local_only", str(path)
-            _write_extras(adapter, payload, path, also, result)
+            _write_extras(adapter, payload, path, also, result, request.profile)
             result.warnings.append("The input was not read completely, so the document has no publication "
                                    "manifest and cannot be published. See its coverage section.")
             stage("completed")
@@ -247,8 +323,8 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
         path = out_dir / f"{_safe_name(manifest['title'])}--{identity.document_id[:8]}{suffix}.html"
         _write_atomically(path, artifact)
         result.status, result.artifact_path = "completed", str(path)
-        _write_extras(adapter, manifest["native_payload"]["data"], path, also, result)
         result.document_id, result.revision_id = manifest["document_id"], manifest["revision_id"]
+        _write_extras(adapter, manifest["native_payload"]["data"], path, also, result, request.profile)
         problem = publication_problem(artifact, adapter.VIEW_IDS, PUBLICATION_LIMITS)
         if problem:
             # Written and usable locally; only publication is refused.

@@ -56,8 +56,19 @@ bidoc batch "C:\Reports" --output-dir "C:\Documentation" --also agent
   personal locations, entered data), its extras withhold too.
 - The extras are files for your own use beside the document. Only the HTML document carries the integrity
   check and can be published to the library.
-- A failed extra is a warning; the document and the other extras are still written. An unknown output name is
-  refused before anything is read.
+- A failed extra is a warning naming the output and the kind of error (for a system error, its description, such as
+  "No space left on device"); the document and the other extras are still written. The warning never repeats the
+  error's own text, which could quote a value or a local path. An unknown output name is refused before anything is
+  read.
+- Each extra is written in a temporary folder beside the document and moved into place only once it is complete; the
+  four Data Factory CSVs move together. A half-written file never replaces a good one.
+- `<document>.outputs.json` beside the document records which extras this run wrote, with the document's ID,
+  revision and profile. Running again over the same document removes the extras that record lists and this run did
+  not write again: one you no longer ask for, or one that failed this time (an older copy would read as current).
+  Only files that record lists, under the extras' own names, are ever removed; anything else in the folder, including
+  extras written by `generate_docs.py`, is left alone. With no extras left, the record goes too, so HTML-only output
+  is just the document. The record is a separate file: the document, its integrity check and publication are not
+  affected by it.
 - A batch keeps its `--also` choice, so `bidoc retry` writes the same outputs. With `--json`, `bidoc generate` lists
   the files in `extra_paths`.
 
