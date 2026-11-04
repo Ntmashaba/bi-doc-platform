@@ -117,6 +117,43 @@ class Discovering(Base):
         self.assertEqual(self.labels(self.discover(self.h3)), ["h3 Reports/Real.pbix"])
         self.assertEqual(self.discover(self.h3 / "notes.json").items[0]["kind"], "adf_arm")      # explicit: as before
 
+    def test_a_selected_folder_of_loose_data_factory_json_is_one_input(self):
+        factory = adf_factory(self.tmp / "git")
+        loose = self.tmp / "Loose ADF"
+        loose.mkdir()
+        for pipeline in (factory / "pipeline").glob("*.json"):
+            shutil.copy(pipeline, loose / pipeline.name)                     # saved from "view code": no Git layout
+        (loose / "Loose ADF.bidoc-details.json").write_text('{"owner": "x"}')   # never read to decide
+        scan = self.discover(loose)
+        self.assertEqual([(i["label"], i.get("engine"), i.get("kind")) for i in scan.items],
+                         [("Loose ADF", "adf", "adf_resources")])
+        # the same files inside a folder that is searched are not judged: only a selected folder is
+        outer = self.tmp / "Container"
+        shutil.copytree(loose, outer / "inner")
+        self.assertEqual(self.discover(outer).items[0]["errors"][0]["code"], "INVALID_INPUT")
+        # JSON that is not a pipeline or data flow does not make a folder an input
+        other = self.tmp / "Configs"
+        other.mkdir()
+        (other / "settings.json").write_text('{"name": "x", "properties": {"colour": "blue"}}')
+        (other / "dataset.json").write_text(json.dumps({"name": "DS", "properties": {
+            "type": "AzureSqlTable", "linkedServiceName": {"referenceName": "LS"}, "typeProperties": {}}}))
+        (other / "broken.json").write_text("{")
+        message = self.discover(other).items[0]["errors"][0]["message"]
+        self.assertIn("Data Factory pipelines or data flows in its own .json files", message)
+
+    def test_a_loose_folder_documents_through_batch(self):
+        factory = adf_factory(self.tmp / "git")
+        loose = self.tmp / "loose"
+        loose.mkdir()
+        for kind in ("pipeline", "dataset", "linkedService"):
+            for f in (factory / kind).glob("*.json"):
+                shutil.copy(f, loose / f.name)
+        runner = self.runner()
+        batch_id = runner.submit([str(loose)], Options(output_dir=str(self.out)))
+        runner.wait()
+        item = runner.history.batch(batch_id)["items"][0]
+        self.assertEqual((item["kind"], item["state"]), ("adf_resources", "completed"), item["errors"])
+
     def test_explicit_files_behave_as_before(self):
         a = pbix(self.tmp / "Alone.pbix")
         missing = self.tmp / "gone.pbix"

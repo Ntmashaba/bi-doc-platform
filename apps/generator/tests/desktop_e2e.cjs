@@ -53,6 +53,8 @@ const step = (name) => console.log("  ok " + name);
   await page.goto(URL + "/#/");
   await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
+  await page.getByRole("group", { name: "Also write, beside each document" }).waitFor();
+  await page.getByLabel("Agent context (.agent.md)").check();
   await page.getByRole("button", { name: "Review inputs" }).click();
   await page.getByRole("cell", { name: "Data Factory Git folder" }).waitFor();
   await page.getByText("not found", { exact: true }).waitFor();
@@ -64,6 +66,9 @@ const step = (name) => console.log("  ok " + name);
   const states = await page.locator("td.state").allTextContents();
   assert.deepStrictEqual(states, ["Completed", "Failed", "Failed"]);
   step("per-item states; one success survives two failures");
+  const written = require("fs").readdirSync(process.env.OUT_DIR);
+  assert.ok(written.some((n) => n.endsWith(".agent.md")), "the agent context chosen in the form is beside the document: " + written);
+  step("an extra output chosen in the form is written beside the document");
 
   await page.getByRole("button", { name: "Open" }).click();
   const frame = page.frameLocator("iframe.preview-frame");

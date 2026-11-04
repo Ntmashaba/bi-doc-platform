@@ -209,6 +209,28 @@ class Cli(unittest.TestCase):
                    for o in manifest["objects"] if o["kind"] == "source" and o["bindings"][0]["endpoint"]["server"]}
         self.assertEqual(servers, {("SQL Server", "localhost")})
 
+    def test_batch_chooses_the_extractor_and_retry_keeps_it(self):
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        source = self.tmp / REAL_SAMPLE.name
+        shutil.copy(REAL_SAMPLE, source)
+        with mock.patch.dict(os.environ, {"BIDOC_PBI_TOOLS": "", "PATH": ""}):        # no pbi-tools anywhere
+            code, out, _ = run(["batch", str(source), "--output-dir", str(self.tmp / "need"), "--backend", "pbi-tools",
+                                "--json"])
+        self.assertEqual(code, 4)
+        failed = json.loads(out)
+        self.assertEqual(failed["options"]["backend"], "pbi-tools")
+        self.assertEqual(failed["items"][0]["state"], "failed")
+        self.assertIn("pbi-tools", failed["items"][0]["errors"][0]["message"])
+        code, out, _ = run(["retry", failed["items"][0]["item_id"], "--json"])   # still the batch's pbi-tools, still failing
+        self.assertNotEqual(json.loads(out)["state"], "completed")
+        code, out, err = run(["batch", str(source), "--output-dir", str(self.tmp / "portable"), "--backend", "pbixray", "--json"])
+        self.assertEqual(code, 0, err)
+        done = json.loads(out)
+        self.assertEqual((done["options"]["backend"], done["items"][0]["state"]), ("pbixray", "completed"))
+        self.assertEqual(run(["batch", str(source), "--output-dir", str(self.tmp / "x"), "--pbixray", "--backend",
+                              "pbi-tools"])[0], 2)
+
     def test_a_different_pbixray_version_is_named_by_doctor_and_the_portable_command(self):
         from unittest import mock  # noqa: PLC0415
         from bidoc_generator.doctor import diagnose  # noqa: PLC0415

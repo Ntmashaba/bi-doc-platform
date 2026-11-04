@@ -203,6 +203,13 @@ Inspect the report before sharing it. The script shows how the extractors differ
 
 ## Batches and history
 
+`bidoc batch` takes the same `--profile`, `--include-query-code`, `--environment`, `--business-area`, `--owner`,
+`--also` and `--extract-timeout` as `bidoc generate`, for every input, and `--backend auto|pbixray|pbi-tools` (or
+`--pbixray`) to choose the PBIX extractor for the whole batch. A batch keeps these choices: `bidoc retry` uses the
+same outputs and the same extractor. Details come from each input's own `<source name>.bidoc-details.json`. Two
+`generate` options have no batch form: `--model`, which pairs one live-connected report with one model, and
+`--title`/`--description`/`--tag`, which describe one document (a batch titles each document after its source).
+
 `bidoc batch` and the desktop app recognise inputs by shape:
 
 - `.pbix` files;
@@ -224,6 +231,11 @@ submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` mod
   reports folder that merely has a subfolder with one of those names is still a container;
 - other files are ignored, including stray `.json` (only an explicitly selected JSON file is treated as a Data Factory export)
   and `.xmla` (most are processing scripts; a CREATE script of a database is read when it is selected itself);
+- a **selected folder of loose Data Factory resource JSON** (saved from ADF Studio's "view code", not in a Git layout) is one
+  Data Factory input when the search finds nothing else in it and its own `.json` files hold at least one pipeline or data
+  flow, judged by content as the Data Factory engine reads them. It is the input `bidoc generate --kind adf_resources` takes.
+  Only a selected folder is judged this way, never one met while searching, and the generator's own files (identity and
+  details files, output records) are not read to decide;
 - the output folder, the generator's own folder, `.git`, `.venv`, `venv`, `node_modules` and similar are left out, as a
   search target and as a selection (selecting one is a failed item that says why);
 - **links are never followed**: a symbolic link or Windows junction is reported and skipped whether it is a selection, a folder
@@ -265,7 +277,8 @@ not a background service. If the app closes while an item runs, that item is mar
 `bidoc desktop` opens a pywebview window (`pip install bi-doc-generator[desktop]`).
 `--no-window` serves the same app on loopback for a browser. The screens are:
 
-- a new batch with native file and folder pickers;
+- a new batch with native file and folder pickers, and a choice of the other outputs to write beside each document
+  (JSON extract, Word document, CSV, agent context; the same as `--also`);
 - prerequisites per input type;
 - review of the inputs before anything runs;
 - live per-item progress with elapsed time, warnings, errors, Open, Cancel and Retry;

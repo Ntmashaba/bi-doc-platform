@@ -32,6 +32,7 @@ class Options:
     owner: str = ""
     extract_timeout: float = 900
     also: tuple = ()                    # other outputs beside each document: any of json, word, csv, agent
+    backend: str = "auto"               # PBIX extractor asked for: auto, pbixray or pbi-tools (retry asks for it again)
     pbix_backend: dict | None = None    # set once per batch that has PBIX items: which extractor, and any fallback reason
 
 
