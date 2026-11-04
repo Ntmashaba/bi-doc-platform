@@ -231,6 +231,74 @@ class Cli(unittest.TestCase):
         self.assertEqual(run(["batch", str(source), "--output-dir", str(self.tmp / "x"), "--pbixray", "--backend",
                               "pbi-tools"])[0], 2)
 
+    def pairing_fixture(self):
+        from fixtures import pbi_model  # noqa: PLC0415
+        from test_model_pairing import report  # noqa: PLC0415
+        model = pbi_model(self.tmp / "Models" / "Sales")
+        sales, margin = report(self.tmp / "Reports" / "Sales.Report"), report(self.tmp / "Reports" / "Margin.Report")
+        return model, sales, margin
+
+    def test_generate_pairs_from_the_details_file_and_model_wins(self):
+        from bidoc_contracts import validate_artifact  # noqa: PLC0415
+        model, sales, _ = self.pairing_fixture()
+        side = sales.with_name("Sales.Report.bidoc-details.json")
+        side.write_text(json.dumps({"model": {"path": "../Models/Sales/model.bim"}}), encoding="utf-8")
+        base = ["generate", "--engine", "power_bi", "--kind", "pbir", "--source", str(sales), "--json"]
+        code, out, err = run(base + ["--output-dir", str(self.tmp / "a")])
+        self.assertEqual(code, 0, err)
+        data = validate_artifact(Path(json.loads(out)["artifact_path"]).read_bytes())["native_payload"]["data"]
+        self.assertEqual(data["modelPairing"]["selectedBy"], "Sales.Report.bidoc-details.json")
+        other = shutil.copy(model, self.tmp / "Other.bim")
+        code, out, err = run(base + ["--output-dir", str(self.tmp / "b"), "--model", str(other)])
+        self.assertEqual(code, 0, err)
+        self.assertIn("note: --model was given, so the model '../Models/Sales/model.bim' named in "
+                      "Sales.Report.bidoc-details.json is not used.", err)
+        data = validate_artifact(Path(json.loads(out)["artifact_path"]).read_bytes())["native_payload"]["data"]
+        self.assertEqual((data["modelPairing"]["model"], data["modelPairing"]["selectedBy"]), ("Other.bim", "--model"))
+        side.write_text(json.dumps({"model": {"path": "../Models/Gone.bim"}}), encoding="utf-8")
+        code, _, err = run(base + ["--output-dir", str(self.tmp / "c")])
+        self.assertEqual(code, 2)
+        self.assertIn("which was not found", err)
+        self.assertFalse((self.tmp / "c").exists())
+
+    def test_a_batch_pairs_each_report_from_its_own_file_and_one_bad_pairing_fails_alone(self):
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        _, sales, margin = self.pairing_fixture()
+        sales.with_name("Sales.Report.bidoc-details.json").write_text(
+            json.dumps({"model": {"path": "../Models/Sales/model.bim"}}), encoding="utf-8")
+        margin.with_name("Margin.Report.bidoc-details.json").write_text(
+            json.dumps({"model": {"path": "../Models/Margin/model.bim"}}), encoding="utf-8")
+        code, out, _ = run(["batch", str(margin), str(sales), "--output-dir", str(self.tmp / "out"), "--json"])
+        self.assertEqual(code, 5)
+        items = {Path(i["source"]).name: i for i in json.loads(out)["items"]}
+        self.assertEqual(items["Sales.Report"]["state"], "completed")
+        self.assertEqual(items["Margin.Report"]["state"], "failed")
+        self.assertIn("Margin.Report.bidoc-details.json pairs the model '../Models/Margin/model.bim', which was not found",
+                      items["Margin.Report"]["errors"][0]["message"])
+        from fixtures import pbi_model  # noqa: PLC0415
+        pbi_model(self.tmp / "Models" / "Margin")
+        code, out, _ = run(["retry", items["Margin.Report"]["item_id"], "--json"])
+        self.assertEqual((code, json.loads(out)["state"]), (0, "completed"))
+
+    def test_a_batch_extracts_a_pbix_model_it_is_paired_with(self):
+        from bidoc_contracts import validate_artifact  # noqa: PLC0415
+        os.environ["BIDOC_HOME"] = str(self.tmp / "home")
+        self.addCleanup(os.environ.pop, "BIDOC_HOME", None)
+        _, sales, _ = self.pairing_fixture()
+        shutil.copy(REAL_SAMPLE, self.tmp / "Models" / "Composite.pbix")
+        sales.with_name("Sales.Report.bidoc-details.json").write_text(
+            json.dumps({"model": {"path": "../Models/Composite.pbix"}}), encoding="utf-8")
+        code, out, err = run(["batch", str(sales), "--output-dir", str(self.tmp / "out"), "--json"])
+        self.assertEqual(code, 0, err)
+        item = json.loads(out)["items"][0]
+        data = validate_artifact(Path(item["artifact_path"]).read_bytes())["native_payload"]["data"]
+        self.assertEqual(data["modelPairing"], {"model": "Composite.pbix", "selectedBy": "Sales.Report.bidoc-details.json",
+                                                "verified": False})
+        self.assertEqual(len(data["model"]["tables"]), 6)
+        self.assertFalse(any(p.name.endswith("-model") for p in (self.tmp / "home" / "workspaces").iterdir())
+                         if (self.tmp / "home" / "workspaces").exists() else False, "the model's extract is released")
+
     def test_a_different_pbixray_version_is_named_by_doctor_and_the_portable_command(self):
         from unittest import mock  # noqa: PLC0415
         from bidoc_generator.doctor import diagnose  # noqa: PLC0415

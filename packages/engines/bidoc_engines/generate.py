@@ -231,7 +231,9 @@ class GenerateRequest:
     business_area: str = ""
     owner: str = ""
     mapping_dir: str = ""                  # local identity mapping when the source is read-only
-    model_path: str | None = None           # explicit external model pairing
+    model_path: str | None = None           # external model pairing, ready to read (an ABF or PBIX already extracted)
+    model_selected_by: str = ""            # how it was chosen: "--model", or the details file that names it
+    model_name: str = ""                   # the model as supplied (file or folder name), for the document
     extracted_path: str | None = None      # pbix only: the pbi-tools extract made from source_path
     bidoc_version: str | None = None       # the bidoc generator running this request; shown in the document
     details_path: str | None = None        # details JSON; without it, <source name>.bidoc-details.json if present
@@ -281,18 +283,120 @@ def _write_atomically(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def _read_details(adapter, path: Path) -> dict:
-    """The details in `path`, checked by the engine's own rules; any problem names the file and stops generation."""
+MODEL_SUFFIXES = (".abf", ".pbix", ".bim")      # a model file a report can be paired with; or a model folder (TMDL, model.bim)
+_NEEDS_EXTRACTION = (".abf", ".pbix")
+
+
+def _load_details_file(adapter, path: Path) -> tuple[dict | None, dict | None]:
+    """(documentation details, model pairing) from a details file; any problem names the file and stops generation.
+
+    Two forms. Flat: the engine's documentation fields at the top (`{"owner": ...}`). Structured, when the file also pairs
+    a Power BI report with a model: `{"documentation": {...}, "model": {"path": "..."}}`, either part optional. A flat
+    file that also has "model" is refused rather than read one way or the other.
+    """
     try:
         raw = json.loads(path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         raise adapter.InputError(f"details file not found: {path}") from None
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         raise adapter.InputError(f"details file {path.name} could not be read as JSON: {exc}") from None
+    model, structured = None, isinstance(raw, dict) and bool(raw) and set(raw) <= {"documentation", "model"}
+    if structured:
+        documentation, model = raw.get("documentation"), raw.get("model")
+    else:
+        documentation = raw
+        if isinstance(raw, dict) and "model" in raw:
+            raise adapter.InputError(f'details file {path.name}: a file that pairs a model keeps its documentation fields '
+                                     f'under "documentation": {{"documentation": {{...}}, "model": {{"path": "..."}}}}')
+    if model is not None:
+        if adapter.DOCUMENT_TYPE != "power_bi":
+            raise adapter.InputError(f"details file {path.name}: only a Power BI report is paired with a model")
+        if not (isinstance(model, dict) and set(model) == {"path"} and isinstance(model["path"], str) and model["path"].strip()):
+            raise adapter.InputError(f'details file {path.name}: "model" must be {{"path": "<model file or folder>"}}')
     try:
-        return adapter.validate_details(raw)
+        # Only the structured form may leave the documentation out; a flat file is always the details themselves.
+        details = adapter.validate_details(documentation) if documentation is not None or not structured else None
     except ValueError as exc:
         raise adapter.InputError(f"details file {path.name}: {exc}") from None
+    return details, model
+
+
+def _details_file(request_path: str | None, source: Path) -> Path | None:
+    """The details file that applies: the one named on the request, else <source name>.bidoc-details.json if present."""
+    if request_path:
+        return Path(request_path)
+    side = details_sidecar(source)
+    return side if side.is_file() else None
+
+
+@dataclass
+class Pairing:
+    path: str | None = None                # the model to pair, resolved; None for no pairing
+    selected_by: str = ""                  # "--model", or the details file's name
+    name: str = ""                         # the model's file or folder name, for the document
+    notes: list = field(default_factory=list)
+
+    @property
+    def needs_extraction(self) -> bool:
+        return bool(self.path) and Path(self.path).suffix.lower() in _NEEDS_EXTRACTION
+
+
+def _check_model(path: Path, said: str, where: str, error) -> None:
+    if not path.exists():
+        raise error(f"{where} pairs the model {said}, which was not found (looked for {path})")
+    if path.is_file():
+        if path.suffix.lower() not in MODEL_SUFFIXES:
+            raise error(f"{where} pairs the model {said}, which is not a supported model: use an ABF backup, a PBIX, a "
+                        f".bim file, or a model folder (TMDL or model.bim)")
+        try:
+            with path.open("rb"):
+                pass
+        except OSError as exc:
+            raise error(f"{where} pairs the model {said}, which cannot be read ({type(exc).__name__})") from None
+        return
+    from pbidocgen.tmdl_reader import find_definition_dir  # noqa: PLC0415
+    if not ((path / "model.bim").is_file() or (path / "definition" / "model.bim").is_file() or find_definition_dir(path)):
+        raise error(f"{where} pairs the model {said}, a folder with no model.bim or TMDL definition in it")
+
+
+def resolve_pairing(engine: str, source: Path, details_path: str | None = None, explicit: str | None = None) -> Pairing:
+    """The model a Power BI report is paired with, decided once for generate, batch, retry and the desktop app.
+
+    An explicit model (`--model`) wins; a model named in the report's details file is used otherwise. A relative path in
+    that file is resolved against the file's own folder (beside the report, that is the report's folder), never the
+    current directory. Nothing is ever guessed from file names. The pairing is checked before anything is generated:
+    the model must exist, be readable and be a supported format. It is never verified against the report's live
+    connection, and the document says so.
+    """
+    from .power_bi import InputError  # noqa: PLC0415
+    pairing = Pairing()
+    if engine != "power_bi":
+        if explicit:
+            raise InputError("only a Power BI report is paired with a model")
+        return pairing
+    file = _details_file(details_path, source)
+    named = None
+    if file is not None:
+        from . import power_bi  # noqa: PLC0415
+        named = _load_details_file(power_bi, file)[1]
+    if explicit:
+        model = Path(explicit)
+        _check_model(model, explicit, "--model", InputError)
+        if named:
+            pairing.notes.append(f"--model was given, so the model {named['path']!r} named in {file.name} is not used.")
+        return Pairing(str(model.resolve()), "--model", model.name, pairing.notes)
+    if not named:
+        return pairing
+    model = Path(named["path"].strip())
+    model = model if model.is_absolute() else (file.parent / model)
+    _check_model(model, repr(named["path"]), file.name, InputError)
+    model = model.resolve()
+    return Pairing(str(model), file.name, model.name)
+
+
+def _read_details(adapter, path: Path) -> dict | None:
+    """The documentation details in `path`, checked by the engine's own rules (None when the file only pairs a model)."""
+    return _load_details_file(adapter, path)[0]
 
 
 def _environment_note(request: GenerateRequest, details: dict, path: Path) -> str | None:
@@ -344,22 +448,37 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
     source = Path(request.source_path)
     try:
         stage("validating")
+        model_path, pairing = request.model_path, None
+        if request.engine == "power_bi":
+            if model_path:                       # prepared by the caller (bidoc generate, batch, retry, desktop)
+                pairing = {"model": request.model_name or Path(model_path).name,
+                           "selectedBy": request.model_selected_by or "--model"}
+            else:                                # a caller that did not prepare one: the details file's own pairing
+                found = resolve_pairing("power_bi", source, request.details_path)
+                if found.needs_extraction:
+                    raise adapter.InputError(f"{found.selected_by} pairs the model {found.name}, which has to be "
+                                             f"extracted first; bidoc generate and bidoc batch do that")
+                if found.path:
+                    model_path, pairing = found.path, {"model": found.name, "selectedBy": found.selected_by}
         if request.source_kind in ("pbix", "abf"):
             # The generator app extracts the PBIX (pbi-tools, child process) first. Identity,
             # label and hash stay with the PBIX; content comes from its extract.
             if not request.extracted_path or not source.is_file():
                 raise adapter.InputError("a PBIX input needs the PBIX file and its pbi-tools extract")
-            payload = adapter.load(Path(request.extracted_path), "extracted", request.title or source.stem, pbix=source, model_path=request.model_path)
+            payload = adapter.load(Path(request.extracted_path), "extracted", request.title or source.stem, pbix=source,
+                                   model_path=model_path, pairing=pairing)
         else:
-            payload = (adapter.load(source, request.source_kind, request.title, model_path=request.model_path)
+            payload = (adapter.load(source, request.source_kind, request.title, model_path=model_path, pairing=pairing)
                        if request.engine == "power_bi" else adapter.load(source, request.source_kind, request.title))
-        details_file = Path(request.details_path) if request.details_path else details_sidecar(source)
-        if request.details_path or details_file.is_file():
-            payload[adapter.DETAILS_KEY] = _read_details(adapter, details_file)
-            progress("validating", f"details from {details_file.name}")
-            note = _environment_note(request, payload[adapter.DETAILS_KEY], details_file)
-            if note:
-                result.warnings.append(note)
+        details_file = _details_file(request.details_path, source)
+        if details_file is not None:
+            details = _read_details(adapter, details_file)
+            if details is not None:
+                payload[adapter.DETAILS_KEY] = details
+                progress("validating", f"details from {details_file.name}")
+                note = _environment_note(request, details, details_file)
+                if note:
+                    result.warnings.append(note)
         if isinstance(payload.get("producer"), dict):
             # The document says what generated it, beside its generation time.
             payload["producer"]["bidoc"] = request.bidoc_version or None

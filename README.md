@@ -131,7 +131,9 @@ bidoc generate --engine power_bi --kind pbir --source "C:\Reports\Sales.Report" 
 ```
 
 Pairing is explicit and unverified: the document states that the snapshot's server identity and freshness are not checked. A
-report that already has its own model is not given a different one.
+report that already has its own model is not given a different one. For `bidoc batch` and the desktop app, name each
+report's model in its own details file (`{"model": {"path": "../Models/Sales.abf"}}` in
+`Sales.Report.bidoc-details.json`); see [`docs/generator.md`](docs/generator.md#pairing-a-live-connected-report-with-its-model).
 
 ### Word, JSON, CSV and agent outputs
 

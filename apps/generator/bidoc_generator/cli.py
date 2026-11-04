@@ -70,7 +70,8 @@ def _parser():
     g.add_argument("--owner", default="")
     g.add_argument("--json", action="store_true", help="print the result as JSON")
     g.add_argument("--pbi-tools", help="PBIX only: path to pbi-tools.exe (otherwise BIDOC_PBI_TOOLS or PATH)")
-    g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server identity")
+    g.add_argument("--model", help="Explicitly pair a thin report with an ABF, BIM or TMDL model; does not verify server "
+                                   "identity. Wins over a model named in the report's details file")
     g.add_argument("--also", action="append", type=_also_value, metavar="OUTPUTS", help=ALSO_HELP)
     g.add_argument("--details", metavar="JSON",
                    help="details the source cannot give, recorded in the document before it is sealed. Power BI: "
@@ -239,8 +240,20 @@ def _generate(args) -> int:
         except KeyboardInterrupt:
             return EXIT_CANCELLED
     paired_work = None
-    paired = args.model
-    if paired and Path(paired).suffix.lower() in (".abf", ".pbix"):
+    from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
+    from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
+    try:
+        # --model, or the model named in the report's details file (resolved against that file's folder), checked first
+        pairing = resolve_pairing(args.engine, Path(args.source), args.details, args.model)
+    except PairingError as exc:
+        if workspace:
+            history.release_workspace(workspace)
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    for note in pairing.notes:
+        print(f"note: {note}", file=sys.stderr)
+    paired = pairing.path
+    if pairing.needs_extraction:
         import tempfile  # noqa: PLC0415
         from .extract import ExtractionError, check_tool, extract_pbix  # noqa: PLC0415
         # Keep the paired extract until generate returns.
@@ -260,7 +273,8 @@ def _generate(args) -> int:
         document_id=args.document_id, identity_choice=args.identity, title=args.title,
         description=args.description, tags=tuple(args.tag), environment=args.environment,
         business_area=args.business_area, owner=args.owner,
-        extracted_path=str(extracted) if extracted else None, model_path=paired, bidoc_version=__version__,
+        extracted_path=str(extracted) if extracted else None, model_path=paired, model_selected_by=pairing.selected_by,
+        model_name=pairing.name, bidoc_version=__version__,
         details_path=args.details, also=_also(args.also))
     if args.include_query_code and args.profile != "shared":
         print("note: local output always keeps query code; --include-query-code only affects --profile shared",

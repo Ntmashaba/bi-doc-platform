@@ -283,11 +283,25 @@ class Runner:
                 extracted = extract_pbix(item["source"], workspace, tool,
                                          timeout=opts.extract_timeout, cancellation=cancel,
                                          command=self.tool_command)
+            # The model a report is paired with comes from its own details file, never from the batch: checked here, so
+            # a bad pairing fails this item alone, and an ABF or PBIX model is extracted like the report.
+            from bidoc_engines.generate import resolve_pairing  # noqa: PLC0415
+            from bidoc_engines.power_bi import InputError as PairingError  # noqa: PLC0415
+            try:
+                pairing = resolve_pairing(item["engine"], Path(item["source"]))
+            except PairingError as exc:
+                return finish("failed", errors=[{"code": "INVALID_INPUT", "message": str(exc)}])
+            paired = pairing.path
+            if pairing.needs_extraction:
+                self.history.update(item_id, state="extracting")
+                paired = str(extract_pbix(paired, self.history.workspace(f"{item_id}-model"), check_tool("pbixray"),
+                                          timeout=opts.extract_timeout, cancellation=cancel) / "Model" / "database.json")
             request = GenerateRequest(
                 engine=item["engine"], source_path=item["source"], source_kind=item["kind"],
                 output_dir=opts.output_dir, profile=opts.profile, query_code=opts.query_code,
                 environment=opts.environment, business_area=opts.business_area, owner=opts.owner,
                 extracted_path=str(extracted) if extracted else None,
+                model_path=paired, model_selected_by=pairing.selected_by, model_name=pairing.name,
                 mapping_dir=str(self.history.home / "identity"), bidoc_version=__version__, also=tuple(opts.also))
 
             def progress(stage, message=""):
@@ -302,6 +316,8 @@ class Runner:
             finish({"completed": "completed", "local_only": "local_only"}.get(result.status, "failed"), **fields)
             if result.status in ("completed", "local_only"):
                 self.history.release_workspace(item_id)
+            if pairing.needs_extraction:
+                self.history.release_workspace(f"{item_id}-model")
         except ExtractionCancelled:
             finish("cancelled")
         except ExtractionError as exc:

@@ -158,6 +158,43 @@ Without `--environment Production` the document is still written, with this warn
   warning: adf-sales.bidoc-details.json gives the environment 'Production' for readers of the factory details, but the document is filed with no environment. Use --environment 'Production' to file it there; the environment is part of the document's identity.
 ```
 
+## Pairing a live-connected report with its model
+
+A report that connects live to a model elsewhere (Power BI service, Analysis Services) has no model of its own, so its
+document lists the fields it uses as unresolved. Give it a model snapshot to resolve them against, per report:
+
+- **In the report's details file**, beside it, with the documentation details under `documentation`:
+
+  ```json
+  {
+    "documentation": {"reportLocation": "https://app.powerbi.com/groups/sales/reports/monthly", "folder": "Sales"},
+    "model": {"path": "../Models/Sales.abf"}
+  }
+  ```
+
+  For `Sales.Report` this is `Sales.Report.bidoc-details.json`; for `Sales.pbix`, `Sales.pbix.bidoc-details.json`.
+  `bidoc generate`, `bidoc batch`, `bidoc retry` and the desktop app all read it. Either part may be left out. A file
+  without a model keeps the flat form (the documentation fields at the top); a flat file that also has `"model"` is
+  refused, so the two forms are never confused.
+- **With `--model PATH`** on `bidoc generate`, for one report. It wins over the details file, and a note says the
+  file's model was not used.
+
+Rules:
+
+- A relative `path` is resolved against the details file's own folder (beside the report: the report's folder), never
+  the folder you run `bidoc` from. An absolute path works too.
+- The model can be an ABF backup, a PBIX, a `.bim` file, or a model folder (TMDL, or one holding `model.bim`). An ABF or
+  PBIX is extracted with the portable reader first.
+- The pairing is checked before anything is generated: a model that is missing, unreadable or not a model stops that
+  report with a message naming the details file. In a batch, that report fails on its own and the others run; fix the
+  file and `bidoc retry` it.
+- Nothing is guessed: a report is paired only with the model its file or `--model` names, never one found by name.
+  Several reports can name the same model.
+- A report that has a model of its own is never given another one: the pairing is refused.
+- The document records which model was used and how it was chosen (`modelPairing` in its data, and a warning in the
+  document), and says the pairing is **not verified** against the report's live connection: the model's server identity
+  and how current it is are not checked, and an ABF backup is an offline snapshot.
+
 ## PBIX extraction
 
 PBIX files are read by pbi-tools Desktop, installed separately (AGPL-3.0; see ADR 0001), with
@@ -207,8 +244,9 @@ Inspect the report before sharing it. The script shows how the extractors differ
 `--also` and `--extract-timeout` as `bidoc generate`, for every input, and `--backend auto|pbixray|pbi-tools` (or
 `--pbixray`) to choose the PBIX extractor for the whole batch. A batch keeps these choices: `bidoc retry` uses the
 same outputs and the same extractor. Details come from each input's own `<source name>.bidoc-details.json`. Two
-`generate` options have no batch form: `--model`, which pairs one live-connected report with one model, and
-`--title`/`--description`/`--tag`, which describe one document (a batch titles each document after its source).
+`generate` option sets have no batch form: `--model` (in a batch, each live-connected report names its model in its
+own details file; see "Pairing a live-connected report with its model"), and `--title`/`--description`/`--tag`, which
+describe one document (a batch titles each document after its source).
 
 `bidoc batch` and the desktop app recognise inputs by shape:
 

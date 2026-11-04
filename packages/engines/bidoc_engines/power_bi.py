@@ -82,7 +82,8 @@ def native_schema(payload) -> str:
     return f"{ENGINE}/{payload.get('schemaVersion')}"
 
 
-def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = None, model_path: str | None = None) -> dict:
+def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = None, model_path: str | None = None,
+         pairing: dict | None = None) -> dict:
     """Run the engine on a PBIP project, a model (TMDL folder or model.bim) or a PBIR report.
 
     `pbix`: for an extract made from a PBIX, the PBIX itself (the engine reads PBIR report
@@ -130,11 +131,19 @@ def load(source: Path, kind: str, title: str | None = None, pbix: Path | None = 
         if Path(model_path).suffix.lower() in (".pbix", ".abf"):
             raise InputError("Extract the paired model in the generator before loading it")
         model = parse_model(Path(model_path))
+        pairing = dict(pairing or {"model": Path(model_path).name, "selectedBy": "--model"}, verified=False)
+        how = "with --model" if pairing["selectedBy"] == "--model" else f"in {pairing['selectedBy']}"
         report.setdefault("warnings", []).append({"severity":"warning", "category":"Model pairing",
-            "message":"External model supplied explicitly; server identity and backup freshness are not verified. Field resolution is checked against this snapshot only."})
+            "message":f"This report is documented with the model {pairing['model']}, named {how}. The pairing is not "
+                      "verified against the report's live connection: the model's server identity and how current it is "
+                      "are not checked, and an ABF backup is an offline snapshot. Field resolution is checked against "
+                      "this model only."})
     linked = link(model, report) if model and report else None
     name = title or (model["name"] if model else None) or project_title or (report["name"] if report else "Power BI")
-    return build_payload(model, report, linked, name)
+    payload = build_payload(model, report, linked, name)
+    if model_path:
+        payload["modelPairing"] = pairing             # which model, how it was chosen, and that it is not verified
+    return payload
 
 
 def scope(payload):
