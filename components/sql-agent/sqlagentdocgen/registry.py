@@ -527,10 +527,42 @@ class Registry:
             job.enabled = v  # applied in script order: last write wins
         new_name = _str(call, "new_name")[0]
         if new_name:
-            job.name = new_name
+            self._rename_job(job, new_name)
         owner = _str(call, "owner_login_name")[0]
         if owner:
             job.owner_login_name = owner
+
+    def _rename_job(self, job: JobDraft, new_name: str) -> None:
+        """sp_update_job @new_name: keep the name index consistent.
+
+        Later statements reference the job by its new name, so the index must
+        move with the rename; a stub created by an earlier reference to the
+        new name is absorbed into the renamed job.
+        """
+        old_norm = norm_ident(job.name) if job.name else None
+        new_norm = norm_ident(new_name)
+        job.name = new_name
+        if old_norm and old_norm != new_norm and self.job_by_name.get(old_norm) == job.key:
+            del self.job_by_name[old_norm]
+        stub_key = "name:" + new_norm
+        stub = self.jobs.get(stub_key)
+        if stub is not None and stub is not job and not stub.created:
+            job.steps.extend(stub.steps)
+            for skey in stub.schedule_keys:
+                if skey not in job.schedule_keys:
+                    job.schedule_keys.append(skey)
+            for server in stub.registered_on:
+                if server not in job.registered_on:
+                    job.registered_on.append(server)
+            del self.jobs[stub_key]
+            for sched in self.schedules.values():
+                sched.attached_jobs = [
+                    job.key if jk == stub_key else jk for jk in sched.attached_jobs
+                ]
+            for var, key in list(self.job_vars.items()):
+                if key == stub_key:
+                    self.job_vars[var] = job.key
+        self.job_by_name[new_norm] = job.key
 
     def _on_sp_delete_job(self, call: Call, source_file: str) -> None:
         # The IF EXISTS ... sp_delete_job recreate preamble: mark, don't remove.

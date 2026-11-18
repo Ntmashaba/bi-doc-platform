@@ -32,15 +32,17 @@ def test_multi_file_schedule_correlation(tmp_path):
         assert job["schedules"][0]["name"] == "Shared"
 
 
-def test_schedules_only_file_is_skipped_but_reported(tmp_path):
-    # the 64 KB sniff needle is sp_add_job (v4); a schedules-only script does
-    # not match and lands in skippedFiles — visible in coverage, never silent
+def test_schedules_only_file_is_loaded(tmp_path):
+    # the sniff needles (v4, widened after real-world validation) include
+    # sp_add_schedule / sp_attach_schedule, so a shared-schedule-only script
+    # participates in the analysis instead of being skipped
     (tmp_path / "schedules_only.sql").write_text(
         "EXEC sp_add_schedule @schedule_name=N'Orphan', @freq_type=4\n",
         encoding="utf-8")
     p = analyse(load_path(tmp_path))
     assert p["jobs"] == []
-    assert len(p["coverage"]["skippedFiles"]) == 1
+    assert p["coverage"]["skippedFiles"] == []
+    assert [s["name"] for s in p["sharedSchedules"]] == ["Orphan"]
 
 
 def test_cmdexec_and_ssis_passthrough(tmp_path):
