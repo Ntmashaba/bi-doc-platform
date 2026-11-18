@@ -142,8 +142,9 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
     for loaded in load.files:
         source_name = loaded.path.name
         for batch_text, offset in statements(loaded.text):
-            calls = parse_calls(lex(batch_text))
-            registry.consume(calls, source_name)
+            bindings: List[Tuple[int, str, str]] = []
+            calls = parse_calls(lex(batch_text), bindings_out=bindings)
+            registry.consume(calls, source_name, bindings=bindings)
     coverage.unrecognised_statements = len(registry.unrecognised)
     coverage.unparsed_steps = registry.unparsed_steps
 
