@@ -30,10 +30,23 @@ class LoadedFile:
 
 
 @dataclass
+class LoadError:
+    """A file that could not be read at all.
+
+    detail carries the full path and OS error for local diagnostics;
+    public is safe to share: basename plus a generic reason, with no full
+    paths and no raw exception text.
+    """
+
+    detail: str
+    public: str
+
+
+@dataclass
 class LoadResult:
     files: List[LoadedFile] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)  # paths, as given
-    errors: List[str] = field(default_factory=list)
+    errors: List[LoadError] = field(default_factory=list)
 
 
 def _detect_encoding(head: bytes) -> str:
@@ -83,7 +96,10 @@ def load_path(target: Path) -> LoadResult:
         try:
             loaded = load_file(target)
         except OSError as exc:
-            result.errors.append(f"{target}: {exc}")
+            result.errors.append(LoadError(
+                detail=f"{target}: {exc}",
+                public=f"{target.name}: could not be read",
+            ))
             return result
         if loaded is None:
             result.skipped.append(str(target))
@@ -91,16 +107,27 @@ def load_path(target: Path) -> LoadResult:
             result.files.append(loaded)
         return result
     if target.is_dir():
-        for path in sorted(target.rglob("*.sql")):
+        # suffix filter, not rglob("*.sql"): that pattern is case-sensitive
+        # on Linux and would silently miss JOB.SQL files. No is_file()
+        # filter, so broken symlinks surface as errors instead of vanishing.
+        for path in sorted(
+            p for p in target.rglob("*") if p.suffix.lower() == ".sql"
+        ):
             try:
                 loaded = load_file(path)
             except OSError as exc:
-                result.errors.append(f"{path}: {exc}")
+                result.errors.append(LoadError(
+                    detail=f"{path}: {exc}",
+                    public=f"{path.name}: could not be read",
+                ))
                 continue
             if loaded is None:
                 result.skipped.append(str(path))
             else:
                 result.files.append(loaded)
         return result
-    result.errors.append(f"{target}: not a file or directory")
+    result.errors.append(LoadError(
+        detail=f"{target}: not a file or directory",
+        public=f"{target.name}: not a file or directory",
+    ))
     return result

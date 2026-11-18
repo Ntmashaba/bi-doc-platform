@@ -235,6 +235,6 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         "jobs": jobs_payload,
         "sharedSchedules": shared_schedules,
         "issues": [i.as_dict() for i in found_issues],
-        "warnings": registry.warnings + load.errors,
+        "warnings": registry.warnings + [e.detail for e in load.errors],
         "coverage": coverage.as_dict(),
     }

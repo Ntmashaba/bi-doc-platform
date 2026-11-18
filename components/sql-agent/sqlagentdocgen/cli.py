@@ -40,7 +40,8 @@ def main(argv=None) -> int:
         print(f"error: {target} does not exist", file=sys.stderr)
         return 2
 
-    payload = analyse(load_path(target))
+    load = load_path(target)
+    payload = analyse(load)
 
     if args.coverage_only:
         cov = payload["coverage"]
@@ -51,8 +52,14 @@ def main(argv=None) -> int:
         print(f"unknown operations   : {cov['unknownOperations']}")
         print(f"jobs found           : {len(payload['jobs'])}")
         print(f"issues raised        : {len(payload['issues'])}")
-        for warning in payload["warnings"]:
+        # analyse() appends load errors after the registry warnings; in
+        # coverage-only mode the load errors print in their sanitized public
+        # form — no full paths, no raw OS error text.
+        registry_warnings = payload["warnings"][: len(payload["warnings"]) - len(load.errors)]
+        for warning in registry_warnings:
             print(f"warning: {warning}")
+        for err in load.errors:
+            print(f"warning: {err.public}")
         return 0
 
     text = json.dumps(payload, indent=2, ensure_ascii=False)

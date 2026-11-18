@@ -160,11 +160,17 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
 
 
 def _schedule_signature(sched: ScheduleDraft) -> tuple:
+    # Everything that changes WHEN the schedule fires must be in here:
+    # monthly-relative runs differ by freq_relative_interval (first vs last
+    # Monday), and active date/time windows separate otherwise-identical
+    # schedules that never actually coincide.
     return (
         sched.enabled if sched.enabled is not None else 1,
         sched.freq_type, sched.freq_interval, sched.freq_subday_type,
-        sched.freq_subday_interval, sched.freq_recurrence_factor,
-        sched.active_start_time,
+        sched.freq_subday_interval, sched.freq_relative_interval,
+        sched.freq_recurrence_factor,
+        sched.active_start_date, sched.active_end_date,
+        sched.active_start_time, sched.active_end_time,
     )
 
 

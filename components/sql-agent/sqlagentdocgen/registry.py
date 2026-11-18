@@ -271,6 +271,13 @@ class Registry:
         source_file: str,
         bindings: Optional[List[Tuple[int, str, str]]] = None,
     ) -> None:
+        # T-SQL variables are batch-scoped and consume() is called once per
+        # batch: identities captured via OUTPUT parameters or SELECT bindings
+        # in an earlier batch must not leak into this one. A variable used
+        # without an in-batch capture now warns instead of silently reusing
+        # a stale identity from a previous batch (or file).
+        self.job_vars.clear()
+        self.sched_vars.clear()
         # bindings: (pos, @var, job name) from SELECT @v = job_id ... WHERE
         # name = ...; merged into the call stream so ordering is preserved.
         events: List[Tuple[int, int, object]] = [
