@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .common import is_guid, norm_ident
-from .script_parser import Arg, Call
+from .script_parser import NOOP_PROCS, Arg, Call
 
 
 # --------------------------------------------------------------------------
@@ -121,6 +121,8 @@ def _job_ref(call: Call) -> _Ref:
     a = call.get("job_id")
     if a is not None and a.kind != "empty":
         if a.kind == "var":
+            if a.resolved and is_guid(a.resolved):
+                return _Ref("guid", a.resolved.strip("{}").lower())
             return _Ref("var", _norm_var(a.value))
         if a.kind in ("string", "ident") and is_guid(a.value):
             return _Ref("guid", a.value.strip("{}").lower())
@@ -129,6 +131,8 @@ def _job_ref(call: Call) -> _Ref:
     a = call.get("job_name")
     if a is not None and a.kind in ("string", "ident"):
         return _Ref("name", a.value)
+    if a is not None and a.kind == "var" and a.resolved:
+        return _Ref("name", a.resolved)
     return _Ref("unknown", "")
 
 
@@ -156,6 +160,8 @@ def _str(call: Call, name: str) -> Tuple[Optional[str], str]:
     if a.kind in ("string", "ident"):
         return a.value, "literal"
     if a.kind == "var":
+        if a.resolved is not None:
+            return a.resolved, "literal"
         return a.value, "variable"
     return a.value, "expression"
 
@@ -259,16 +265,43 @@ class Registry:
 
     # -- main entry ---------------------------------------------------------
 
-    def consume(self, calls: List[Call], source_file: str) -> None:
-        for call in calls:
+    def consume(
+        self,
+        calls: List[Call],
+        source_file: str,
+        bindings: Optional[List[Tuple[int, str, str]]] = None,
+    ) -> None:
+        # bindings: (pos, @var, job name) from SELECT @v = job_id ... WHERE
+        # name = ...; merged into the call stream so ordering is preserved.
+        events: List[Tuple[int, int, object]] = [
+            (c.pos, 1, c) for c in calls
+        ]
+        for pos, var, name in bindings or []:
+            events.append((pos, 0, (var, name)))
+        events.sort(key=lambda e: (e[0], e[1]))
+        for _, kind, payload in events:
+            if kind == 0:
+                var, name = payload  # type: ignore[misc]
+                self._bind_job_var(var, name, source_file)
+                continue
+            call = payload  # type: ignore[assignment]
+            if call.proc in NOOP_PROCS:
+                continue
             handler = getattr(self, "_on_" + call.proc, None) if call.recognised else None
             if handler is None:
-                if call.recognised:
-                    # in PROC_PARAMS but no handler — treat as unrecognised
-                    pass
                 self.unrecognised.append(call)
                 continue
             handler(call, source_file)
+
+    def _bind_job_var(self, var: str, name: str, source_file: str) -> None:
+        """SELECT @v = job_id FROM msdb.dbo.sysjobs WHERE name = <name>."""
+        key = self.job_by_name.get(norm_ident(name))
+        if key is None:
+            key = "name:" + norm_ident(name)
+            job = JobDraft(key=key, name=name, created=False, source_file=source_file)
+            self.jobs[key] = job
+            self.job_by_name[norm_ident(name)] = key
+        self.job_vars[_norm_var(var)] = key
 
     # -- handlers -----------------------------------------------------------
 
@@ -379,14 +412,23 @@ class Registry:
         job = self._resolve_job(_job_ref(call), source_file, call.pos)
         name = _str(call, "name")[0] or ""
         sched_id = _int(call, "schedule_id")
+        uid = None
+        uid_arg = call.get("schedule_uid")
+        if uid_arg is not None:
+            uid_val = uid_arg.resolved if uid_arg.kind == "var" else uid_arg.value
+            if uid_val and uid_arg.kind in ("string", "ident", "var") and is_guid(uid_val):
+                uid = uid_val.strip("{}").lower()
         job_key = job.key if job else "?"
-        key = self._schedule_key(None, sched_id, name, shared=False, job_key=job_key)
+        key = self._schedule_key(uid, sched_id, name, shared=False, job_key=job_key)
         sched = self.schedules.get(key)
         if sched is None:
             sched = ScheduleDraft(key=key, pos=call.pos, source_file=source_file)
             self.schedules[key] = sched
         sched.name = name or sched.name
+        sched.uid = uid or sched.uid
         sched.schedule_id = sched_id if sched_id is not None else sched.schedule_id
+        if uid:
+            self.sched_by_uid[uid] = key
         if sched_id is not None:
             self.sched_by_id[str(sched_id)] = key
         if name:
@@ -493,6 +535,12 @@ class Registry:
     def _on_sp_delete_job(self, call: Call, source_file: str) -> None:
         # The IF EXISTS ... sp_delete_job recreate preamble: mark, don't remove.
         ref = _job_ref(call)
+        if ref.kind == "guid" and self.job_by_guid.get(ref.value) is None:
+            # Conditional delete of a job this script never creates (a GUID
+            # from another environment): nothing to correlate, and no stub —
+            # a dangling created=False job would surface as a false
+            # "job not created" note.
+            return
         job = self._resolve_job(ref, source_file, call.pos)
         if job is not None:
             job.recreate_preamble = True
@@ -506,6 +554,18 @@ class Registry:
                 self.jobs[key] = job
                 self.job_by_name[norm_ident(ref.value)] = key
             job.recreate_preamble = True
+
+    def _on_sp_delete_jobstep(self, call: Call, source_file: str) -> None:
+        # Alter-style scripts remove steps before re-adding them;
+        # @step_id = 0 removes all steps.
+        job = self._resolve_job(_job_ref(call), source_file, call.pos)
+        if job is None:
+            return
+        sid = _int(call, "step_id")
+        if sid == 0:
+            job.steps.clear()
+        elif sid is not None:
+            job.steps = [s for s in job.steps if s.step_id != sid]
 
     def _on_sp_delete_schedule(self, call: Call, source_file: str) -> None:
         sched = self._resolve_schedule(_schedule_ref(call), source_file, call.pos)

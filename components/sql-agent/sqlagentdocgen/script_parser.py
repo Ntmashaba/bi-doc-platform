@@ -8,7 +8,7 @@ IF (used for the sp_delete_job recreate preamble detection).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .common import dotted_last, norm_ident
 from .tokenizer import Tok
@@ -42,6 +42,9 @@ PROC_PARAMS: Dict[str, List[str]] = {
         "freq_recurrence_factor", "active_start_date", "active_end_date",
         "active_start_time", "active_end_time", "schedule_id",
         "automatic_post",
+        # not in the documented signature, but real scripts pass it when the
+        # schedule was pre-created with a known UID
+        "schedule_uid",
     ],
     "sp_add_schedule": [
         "schedule_name", "enabled", "freq_type", "freq_interval",
@@ -76,7 +79,18 @@ PROC_PARAMS: Dict[str, List[str]] = {
     "sp_delete_jobschedule": [
         "job_id", "job_name", "name",
     ],
+    "sp_delete_jobstep": [
+        "job_id", "job_name", "step_id",
+    ],
 }
+
+# Procedures that are recognised but carry no documentation value for the
+# engine (category creation, msdb property settings). They are parsed so they
+# do not pollute the unrecognised-statement count, then dropped.
+NOOP_PROCS = frozenset({
+    "sp_add_category",
+    "sp_set_sqlagent_properties",
+})
 
 # Words that end an IF's pending state without a call in between (the
 # IF @@ERROR <> 0 GOTO QuitWithRollback pattern).
@@ -93,6 +107,9 @@ class Arg:
     kind: str  # string | num | var | ident | word | expr | empty
     value: str  # decoded string, numeric text, @var name, or joined text
     pos: int = -1
+    # when kind == "var": the literal the variable held at this point in the
+    # batch, if the parser could track it (DECLARE/SET literal or concat).
+    resolved: Optional[str] = None
 
     def as_int(self) -> Optional[int]:
         if self.kind != "num":
@@ -138,6 +155,217 @@ _STMT_STARTERS = {
     "SET", "PRINT", "GOTO", "RETURN", "USE", "COMMIT", "ROLLBACK", "WHILE",
     "GRANT", "CREATE", "ALTER", "DROP", "INSERT", "UPDATE", "DELETE",
 }
+
+
+# --------------------------------------------------------------------------
+# Batch-scoped variable tracking
+#
+# Real deployment scripts parameterise job name, command, server and ids via
+# variables. The shapes worth tracking (everything else marks the variable
+# unknown rather than guessing):
+#   DECLARE @v nvarchar(128) = N'literal' [, @w int = 1, ...]
+#   SET @v = N'literal' | NULL | <expr>
+#   SET @v = @v + N'part'                  (string concatenation)
+#   SELECT @v = job_id FROM msdb.dbo.sysjobs[_view] WHERE name = <name>
+#     (recorded as a job-name binding so the registry can resolve later
+#     @job_id = @v references; the variable itself holds a GUID, not a literal)
+
+
+def _collect_rhs(toks: List[Tok], i: int, n: int) -> (List[Tok], int):
+    """Collect the tokens of an assignment right-hand side."""
+    depth = 0
+    out: List[Tok] = []
+    while i < n:
+        t = toks[i]
+        if t.kind == "sym" and t.text == "(":
+            depth += 1
+        elif t.kind == "sym" and t.text == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and t.kind == "sym" and t.text in (",", ";"):
+            break
+        elif depth == 0 and t.kind == "word" and t.text.upper() in _STMT_STARTERS:
+            break
+        out.append(t)
+        i += 1
+    return out, i
+
+
+def _literal_of(parts: List[Tok]) -> Optional[str]:
+    if len(parts) == 1 and parts[0].kind in ("string", "num"):
+        return parts[0].text
+    return None
+
+
+class _VarTracker:
+    def __init__(self) -> None:
+        # var name (lower) -> literal value; a present None means "known NULL";
+        # absent means unknown.
+        self.values: Dict[str, Optional[str]] = {}
+        # (pos, var, job name) for SELECT @v = job_id ... WHERE name = <name>
+        self.bindings: List[Tuple[int, str, str]] = []
+
+    # -- statement handlers (i points past the leading keyword) -------------
+
+    def declare(self, toks: List[Tok], i: int, n: int) -> int:
+        while i < n:
+            if toks[i].kind != "var":
+                break
+            var = toks[i].text.lower()
+            i += 1
+            # skip the type annotation up to '=' or the next ','
+            depth = 0
+            assigned = False
+            while i < n:
+                t = toks[i]
+                if t.kind == "sym" and t.text == "(":
+                    depth += 1
+                elif t.kind == "sym" and t.text == ")":
+                    depth = max(0, depth - 1)
+                elif depth == 0 and t.kind == "sym" and t.text == "=":
+                    assigned = True
+                    i += 1
+                    break
+                elif depth == 0 and t.kind == "sym" and t.text in (",", ";"):
+                    break
+                elif depth == 0 and t.kind == "word" and t.text.upper() in _STMT_STARTERS:
+                    break
+                i += 1
+            if assigned:
+                parts, i = _collect_rhs(toks, i, n)
+                lit = _literal_of(parts)
+                if lit is not None:
+                    self.values[var] = lit
+                else:
+                    self.values.pop(var, None)
+            if i < n and toks[i].kind == "sym" and toks[i].text == ",":
+                i += 1
+                continue
+            break
+        return i
+
+    def set(self, toks: List[Tok], i: int, n: int) -> int:
+        if (
+            i + 1 < n
+            and toks[i].kind == "var"
+            and toks[i + 1].kind == "sym"
+            and toks[i + 1].text == "="
+        ):
+            var = toks[i].text.lower()
+            parts, j = _collect_rhs(toks, i + 2, n)
+            self._assign(var, parts)
+            return j
+        return i
+
+    def _assign(self, var: str, parts: List[Tok]) -> None:
+        if not parts:
+            self.values.pop(var, None)
+            return
+        if (
+            len(parts) == 1
+            and parts[0].kind == "word"
+            and parts[0].text.upper() == "NULL"
+        ):
+            self.values[var] = None
+            return
+        lit = _literal_of(parts)
+        if lit is not None:
+            self.values[var] = lit
+            return
+        # concatenation: [@self +] part (+ part)* with string/num parts
+        base: Optional[str] = ""
+        k = 0
+        if parts[0].kind == "var":
+            if parts[0].text.lower() != var or var not in self.values:
+                self.values.pop(var, None)
+                return
+            base = self.values[var]
+            k = 1
+        segs: List[str] = []
+        expect_part = k == 0  # after "@v" a '+' operator must come first
+        for t in parts[k:]:
+            if expect_part:
+                if t.kind not in ("string", "num"):
+                    self.values.pop(var, None)
+                    return
+                segs.append(t.text)
+            elif not (t.kind == "sym" and t.text == "+"):
+                self.values.pop(var, None)
+                return
+            expect_part = not expect_part
+        if not segs or expect_part:
+            # trailing '+' or no parts at all
+            self.values.pop(var, None)
+            return
+        if k == 1:
+            # NULL + anything stays NULL in SQL
+            self.values[var] = None if base is None else base + "".join(segs)
+        else:
+            self.values[var] = "".join(segs)
+
+    def select(self, toks: List[Tok], i: int, n: int) -> int:
+        # SELECT @v = job_id FROM msdb.dbo.sysjobs[_view] WHERE name = <name>
+        if not (
+            i + 2 < n
+            and toks[i].kind == "var"
+            and toks[i + 1].kind == "sym"
+            and toks[i + 1].text == "="
+            and toks[i + 2].kind == "word"
+            and toks[i + 2].text.lower() == "job_id"
+        ):
+            return i
+        var = toks[i].text.lower()
+        j = i + 3
+        if not (j < n and toks[j].kind == "word" and toks[j].text.upper() == "FROM"):
+            return i
+        j += 1
+        if toks[j].kind not in ("word", "ident"):
+            return i
+        parts: List[str] = [toks[j].text]
+        j += 1
+        while (
+            j + 1 < n
+            and toks[j].kind == "sym"
+            and toks[j].text == "."
+            and toks[j + 1].kind in ("word", "ident")
+        ):
+            parts.append(toks[j + 1].text)
+            j += 2
+        if "sysjobs" not in ".".join(parts).lower():
+            return i
+        if not (j + 2 < n and toks[j].kind == "word" and toks[j].text.upper() == "WHERE"):
+            return i
+        j += 1
+        if not (
+            toks[j].kind in ("word", "ident")
+            and toks[j].text.lower() == "name"
+            and toks[j + 1].kind == "sym"
+            and toks[j + 1].text == "="
+        ):
+            return i
+        j += 2
+        name: Optional[str] = None
+        t = toks[j]
+        if t.kind == "string":
+            name = t.text
+        elif t.kind == "var":
+            name = self.values.get(t.text.lower())
+        if name:
+            self.bindings.append((t.pos, var, name))
+            # the variable now holds a GUID, not a literal
+            self.values.pop(var, None)
+            return j + 1
+        return i
+
+    # -- resolution ----------------------------------------------------------
+
+    def apply(self, call: "Call") -> None:
+        for arg in list(call.named.values()) + list(call.positional):
+            if arg.kind == "var" and arg.resolved is None:
+                v = self.values.get(arg.value.lower())
+                if v is not None:
+                    arg.resolved = v
 
 
 def _parse_value(toks: List[Tok], i: int, n: int) -> (Arg, int):
@@ -279,9 +507,17 @@ def _parse_exec(toks: List[Tok], i: int, n: int, conditional: bool) -> (Call, in
     return call, i
 
 
-def parse_calls(toks: List[Tok]) -> List[Call]:
-    """Extract all EXEC calls from one batch of tokens, in order."""
+def parse_calls(
+    toks: List[Tok],
+    bindings_out: Optional[List[Tuple[int, str, str]]] = None,
+) -> List[Call]:
+    """Extract all EXEC calls from one batch of tokens, in order.
+
+    When bindings_out is given it receives (pos, @var, job-name) triples for
+    ``SELECT @v = job_id FROM msdb.dbo.sysjobs WHERE name = ...`` assignments.
+    """
     calls: List[Call] = []
+    tracker = _VarTracker()
     n = len(toks)
     i = 0
     pending_if = False
@@ -305,6 +541,22 @@ def parse_calls(toks: List[Tok]) -> List[Call]:
             elif w == "END":
                 if cond_stack:
                     cond_stack.pop()
+            elif w == "DECLARE" and depth == 0:
+                pending_if = False
+                i = tracker.declare(toks, i + 1, n)
+                continue
+            elif w == "SET" and depth == 0:
+                pending_if = False
+                ni = tracker.set(toks, i + 1, n)
+                if ni != i + 1:
+                    i = ni
+                    continue
+            elif w == "SELECT" and depth == 0:
+                pending_if = False
+                ni = tracker.select(toks, i + 1, n)
+                if ni != i + 1:
+                    i = ni
+                    continue
             elif w in _IF_BODY_SKIP and pending_if and depth == 0:
                 # e.g. IF @@ERROR <> 0 GOTO QuitWithRollback — the GOTO is the
                 # whole conditional body; the next EXEC is unconditional.
@@ -313,7 +565,10 @@ def parse_calls(toks: List[Tok]) -> List[Call]:
                 conditional = pending_if or any(cond_stack)
                 pending_if = False
                 call, i = _parse_exec(toks, i, n, conditional)
+                tracker.apply(call)
                 calls.append(call)
                 continue
         i += 1
+    if bindings_out is not None:
+        bindings_out.extend(tracker.bindings)
     return calls
