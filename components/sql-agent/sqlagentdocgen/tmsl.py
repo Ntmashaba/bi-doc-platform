@@ -35,7 +35,7 @@ def _object_path(obj: Any) -> Optional[str]:
     if not isinstance(obj, dict):
         return None
     parts = [obj.get(k) for k in ("database", "table", "partition")]
-    parts = [str(p) for p in parts if p]
+    parts = [p for p in parts if isinstance(p, str) and p]
     return "/".join(parts) if parts else None
 
 
@@ -71,7 +71,14 @@ def _op_for(kind: str, body: Any) -> List[TmslOperation]:
                 )
             )
         return ops
-    op = TmslOperation(kind=kind, object_path=_object_path(body))
+    # createOrReplace / alter / delete carry their target in a nested
+    # "object" member; the body itself may hold a definition whose keys must
+    # never be mistaken for path components.
+    target = body.get("object")
+    op = TmslOperation(
+        kind=kind,
+        object_path=_object_path(target) or _object_path(body),
+    )
     for key in ("file", "database", "name"):
         value = body.get(key)
         if isinstance(value, str):

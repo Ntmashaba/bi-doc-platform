@@ -100,8 +100,11 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
                 job=label, evidence="owner_login_name = 'sa'",
             ))
 
+        # Notify levels: 1 = on success, 2 = on failure, 3 = on completion.
+        # A success-only notification (1) leaves failures unnotified — only
+        # levels 2 and 3 cover them.
         notified = any(
-            (v or 0) > 0
+            (v or 0) in (2, 3)
             for v in (
                 job.notify_level_email, job.notify_level_netsend,
                 job.notify_level_page,

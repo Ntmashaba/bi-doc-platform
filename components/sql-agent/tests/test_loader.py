@@ -22,6 +22,14 @@ def test_sniff_bom_tolerated():
     assert is_job_script_head(b"\xef\xbb\xbf-- sp_add_job")
 
 
+def test_sniff_utf16_ssms_output():
+    text = "EXEC msdb.dbo.sp_add_job @job_name=N'J'"
+    assert is_job_script_head(b"\xff\xfe" + text.encode("utf-16-le"))
+    assert is_job_script_head(b"\xfe\xff" + text.encode("utf-16-be"))
+    # no BOM: NUL-byte heuristic
+    assert is_job_script_head(text.encode("utf-16-le"))
+
+
 def test_load_folder_skips_non_job_sql(tmp_path):
     (tmp_path / "job.sql").write_text("EXEC sp_add_job @job_name=N'J'", encoding="utf-8")
     (tmp_path / "query.sql").write_text("SELECT * FROM t", encoding="utf-8")
