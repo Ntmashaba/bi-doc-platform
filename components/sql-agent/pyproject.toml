@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sqlagent-doc-gen"
+description = "SQL Server Agent job script analysis for bi-doc-platform (static analysis only; never connects to a server)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Proprietary" }
+dynamic = ["version"]
+dependencies = [
+    "adf-doc-gen",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools]
+packages = ["sqlagentdocgen"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sqlagentdocgen.__version__" }
