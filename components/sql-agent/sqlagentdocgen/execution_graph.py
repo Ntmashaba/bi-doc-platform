@@ -59,6 +59,13 @@ def _node_ids(steps: List[dict]) -> List[str]:
     return ids
 
 
+def node_ids(steps: List[dict]) -> List[str]:
+    """Public name for _node_ids: the platform adapter identifies steps with
+    exactly the same ids the execution graph uses, so a step that fell back
+    to ``pos:N`` in the flow graph is the same ``pos:N`` in the envelope."""
+    return _node_ids(steps)
+
+
 def _order_keys(steps: List[dict]) -> List[Tuple[int, int]]:
     """Ordering for "next step": ascending scripted id, ties by position."""
     keyed = []
@@ -188,13 +195,30 @@ def build_graphs(jobs: List[dict]) -> Dict[str, Any]:
 
         start_id = job.get("startStepId")
         start = None
-        for i, s in enumerate(steps):
-            if s.get("id") == start_id:
-                start = ids[i]
-                break
-        if start is None and ids:
-            start = ids[0]  # documented default: the first step
+        start_note = None
+        if start_id is not None:
+            for i, s in enumerate(steps):
+                if s.get("id") == start_id:
+                    start = ids[i]
+                    break
+            if start is None:
+                start_note = (f"the scripted @start_step_id ({start_id}) matches "
+                              "no step in this script")
+        elif ids:
+            # msdb default: without @start_step_id a job starts at step ID 1,
+            # not at whichever step the script happens to add first
+            for i, s in enumerate(steps):
+                if s.get("id") == 1:
+                    start = ids[i]
+                    break
+            if start is None:
+                start_note = ("no @start_step_id and no step with ID 1 in this "
+                              "script, so the start step cannot be determined")
         reachable, loops = _reach(start, edges)
+        if start is None:
+            # with the start step undetermined, reachability claims would be
+            # guesses — report nothing as unreachable and surface the note
+            reachable = set(ids)
         unreachable = [
             {"id": ids[i], "name": steps[i].get("name")}
             for i in range(len(steps))
@@ -204,6 +228,7 @@ def build_graphs(jobs: List[dict]) -> Dict[str, Any]:
             "job": job.get("name"),
             "startStepId": start_id,
             "start": start,
+            "startNote": start_note,
             "nodes": [
                 {
                     "id": ids[i],

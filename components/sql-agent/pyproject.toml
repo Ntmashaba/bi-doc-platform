@@ -21,5 +21,9 @@ dev = [
 [tool.setuptools]
 packages = ["sqlagentdocgen"]
 
+# the HTML renderer reads template.html at runtime; it must ship in the wheel
+[tool.setuptools.package-data]
+sqlagentdocgen = ["template.html"]
+
 [tool.setuptools.dynamic]
 version = { attr = "sqlagentdocgen.__version__" }

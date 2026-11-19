@@ -29,6 +29,27 @@ from .loader import load_path
 EXTRAS = ("json", "word", "csv", "agent")
 
 
+def _csv_cell(value):
+    """Neutralize spreadsheet-formula injection in CSV string cells.
+
+    Job names, commands and finding text are script-controlled: a value like
+    ``=1+1`` or ``@SUM(...)`` must not become a live formula when the CSV is
+    opened in Excel or another spreadsheet app.  Any string whose first
+    non-whitespace, non-control character is ``=``, ``+``, ``-`` or ``@`` is
+    prefixed with an apostrophe, which spreadsheet apps display as literal
+    text.  Non-string cells (ids, counts, flags) pass through unchanged.
+    """
+    if not isinstance(value, str) or not value:
+        return value
+    i = 0
+    while i < len(value) and (value[i].isspace() or ord(value[i]) < 32
+                              or ord(value[i]) == 127):
+        i += 1
+    if i < len(value) and value[i] in "=+-@":
+        return "'" + value
+    return value
+
+
 def write_csv(payload: dict, folder: Path) -> list:
     """Evidence inventories as CSV: jobs, steps, operations, schedules,
     issues, entities."""
@@ -95,7 +116,7 @@ def write_csv(payload: dict, folder: Path) -> list:
         with open(path, "w", newline="", encoding="utf-8-sig") as fh:
             w = csv.writer(fh)
             w.writerow(head)
-            w.writerows(rows)
+            w.writerows([_csv_cell(c) for c in row] for row in rows)
         written.append(path)
     return written
 

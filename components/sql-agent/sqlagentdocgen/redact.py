@@ -26,7 +26,8 @@ _QUERY_SECRET = re.compile(
     r"password|pwd|secret|client_secret|subscription-key|auth)=)[^&#\s'\"]+")
 _CONN_SECRET = re.compile(
     r"(?i)\b((?:password|pwd|accountkey|sharedaccesskey|sharedaccesssignature|"
-    r"secret|clientsecret|accesskey|token)\s*=\s*)(?!\[redacted\])[^;'\"]+")
+    r"secret|clientsecret|accesskey|token)\s*=\s*)(?!\[redacted\])"
+    r"(?:\"(?:[^\"]|\"\")*\"|'(?:[^']|'')*'|[^;'\"]+)")
 _BEARER = re.compile(r"(?i)\b(bearer\s+)[a-z0-9._~+/=-]{8,}")
 # sqlcmd / bcp style: an uppercase -P switch carries the password literally
 _SQLCMD_PASSWORD = re.compile(r"(\s-P\s+)(\"[^\"]*\"|\S+)")
