@@ -20,7 +20,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.2.3"
 if (-not $SkipInstall) {
   # Regular (not editable) installs, so PyInstaller sees ordinary package folders.
   python -m pip install --upgrade pip
-  python -m pip install -c requirements-lock.txt "./components/power-bi[portable]" ./components/adf ./packages/contracts ./packages/engines ./packages/relationships ./apps/generator
+  python -m pip install -c requirements-lock.txt "./components/power-bi[portable]" ./components/adf ./components/sql-agent ./packages/contracts ./packages/engines ./packages/relationships ./apps/generator
   python -m pip install -r requirements-windows-build.txt
   if ($LASTEXITCODE) { throw "dependency install failed" }
 }
@@ -69,9 +69,6 @@ $release = [ordered]@{
 }
 $release | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 dist\release.json
 "$($release.sha256)  $($setup.Name)" | Set-Content -Encoding ascii dist\SHA256SUMS.txt
-(Get-Content packaging/windows/RELEASE-NOTES.template.md -Raw).
-  Replace("{{VERSION}}", $Version).Replace("{{LABEL}}", $BuildLabel).Replace("{{COMMIT}}", "$commit").
-  Replace("{{SHA256}}", $release.sha256).Replace("{{INSTALLER}}", $setup.Name).
-  Replace("{{PBIDOCGEN}}", $versions.'pbi-doc-gen').Replace("{{ADFDOCGEN}}", $versions.'adf-doc-gen').
-  Replace("{{PYTHON}}", $versions.python) | Set-Content -Encoding utf8 dist\RELEASE-NOTES.md
-Write-Host "Built $($setup.FullName) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
+(Get-Content packaging/windows/RELEASE-NOTES.template.md) -replace '<VERSION>', $Version -replace '<DATE>', (Get-Date -Format 'yyyy-MM-dd') |
+  Set-Content -Encoding utf8 dist\RELEASE-NOTES.md
+Write-Host "Built $($setup.Name)"
