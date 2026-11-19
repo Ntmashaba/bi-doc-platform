@@ -112,6 +112,30 @@ def test_build_payload_counts_redactions(tmp_path):
     assert "topsecret" not in json.dumps(payload)
 
 
+def test_quoted_secret_absent_from_every_rendered_output(tmp_path):
+    # a double-quoted connection-string password inside a step command must
+    # be redacted before ANY renderer (HTML, JSON, Word, CSV, agent) sees it
+    src = tmp_path / "jobs.sql"
+    src.write_text(SCRIPT.replace(
+        "INSERT INTO dbo.RunLog VALUES (SYSDATETIME())",
+        'INSERT INTO dbo.RunLog VALUES (SYSDATETIME()) -- Password="hunter2";User ID=sa'),
+        encoding="utf-8")
+    html = tmp_path / "out" / "docs.html"
+    rc = cli.main([str(src), "--html", str(html), "--also", "json,word,csv,agent"])
+    assert rc == 0
+    payload = json.loads(html.with_suffix(".json").read_text(encoding="utf-8"))
+    assert payload["redactions"] >= 1
+    texts = [html.read_text(encoding="utf-8"),
+             html.with_suffix(".json").read_text(encoding="utf-8"),
+             html.with_suffix(".agent.md").read_text(encoding="utf-8")]
+    csv_dir = html.with_name("docs-csv")
+    texts += [p.read_text(encoding="utf-8-sig") for p in sorted(csv_dir.glob("*.csv"))]
+    with zipfile.ZipFile(html.with_suffix(".docx")) as z:
+        texts += [z.read(n).decode("utf-8") for n in z.namelist() if n.endswith(".xml")]
+    for t in texts:
+        assert "hunter2" not in t
+
+
 # ==========================================================================
 # extras: word / agent / csv
 # ==========================================================================

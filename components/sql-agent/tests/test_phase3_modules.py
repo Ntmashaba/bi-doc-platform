@@ -275,6 +275,23 @@ def test_scrub_text_connection_string_and_sqlcmd():
     assert "pw" not in text and "abc123" not in text and n == 2
 
 
+def test_scrub_text_quoted_connection_string_secrets():
+    # double-quoted, single-quoted, and account-key values must not leak
+    text, n = scrub_text('Password="hunter2";User ID=sa')
+    assert "hunter2" not in text and "User ID=sa" in text and n == 1
+    text, n = scrub_text("PWD='hunter2';Server=x")
+    assert "hunter2" not in text and "Server=x" in text and n == 1
+    text, n = scrub_text('AccountKey="abc123";EndpointSuffix=x')
+    assert "abc123" not in text and "EndpointSuffix=x" in text and n == 1
+    # embedded semicolons and doubled-quote escapes stay inside the value
+    text, n = scrub_text('Password="a;b";User ID=sa')
+    assert "a;b" not in text and "User ID=sa" in text and n == 1
+    text, n = scrub_text('Password="quo""ted";Server=x')
+    assert 'quo""ted' not in text and "Server=x" in text and n == 1
+    text, n = scrub_text("Password='it''s';Server=x")
+    assert "it''s" not in text and "Server=x" in text and n == 1
+
+
 def test_payload_scrub_redacts_command_secret_but_keeps_owner(tmp_path):
     payload = _payload(tmp_path, f"""
 DECLARE @jobId BINARY(16)
