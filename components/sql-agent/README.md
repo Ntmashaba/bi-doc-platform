@@ -12,13 +12,23 @@ native JSON payload plus deterministic review findings.
 ## Usage
 
 ```bash
-python -m sqlagentdocgen path/to/jobs/ -o payload.json   # full payload
-python -m sqlagentdocgen path/to/jobs/ --coverage-only   # shareable counts only
+python -m sqlagentdocgen path/to/jobs/                              # JSON payload to stdout
+python -m sqlagentdocgen path/to/jobs/ -o payload.json              # full payload to file
+python -m sqlagentdocgen path/to/jobs/ --coverage-only              # shareable counts only
+python -m sqlagentdocgen path/to/jobs/ --html docs.html --also json,word,csv,agent
 ```
 
 `--coverage-only` prints only aggregate counts and warning texts — never job
 names, command text, or file content — so real scripts can be validated
 without anything sensitive leaving your machine.
+
+`--html` renders a self-contained interactive document (Overview · Jobs ·
+Job detail with the execution flow graph · Processing · Schedules ·
+Review issues · Coverage · Job details). `--also` adds the extra renderings
+next to it: the JSON payload, a Word document, CSV inventories (jobs, steps,
+operations, schedules, issues, entities) and an agent context markdown.
+Every rendered output passes through the redaction safety net (`redact.py`)
+before it is written.
 
 ## What it understands
 
@@ -47,12 +57,18 @@ sqlagentdocgen/
   xmla.py           XMLA <Batch> analysis
   tmsl.py           TMSL JSON analysis
   schedules.py      msdb frequency model -> descriptions
-  analyzer.py       payload orchestration
+  processing.py     SSAS processing sequence across jobs (per target)
+  execution_graph.py  step flow (success/failure goto) per job
+  analyzer.py       payload orchestration + normalized entity model
   issues.py         deterministic review findings
+  redact.py         payload secret scrubbing (safety net for all renderers)
+  renderer.py + template.html   self-contained interactive HTML
+  word_writer.py    narrative Word document (--also word)
+  agent_writer.py   agent context markdown (--also agent)
   loader.py         .sql discovery and 64 KB sp_add_job sniffing
-  cli.py            command line (--coverage-only)
+  cli.py            command line (--coverage-only, --html, --also, CSV)
   details.py        native payload constants
-generate_docs.py    folder -> JSON payload wrapper
+generate_docs.py    folder -> docs wrapper
 tests/              synthetic and adversarial fixtures
 examples/           small synthetic example scripts
 ```

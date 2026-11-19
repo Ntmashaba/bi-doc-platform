@@ -28,6 +28,7 @@ IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
 
 EXEC @ReturnCode = msdb.dbo.sp_add_jobstep
     @job_id = @jobId,
+    @step_id = 1,
     @step_name = N'Process Sales cube',
     @subsystem = N'ANALYSISCOMMAND',
     @server = N'SSAS-EXAMPLE-01',
@@ -42,6 +43,7 @@ EXEC @ReturnCode = msdb.dbo.sp_add_jobstep
 </Batch>',
     @retry_attempts = 3,
     @retry_interval = 15,
+    @on_success_action = 3,
     @on_fail_action = 2
 
 EXEC @ReturnCode = msdb.dbo.sp_add_jobstep
@@ -49,6 +51,7 @@ EXEC @ReturnCode = msdb.dbo.sp_add_jobstep
     @step_name = N'Refresh tabular partitions',
     @subsystem = N'ANALYSISCOMMAND',
     @server = N'SSAS-EXAMPLE-01',
+    @step_id = 2,
     @command = N'{"refresh": {"type": "add", "objects": [{"database": "SalesTabular", "table": "FactSales", "partition": "FactSales-Current"}]}}',
     @proxy_name = N'EXAMPLE\svc_proxy'
 
