@@ -393,6 +393,7 @@ function secJob(){
     <span><i class="sw" style="border-color:var(--bad);border-top-style:dotted"></i>goto target not in script</span>
   </div>`;
   const notes = [];
+  if(g.startNote) notes.push(`Start step not determined: ${esc(g.startNote)} — reachability is not assessed for this job.`);
   if((g.unreachable||[]).length) notes.push(`Not reachable from the scripted start step: ${g.unreachable.map(u=>esc(u.name||u.id)).join(", ")}.`);
   if((g.loops||[]).length) notes.push(`The flow loops back (${g.loops.map(l=>l.map(id=>esc(trunc((g.nodes.find(n=>n.id===id)||{}).name||id,18))).join(" → ")).join("; ")}); the exit condition lives in the step logic, not the flow.`);
   const steps = (j.steps||[]).map((s,i)=>{
@@ -573,7 +574,7 @@ function secJobMeta(){
       <div class="k">identity</div><div><span class="ref">${esc(j.identity)}</span></div>
       ${j.guid?`<div class="k">guid</div><div><span class="ref">${esc(j.guid)}</span></div>`:""}
       <div class="k">state</div><div>${enabledBadge(j.enabled)}</div>
-      <div class="k">start step</div><div>${j.startStepId!==null&&j.startStepId!==undefined?esc(j.startStepId):'<span class="mut">first step (default)</span>'}</div>
+      <div class="k">start step</div><div>${j.startStepId!==null&&j.startStepId!==undefined?esc(j.startStepId):'<span class="mut">step ID 1 (msdb default)</span>'}</div>
       <div class="k">notify levels</div><div class="mut">email ${j.notifyLevelEmail??"—"} · netsend ${j.notifyLevelNetsend??"—"} · page ${j.notifyLevelPage??"—"} · event log ${j.notifyLevelEventlog??"—"}${j.notifyEmailOperator?` · operator ${esc(j.notifyEmailOperator)}`:""}</div>
       <div class="k">delete level</div><div>${j.deleteLevel??'<span class="mut">—</span>'}</div>
       <div class="k">originating server</div><div>${esc(j.originatingServer||"")||'<span class="mut">—</span>'}</div>
