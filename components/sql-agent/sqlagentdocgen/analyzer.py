@@ -39,6 +39,7 @@ class Coverage:
     def __init__(self) -> None:
         self.input_files = 0
         self.skipped_files: List[str] = []
+        self.load_errors = 0
         self.unrecognised_statements = 0
         self.unparsed_steps = 0
         self.unknown_operations = 0
@@ -47,6 +48,7 @@ class Coverage:
         return {
             "inputFiles": self.input_files,
             "skippedFiles": sorted(self.skipped_files),
+            "loadErrors": self.load_errors,
             "unrecognisedStatements": self.unrecognised_statements,
             "unparsedSteps": self.unparsed_steps,
             "unknownOperations": self.unknown_operations,
@@ -244,6 +246,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
     coverage = Coverage()
     coverage.input_files = len(load.files)
     coverage.skipped_files = list(load.skipped)
+    coverage.load_errors = len(load.errors)
 
     for loaded in load.files:
         source_name = loaded.path.name
