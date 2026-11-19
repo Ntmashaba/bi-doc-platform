@@ -7,7 +7,9 @@ Wording contract (v4 §6):
   * ProcessFull findings talk about the script, never the server's intent;
   * schedules "coincide" — never "overlap" or "contention";
   * a missing owner is "likely a partial script" (info);
-  * disabled state is the final state after in-order sp_update_job.
+  * disabled state is the final state after in-order sp_update_job;
+  * a missing retry on an SSAS processing step is stated with the scripted
+    retryAttempts value, not as a reliability verdict.
 
 Findings are evidence, not instructions.
 """
@@ -17,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from .processing import is_full_at_wide_scope, is_partition_granular, is_process_op
 from .registry import JobDraft, Registry, ScheduleDraft
 
 # severities: info | warning | alert
@@ -57,6 +60,8 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
     ProcessFull-at-database-scope without re-parsing commands here.
     """
     issues: List[Issue] = []
+    nonlocal_wide_full: List[tuple] = []
+    nonlocal_partition_seen = False
 
     for job in registry.jobs.values():
         if not job.created:
@@ -140,7 +145,24 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
             analysis = analyses.get((job.key, index))
             if analysis is None:
                 continue
-            for op in analysis.get("operations", []):
+            ops = analysis.get("operations", [])
+            if (
+                subsystem in ("ANALYSISCOMMAND", "ANALYSISQUERY")
+                and any(is_process_op(op) for op in ops)
+                and not (step.retry_attempts or 0)
+            ):
+                issues.append(Issue(
+                    "warning", "step-no-retry",
+                    f"No retry is scripted on SSAS processing step "
+                    f"'{step_label}' in '{label}' (retryAttempts = 0).",
+                    job=label, step=step_label,
+                ))
+            for op in ops:
+                if is_process_op(op) and is_partition_granular(
+                        op.get("source") or "", op.get("object")):
+                    nonlocal_partition_seen = True
+                if is_full_at_wide_scope(op):
+                    nonlocal_wide_full.append((label, step_label, op.get("object")))
                 if (
                     op.get("kind") == "process"
                     and (op.get("verb") or "").lower() == "processfull"
@@ -154,6 +176,16 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
                         job=label, step=step_label,
                         evidence=f"Type=ProcessFull, Object={op['object']}",
                     ))
+
+    if nonlocal_wide_full and not nonlocal_partition_seen:
+        issues.append(Issue(
+            "info", "process-full-granularity",
+            "ProcessFull targets a database or cube while no job in this "
+            "script set processes at partition granularity — a statement "
+            "about the scripts, not the server's intent.",
+            evidence="; ".join(
+                f"{j} / {s}: {o}" for j, s, o in nonlocal_wide_full[:3]),
+        ))
 
     _schedule_coincidence(registry, issues)
     return issues

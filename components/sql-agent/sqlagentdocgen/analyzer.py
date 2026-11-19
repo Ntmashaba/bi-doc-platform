@@ -9,12 +9,15 @@ Static analysis only: nothing here ever touches a server.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from adfdocgen.sql_harvest import harvest_sql
 
 from . import __version__, details, issues as issues_mod, tmsl, xmla
+from .execution_graph import build_graphs
 from .loader import LoadResult
+from .processing import build_processing
 from .registry import JobDraft, Registry, StepDraft
 from .schedules import describe_schedule
 from .script_parser import parse_calls
@@ -133,6 +136,109 @@ def scope_key(jobs: List[JobDraft]) -> str:
     return "selection-" + digest[:16]
 
 
+# --------------------------------------------------------------------------
+# Normalized model: entities and their usage (v4 §4.2)
+#
+# The entity list is the hook cross-document lineage (v4 §8) joins on later:
+# SSAS databases/objects from processing operations, SQL tables and stored
+# procedures from the T-SQL harvest, SSIS packages from dtexec catalog or
+# file paths.  Keys are stable and lower-case-insensitive where the target
+# system is.
+
+_SSIS_CATALOG = re.compile(r'(?is)/ISSERVER\s+["\\]*([^";]+?\.dtsx)\s*"{0,3}')
+_DTSX_PATH = re.compile(r"(?i)(?:^|[\s\"'])((?:[a-z]:[\\/]|\\\\)[\w .\-\\\[\]()/]*?\.dtsx)")
+
+
+def _split_dotted(name: str) -> Tuple[Optional[str], str]:
+    from .common import strip_brackets
+    parts = [strip_brackets(p) for p in name.split(".") if p]
+    if len(parts) >= 2:
+        return ".".join(parts[:-1]), parts[-1]
+    return None, name
+
+
+def _build_entities(jobs_payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    entities: Dict[str, Dict[str, Any]] = {}
+
+    def use(key: str, kind: str, endpoint: Dict[str, Any],
+            job: str, step: Optional[str], operation: str) -> None:
+        entry = entities.get(key)
+        if entry is None:
+            entry = {"key": key, "kind": kind, "endpoint": endpoint, "usage": []}
+            entities[key] = entry
+        u = {"job": job, "step": step, "operation": operation}
+        if u not in entry["usage"]:
+            entry["usage"].append(u)
+
+    for job in jobs_payload:
+        jname = job.get("name") or job.get("identity")
+        for step in job.get("steps", []):
+            sname = step.get("name")
+            sub = (step.get("subsystem") or "TSQL").upper()
+            if sub in _SSAS_SUBSYSTEMS:
+                raw_server = step.get("server")
+                server = raw_server or "(local)"
+                for op in step.get("operations", []):
+                    objpath = op.get("object")
+                    operation = op.get("kind") or "process"
+                    if objpath:
+                        parts = [p for p in objpath.split("/") if p]
+                        if parts:
+                            # the database entity is the lineage join key: it
+                            # carries usage for every operation against it,
+                            # whether the op targets the database itself or an
+                            # object inside it
+                            use(f"ssas/{server}/{parts[0]}".lower(), "ssas_database",
+                                {"system": "ssas", "server": raw_server,
+                                 "database": parts[0]},
+                                jname, sname, operation)
+                        if len(parts) > 1:
+                            use(f"ssas/{server}/{objpath}".lower(), "ssas_object",
+                                {"system": "ssas", "server": raw_server,
+                                 "database": parts[0], "object": "/".join(parts[1:])},
+                                jname, sname, operation)
+                    for read in op.get("reads", []):
+                        use(f"ssas/{server}/datasource/{read}".lower(), "ssas_object",
+                            {"system": "ssas", "server": raw_server, "object": read},
+                            jname, sname, "read")
+            elif sub == "TSQL":
+                sql = step.get("sql") or {}
+                db = step.get("database")
+                for table in sql.get("reads", []):
+                    schema, obj = _split_dotted(table)
+                    use(f"sql/{db or ''}/{table}".lower(), "table",
+                        {"system": "sql", "database": db, "schema": schema,
+                         "object": obj},
+                        jname, sname, "read")
+                for table in sql.get("writes", []):
+                    schema, obj = _split_dotted(table)
+                    use(f"sql/{db or ''}/{table}".lower(), "table",
+                        {"system": "sql", "database": db, "schema": schema,
+                         "object": obj},
+                        jname, sname, "write")
+                for proc in sql.get("procs", []):
+                    schema, obj = _split_dotted(proc)
+                    use(f"sql/{db or ''}/{proc}".lower(), "stored_procedure",
+                        {"system": "sql", "database": db, "schema": schema,
+                         "object": obj},
+                        jname, sname, "execute")
+            elif sub == "SSIS":
+                cmd = step.get("command") or ""
+                m = _SSIS_CATALOG.search(cmd)
+                if m:
+                    # canonical catalog form: \\SSISDB\\folder\\project\\pkg.dtsx
+                    path = "\\" + m.group(1).replace('""', '"').lstrip("\\")
+                    use(f"ssis/{path}".lower(), "ssis_package",
+                        {"system": "ssis", "path": path}, jname, sname, "execute")
+                else:
+                    m = _DTSX_PATH.search(cmd)
+                    if m:
+                        use(f"ssis/{m.group(1)}".lower(), "ssis_package",
+                            {"system": "file", "path": m.group(1)},
+                            jname, sname, "execute")
+    return [entities[k] for k in sorted(entities)]
+
+
 def analyse(load: LoadResult) -> Dict[str, Any]:
     registry = Registry()
     coverage = Coverage()
@@ -170,7 +276,9 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
                 "retryAttempts": step.retry_attempts,
                 "retryIntervalMinutes": step.retry_interval,
                 "onSuccessAction": step.on_success_action,
+                "onSuccessStepId": step.on_success_step_id,
                 "onFailAction": step.on_fail_action,
+                "onFailStepId": step.on_fail_step_id,
                 "proxy": step.proxy_name or step.proxy_id,
                 "operations": analysis.get("operations", []),
             }
@@ -212,6 +320,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
             "originatingServer": job.originating_server,
             "registeredOn": sorted(job.registered_on),
             "recreatePreamble": job.recreate_preamble,
+            "startStepId": job.start_step_id,
             "sourceFile": job.source_file,
             "steps": steps_payload,
             "schedules": job_schedules,
@@ -234,6 +343,9 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         "scope": {"type": "selection", "key": scope_key(list(registry.jobs.values()))},
         "jobs": jobs_payload,
         "sharedSchedules": shared_schedules,
+        "entities": _build_entities(jobs_payload),
+        "executionGraphs": build_graphs(jobs_payload),
+        "processing": build_processing(jobs_payload),
         "issues": [i.as_dict() for i in found_issues],
         "warnings": registry.warnings + [e.detail for e in load.errors],
         "coverage": coverage.as_dict(),
