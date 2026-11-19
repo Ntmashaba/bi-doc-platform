@@ -225,5 +225,59 @@ class FolderInputs(unittest.TestCase):
         self.assertEqual(r.errors[0]["code"], "INVALID_INPUT")
 
 
+class IdentityFallbacks(unittest.TestCase):
+    """Steps without @step_id and same-named job-local schedules must still
+    produce unique object/section/target ids (review round 3)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _manifest(self, script: str):
+        src = self.tmp / "jobs.sql"
+        src.write_text(script, encoding="utf-8")
+        r = generate(GenerateRequest(engine="sql_agent", source_path=str(src),
+                                     source_kind="agent_script",
+                                     output_dir=str(self.tmp / "out")))
+        self.assertEqual(r.status, "completed", r.errors)
+        # validate_artifact raises CONTRACT_VIOLATION on any duplicate id
+        return validate_artifact(Path(r.artifact_path).read_bytes(), view_ids=VIEW_IDS)
+
+    def test_steps_without_step_id_get_positional_object_ids(self):
+        m = self._manifest("""\
+EXEC msdb.dbo.sp_add_job @job_name = N'No Step Ids', @enabled = 1
+EXEC msdb.dbo.sp_add_jobstep @job_name = N'No Step Ids', @step_name = N'One',
+    @subsystem = N'TSQL', @database_name = N'DB1', @command = N'SELECT 1'
+EXEC msdb.dbo.sp_add_jobstep @job_name = N'No Step Ids', @step_name = N'Two',
+    @subsystem = N'TSQL', @database_name = N'DB1', @command = N'SELECT 2'
+""")
+        ids = [o["object_id"] for o in m["objects"] if o["kind"] == "activity"]
+        # the same deterministic positional fallback the execution graph uses
+        self.assertEqual(ids, ["sqlagent:step:name:no step ids/pos:1",
+                               "sqlagent:step:name:no step ids/pos:2"])
+        self.assertEqual(len(set(ids)), 2)
+        self.assertNotIn("None", " ".join(ids))
+
+    def test_same_named_job_local_schedules_stay_independent(self):
+        m = self._manifest("""\
+EXEC msdb.dbo.sp_add_job @job_name = N'Job A', @enabled = 1
+EXEC msdb.dbo.sp_add_jobstep @job_name = N'Job A', @step_id = 1, @step_name = N'x',
+    @subsystem = N'TSQL', @command = N'SELECT 1'
+EXEC msdb.dbo.sp_add_jobschedule @job_name = N'Job A', @name = N'Nightly',
+    @freq_type = 4, @freq_interval = 1, @freq_subday_type = 1, @active_start_time = 220000
+EXEC msdb.dbo.sp_add_job @job_name = N'Job B', @enabled = 1
+EXEC msdb.dbo.sp_add_jobstep @job_name = N'Job B', @step_id = 1, @step_name = N'y',
+    @subsystem = N'TSQL', @command = N'SELECT 2'
+EXEC msdb.dbo.sp_add_jobschedule @job_name = N'Job B', @name = N'Nightly',
+    @freq_type = 4, @freq_interval = 1, @freq_subday_type = 1, @active_start_time = 230000
+""")
+        triggers = [o for o in m["objects"] if o["kind"] == "trigger"]
+        self.assertEqual(len(triggers), 2, "two independent 'Nightly' schedules, one per job")
+        self.assertEqual(len({t["object_id"] for t in triggers}), 2)
+        by_id = {t["object_id"]: t for t in triggers}
+        self.assertTrue(any("name:job a/" in k for k in by_id), list(by_id))
+        self.assertTrue(any("name:job b/" in k for k in by_id), list(by_id))
+
+
 if __name__ == "__main__":
     unittest.main()

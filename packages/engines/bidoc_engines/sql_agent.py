@@ -23,6 +23,7 @@ import sqlagentdocgen
 from sqlagentdocgen import details as sqlagent_details
 from sqlagentdocgen.analyzer import analyse
 from sqlagentdocgen.common import strip_brackets
+from sqlagentdocgen.execution_graph import node_ids as graph_node_ids
 from sqlagentdocgen.loader import load_path
 from sqlagentdocgen.renderer import build_payload, render_html
 from bidoc_contracts import ScopeError, sql_agent_scope
@@ -80,7 +81,7 @@ def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
 
 
 def native_schema(payload) -> str:
-    return f"{ENGINE}/{payload.get('schemaVersion')}"
+    return f"{ENGINE}/{payload.get('schemaVersion')}"  # placeholder
 
 
 def load(source: Path, kind: str, title: str | None = None) -> dict:
@@ -163,12 +164,19 @@ def schedule_object_id(key: str) -> str:
     return f"sqlagent:schedule:{key}"
 
 
-def _schedule_key(s: dict) -> str:
+def _schedule_key(s: dict, job_identity: str = "") -> str:
     if s.get("uid"):
         return f"uid:{s['uid']}"
     if s.get("id") is not None:
         return f"id:{s['id']}"
-    return f"name:{(s.get('name') or '').strip().lower()}"
+    name = (s.get("name") or "").strip().lower()
+    if job_identity and not s.get("shared"):
+        # job-local schedules (sp_add_jobschedule) are independent objects:
+        # two jobs reusing one schedule name must not merge into one trigger.
+        # shared schedules keep the global name key so the copy under each
+        # job and the sharedSchedules entry resolve to one object.
+        return f"name:{job_identity}/{name}"
+    return f"name:{name}"
 
 
 def _binding(bid: str, operation: str, ep: dict, context: dict, ref: str,
@@ -180,11 +188,10 @@ def _binding(bid: str, operation: str, ep: dict, context: dict, ref: str,
             "resolution": resolution, "coverage": coverage}
 
 
-def _step_bindings(job: dict, step: dict, ref: str, coverage: str) -> list:
+def _step_bindings(job: dict, step: dict, ref: str, coverage: str, sid: str) -> list:
     """Endpoint bindings for one step; empty when the command is not a static literal."""
     out = []
     sub = (step.get("subsystem") or "TSQL").upper()
-    sid = step_object_id(job.get("identity", ""), step.get("id"))
     resolution = "opaque" if step.get("parseError") else "static"
     n = 0
 
@@ -240,7 +247,8 @@ def describe(payload: dict, coverage: str = "complete"):
     schedules = {}
     for j in jobs:
         for s in j.get("schedules", []):
-            entry = schedules.setdefault(_schedule_key(s), {"schedule": s, "jobs": set()})
+            entry = schedules.setdefault(_schedule_key(s, j.get("identity") or ""),
+                                         {"schedule": s, "jobs": set()})
             entry["jobs"].add(j.get("name") or j.get("identity") or "")
     for s in payload.get("sharedSchedules", []):
         entry = schedules.setdefault(_schedule_key(s), {"schedule": s, "jobs": set()})
@@ -273,10 +281,13 @@ def describe(payload: dict, coverage: str = "complete"):
             if j.get("schedules") else ""]))
         targets.append({"target_id": jid[:512], "view_id": "sqlagent.job", "args": {"job": label}})
 
+        # the same node ids as the execution graph: scripted id when unique,
+        # else a deterministic positional fallback — never ".../None"
+        node_ids = graph_node_ids(j.get("steps", []))
         for si, st in enumerate(j.get("steps", [])):
-            sid = step_object_id(identity, st.get("id"))
+            sid = step_object_id(identity, node_ids[si])
             ssid = anchor("step", sid)
-            own = _step_bindings(j, st, f"/jobs/{ji}/steps/{si}", coverage)
+            own = _step_bindings(j, st, f"/jobs/{ji}/steps/{si}", coverage, sid)
             sub = (st.get("subsystem") or "TSQL").upper()
             objects.append({"object_id": sid[:512], "kind": "activity",
                             "label": (st.get("name") or f"step {st.get('id')}")[:512],
