@@ -226,7 +226,7 @@ def _build_entities(jobs_payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 cmd = step.get("command") or ""
                 m = _SSIS_CATALOG.search(cmd)
                 if m:
-                    # canonical catalog form: \\SSISDB\\folder\\project\\pkg.dtsx
+                    # canonical catalog form: \SSISDB\folder\project\pkg.dtsx
                     path = "\\" + m.group(1).replace('""', '"').lstrip("\\")
                     use(f"ssis/{path}".lower(), "ssis_package",
                         {"system": "ssis", "path": path}, jname, sname, "execute")

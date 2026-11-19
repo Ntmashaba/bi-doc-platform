@@ -36,7 +36,7 @@ def render_html(payload: dict, out_path: "str | Path") -> Path:
     template = TEMPLATE.read_text(encoding="utf-8")
     blob = json.dumps(payload, ensure_ascii=False)
     # keep the embedded JSON from terminating the script block early
-    blob = blob.replace("<", "\u003c").replace(">", "\u003e").replace("&", "\u0026")
+    blob = blob.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     html = (template
             .replace("__TITLE__", payload["title"].replace("<", "&lt;"))
             .replace("/*__DATA__*/null", blob))
