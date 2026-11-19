@@ -81,7 +81,7 @@ def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
 
 
 def native_schema(payload) -> str:
-    return f"{ENGINE}/{payload.get('schemaVersion')}"  # placeholder
+    return f"{ENGINE}/{payload.get('schemaVersion')}"
 
 
 def load(source: Path, kind: str, title: str | None = None) -> dict:
