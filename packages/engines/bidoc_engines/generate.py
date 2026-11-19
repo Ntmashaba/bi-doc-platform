@@ -210,7 +210,9 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
+ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"),
+                "adf": ("adf_git", "adf_arm", "adf_resources"),
+                "sql_agent": ("agent_script", "agent_folder")}
 STAGES = ("validating", "analysing", "rendering", "completed")
 
 
@@ -451,7 +453,7 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
 
     adapter = ADAPTERS.get(request.engine)
     if adapter is None:
-        return fail("INVALID_INPUT", f"unknown engine {request.engine!r}; use power_bi or adf")
+        return fail("INVALID_INPUT", f"unknown engine {request.engine!r}; use power_bi, adf or sql_agent")
     result.tool_versions = {"generator": __version__, adapter.ENGINE: adapter.ENGINE_VERSION}
     if request.source_kind not in ENGINE_KINDS[request.engine]:
         return fail("INVALID_INPUT", f"{request.engine} does not accept {request.source_kind!r} inputs; "
