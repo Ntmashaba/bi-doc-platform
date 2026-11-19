@@ -21,6 +21,10 @@ def build_payload(analysis: dict, title: str) -> dict:
     payload = {
         "title": title,
         "generator": "sqlagent-doc-gen",
+        # integer schema version, as the platform envelope carries it
+        # (native_payload.schema_version); the full "sqlagent-doc-gen/1"
+        # string stays in analysis["schema"].
+        "schemaVersion": 1,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         **analysis,
     }

@@ -3,6 +3,7 @@
 # Engines live in this repository; provenance is in components/README.md.
 -e components/power-bi[portable]
 -e components/adf
+-e components/sql-agent
 -e packages/contracts[dev]
 -e packages/engines
 -e packages/relationships

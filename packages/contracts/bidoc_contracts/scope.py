@@ -39,6 +39,24 @@ def adf_scope(whole_factory: bool, resources=()) -> dict:
     return {"kind": "selection", "resources": items}
 
 
+SQL_AGENT_IDENTITY_KINDS = ("guid", "name")
+
+
+def sql_agent_scope(jobs=()) -> dict:
+    """A declared selection of SQL Agent jobs: the only scope the engine declares in v1.
+
+    Each job identity is the scripted GUID where the script sets one, else the job name,
+    prefixed: 'guid:<guid>' or 'name:<name>'."""
+    items = sorted(set(jobs))
+    for j in items:
+        kind, _, value = j.partition(":")
+        if kind not in SQL_AGENT_IDENTITY_KINDS or not value:
+            raise ScopeError(f"invalid SQL Agent job identity {j!r}; expected 'guid:<guid>' or 'name:<name>'")
+    if not items:
+        raise ScopeError("a SQL Agent selection must name at least one job")
+    return {"kind": "selection", "jobs": items}
+
+
 def scope_key(document_type: str, descriptor: dict) -> str:
     kind = descriptor.get("kind") if isinstance(descriptor, dict) else None
     if document_type == "power_bi":
@@ -55,4 +73,12 @@ def scope_key(document_type: str, descriptor: dict) -> str:
             digest = hashlib.sha256(json.dumps(canonical["resources"], separators=(",", ":")).encode()).hexdigest()
             return f"selection-{digest[:16]}"
         raise ScopeError("ADF scope must be {'kind': 'factory'} or {'kind': 'selection', 'resources': [...]}")
+    if document_type == "sql_agent":
+        if kind == "selection" and set(descriptor) == {"kind", "jobs"}:
+            canonical = sql_agent_scope(descriptor["jobs"])
+            if canonical != descriptor:
+                raise ScopeError("SQL Agent selection jobs must be sorted and distinct")
+            digest = hashlib.sha256(json.dumps(canonical["jobs"], separators=(",", ":")).encode()).hexdigest()
+            return f"selection-{digest[:16]}"
+        raise ScopeError("SQL Agent scope must be {'kind': 'selection', 'jobs': [...]}")
     raise ScopeError(f"unknown document type {document_type!r}")
