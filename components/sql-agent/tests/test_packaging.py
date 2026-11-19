@@ -26,6 +26,7 @@ def _clean_env():
     # is that the installed wheels stand on their own
     return {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
 
+
 ROOT = Path(__file__).resolve().parents[1]
 ADF = ROOT.parent / "adf"
 
