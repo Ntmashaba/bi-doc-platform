@@ -48,6 +48,13 @@ class InputError(ValueError):
     pass
 
 
+# The CSV inventory's file names, declared so the generator's per-document ownership
+# record covers them (v4 §5.1: the platform tracks the files; the engine names them).
+def extra_owned_names(stem: str) -> set:
+    return {f"{stem}-csv/{n}.csv"
+            for n in ("jobs", "steps", "operations", "schedules", "issues", "entities")}
+
+
 def validate_details(value) -> dict:
     raise ValueError("SQL Agent documents do not take a details file in this version")
 
@@ -55,9 +62,8 @@ def validate_details(value) -> dict:
 def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
     """The engine's other outputs beside the document, from the payload the document was rendered from.
 
-    Returns (paths written, notes): json, word, agent (context for LLM agents). The engine's CSV
-    inventory uses its own file names, which the generator's per-document ownership record does not
-    cover yet, so csv is declined here rather than written untracked.
+    Returns (paths written, notes): json, word, csv (jobs, steps, operations, schedules, issues
+    and entities, in <document>-csv/), agent (context for LLM agents).
     """
     import json
     written, notes = [], []
@@ -73,8 +79,8 @@ def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
             from sqlagentdocgen.agent_writer import render_agent_md
             written.append(str(render_agent_md(payload, html_path.with_suffix(".agent.md"))))
         elif kind == "csv":
-            raise ValueError("the csv output is not available for SQL Agent documents published "
-                             "through the generator yet; generate it with sqlagent-doc-gen directly")
+            from sqlagentdocgen.cli import write_csv
+            written += [str(p) for p in write_csv(payload, html_path.with_name(html_path.stem + "-csv"))]
         else:
             raise ValueError(f"unknown output {kind!r}")
     return written, notes

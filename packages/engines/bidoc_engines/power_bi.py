@@ -39,6 +39,11 @@ def validate_details(value) -> dict:
     return validate_metadata(value)
 
 
+def extra_owned_names(stem: str) -> set:
+    """The CSV output's name, declared for the generator's per-document ownership record."""
+    return {f"{stem}.columns.csv"}
+
+
 def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
     """The engine's other outputs beside the document, from the payload the document was rendered from.
 

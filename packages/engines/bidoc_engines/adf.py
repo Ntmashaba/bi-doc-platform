@@ -38,6 +38,11 @@ def validate_details(value) -> dict:
     return check(value)
 
 
+def extra_owned_names(stem: str) -> set:
+    """The CSV inventory's names, declared for the generator's per-document ownership record."""
+    return {f"{stem}-csv/{n}.csv" for n in ("objects", "usage", "edges", "issues")}
+
+
 def write_extras(payload: dict, html_path: Path, kinds) -> tuple[list, list]:
     """The engine's other outputs beside the document, from the payload the document was rendered from.
 
