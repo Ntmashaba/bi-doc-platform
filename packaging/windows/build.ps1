@@ -69,6 +69,9 @@ $release = [ordered]@{
 }
 $release | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 dist\release.json
 "$($release.sha256)  $($setup.Name)" | Set-Content -Encoding ascii dist\SHA256SUMS.txt
-(Get-Content packaging/windows/RELEASE-NOTES.template.md) -replace '<VERSION>', $Version -replace '<DATE>', (Get-Date -Format 'yyyy-MM-dd') |
-  Set-Content -Encoding utf8 dist\RELEASE-NOTES.md
-Write-Host "Built $($setup.Name)"
+(Get-Content packaging/windows/RELEASE-NOTES.template.md -Raw).
+  Replace("{{VERSION}}", $Version).Replace("{{LABEL}}", $BuildLabel).Replace("{{COMMIT}}", "$commit").
+  Replace("{{SHA256}}", $release.sha256).Replace("{{INSTALLER}}", $setup.Name).
+  Replace("{{PBIDOCGEN}}", $versions.'pbi-doc-gen').Replace("{{ADFDOCGEN}}", $versions.'adf-doc-gen').
+  Replace("{{PYTHON}}", $versions.python) | Set-Content -Encoding utf8 dist\RELEASE-NOTES.md
+Write-Host "Built $($setup.FullName) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
