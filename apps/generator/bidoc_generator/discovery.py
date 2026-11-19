@@ -14,6 +14,11 @@ A selection is one of:
   least one pipeline or data flow, as the Data Factory engine reads them, the folder is one `adf_resources` input, the
   same input `bidoc generate --kind adf_resources` takes. Only a folder that was selected is judged this way; a folder
   met while searching never is.
+* a **selected folder of SQL Agent job scripts** (SSMS *Script Job as → CREATE To* output): when the search finds nothing
+  else and at least one of the folder's own `.sql` files sniffs as a job script, on the engine's own rule, the folder is
+  one `agent_folder` input, the same input `bidoc generate --kind agent_folder` takes. Non-job `.sql` files inside it are
+  skipped by the engine and counted in its coverage. Only a folder that was selected is judged this way; the recursive
+  search never looks at `.sql` files at all.
 
 Rules that apply to every path, selected or found:
 
@@ -162,10 +167,13 @@ def discover(paths, *, exclude=(), max_items: int = MAX_ITEMS, max_folders: int 
                 if matched == 0 and problems == 0:
                     if _loose_resources(path):
                         add({"source": str(path), "label": path.name, "engine": "adf", "kind": "adf_resources"})
+                    elif _job_scripts(path):
+                        add({"source": str(path), "label": path.name, "engine": "sql_agent", "kind": "agent_folder"})
                     else:
                         add(_problem(path, path.name, f"no supported inputs found in {path} (looked for .pbix, .abf and "
                                                       ".bim files and project folders, in this folder and below, and "
-                                                      "for Data Factory pipelines or data flows in its own .json files)"))
+                                                      "for Data Factory pipelines or data flows in its own .json files "
+                                                      "and SQL Agent job scripts in its own .sql files)"))
             finally:
                 bucket.sort(key=lambda i: i["label"].casefold())
                 result.items.extend(bucket)
@@ -206,6 +214,38 @@ def _loose_resources(folder: Path) -> bool:
         except (OSError, ValueError):
             continue
         if isinstance(doc, dict) and classify_resource(doc, Path(entry.name).stem)[0] in ("pipeline", "dataflow"):
+            return True
+    return False
+
+
+LOOSE_SQL_LIMIT = 500                     # files looked at in one selected folder
+
+
+def _job_scripts(folder: Path) -> bool:
+    """True when at least one of `folder`'s own .sql files sniffs as a SQL Agent job script, on the engine's
+    own rule (first 64 KB, encoding-detected, hold sp_add_job / sp_add_schedule / sp_attach_schedule). Only the
+    first 64 KB of each file are read, however large it is. Generator files and links are never read."""
+    from sqlagentdocgen.loader import SNIFF_BYTES, is_job_script_head  # noqa: PLC0415
+    try:
+        entries = sorted(os.scandir(folder), key=lambda e: e.name)
+    except OSError:
+        return False
+    looked = 0
+    for entry in entries:
+        name = entry.name.lower()
+        if not name.endswith(".sql") or ".bidoc-" in name or name.endswith(".outputs.json"):
+            continue
+        try:
+            if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                continue
+            looked += 1
+            if looked > LOOSE_SQL_LIMIT:
+                return False
+            with open(entry.path, "rb") as fh:
+                head = fh.read(SNIFF_BYTES)
+        except OSError:
+            continue
+        if is_job_script_head(head):
             return True
     return False
 

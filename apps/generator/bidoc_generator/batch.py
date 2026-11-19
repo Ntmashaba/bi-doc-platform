@@ -47,6 +47,18 @@ def _is_arm(path: Path) -> bool:
         return False
 
 
+def _is_job_script(path: Path) -> bool:
+    """A .sql file is a SQL Agent job script by content, on the engine's own rule: the first
+    64 KB (encoding-detected, UTF-16 included) hold sp_add_job, sp_add_schedule or
+    sp_attach_schedule. An ordinary .sql file is not an input."""
+    from sqlagentdocgen.loader import SNIFF_BYTES, is_job_script_head  # noqa: PLC0415
+    try:
+        with path.open("rb") as fh:
+            return is_job_script_head(fh.read(SNIFF_BYTES))
+    except OSError:
+        return False
+
+
 def classify(path) -> dict:
     """Engine and input kind for one path, or an error explaining why it is not a complete input."""
     p = Path(path)
@@ -68,6 +80,13 @@ def classify(path) -> dict:
                 return {**item, "source": str(p.parent), "label": p.stem, "engine": "power_bi", "kind": "pbip"}
             return {**item, "errors": [{"code": "INVALID_INPUT", "message":
                     "a .pbip file is only a pointer; select the whole project folder with its .SemanticModel"}]}
+        if suffix == ".sql" and _is_job_script(p):
+            # Only a file that is selected: folder searches skip .sql, most of which are not job scripts.
+            return {**item, "engine": "sql_agent", "kind": "agent_script"}
+        if suffix == ".sql":
+            return {**item, "errors": [{"code": "INVALID_INPUT", "message":
+                    "not a recognised job script: the first 64 KB hold no sp_add_job, sp_add_schedule or "
+                    "sp_attach_schedule. Ordinary .sql files are not documented"}]}
         if suffix == ".json" and _is_arm(p):
             return {**item, "engine": "adf", "kind": "adf_arm"}
         if suffix == ".json":
