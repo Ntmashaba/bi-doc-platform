@@ -48,6 +48,11 @@ h3{font-size:.92rem;font-weight:650;margin:1rem 0 .4rem}
 .grid.c4{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .stat .big{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}
 .stat .lbl{font-size:.74rem;color:var(--ink2)}
+/* summary cards that navigate to their section */
+.card.stat.link{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer;transition:border-color .12s}
+.card.stat.link:hover{border-color:var(--accent)}
+.card.stat.link .big{color:var(--accent)}
+.nav-toggle{display:none}
 table.t{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:.82rem}
 table.t th{font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);background:var(--panel2)}
 table.t td{padding:.44rem .7rem;border-bottom:1px solid var(--line2);vertical-align:top}
@@ -99,7 +104,16 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
 .legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.76rem;color:var(--ink2);margin:.4rem 0 .8rem}
 .legend span{display:flex;align-items:center;gap:.35rem}
 .sw{width:16px;height:0;border-top:2.4px solid;display:inline-block}
-@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:static;height:auto;display:flex;flex-wrap:wrap;gap:.2rem}.doc-title,.brand{width:100%}main{padding:1rem}}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  nav{position:static;height:auto}
+  .nav-btn{display:none}
+  nav.open .nav-btn{display:flex;margin-top:.2rem}
+  .nav-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;
+    border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.5rem .55rem;
+    border-radius:6px;cursor:pointer;margin-top:.5rem}
+  main{padding:1rem}
+}
 @media print{nav{display:none}.layout{grid-template-columns:1fr}}
 </style>
 </head>
@@ -161,21 +175,27 @@ const subBadge = s => {
 const SECTIONS = [
   {id:"overview",   label:"Overview"},
   {id:"jobs",       label:"Jobs",          count:()=>JOBS.length},
-  {id:"job",        label:"Job detail"},
+  {id:"job",        label:"Selected job"},
   {id:"processing", label:"Processing",    count:()=>PROC.targets.length||null},
   {id:"schedules",  label:"Schedules"},
   {id:"issues",     label:"Review issues", count:()=>ISSUES.length||null},
   {id:"coverage",   label:"Coverage"},
-  {id:"jobmeta",    label:"Job details"},
+  {id:"jobmeta",    label:"Properties &amp; objects"},
 ];
 
 function buildNav(){
   let html = `<div class="brand">SQL Agent Doc Gen</div><div class="doc-title">${esc(DATA.title)}</div>`;
+  html += `<button class="nav-toggle" id="navtoggle" aria-expanded="false"><span class="nt-label">Overview</span><span aria-hidden="true">▾</span></button>`;
   for(const sec of SECTIONS){
     const n = sec.count ? sec.count() : null;
     html += `<button class="nav-btn" id="sec-${sec.id}" data-go="section" data-arg="${sec.id}">${sec.label}${n?`<span class="n">${n}</span>`:""}</button>`;
   }
-  document.getElementById("nav").innerHTML = html;
+  const nav = document.getElementById("nav");
+  nav.innerHTML = html;
+  document.getElementById("navtoggle").addEventListener("click", () => {
+    const open = nav.classList.toggle("open");
+    document.getElementById("navtoggle").setAttribute("aria-expanded", String(open));
+  });
 }
 let CURRENT = null;
 function openSection(id){
@@ -186,6 +206,12 @@ function openSection(id){
     b.classList.toggle("active", on);
     if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
   });
+  const toggle = document.getElementById("navtoggle");
+  if(toggle){
+    toggle.querySelector(".nt-label").textContent = sec.label;
+    toggle.setAttribute("aria-expanded", "false");
+    document.getElementById("nav").classList.remove("open");
+  }
   document.getElementById("main").innerHTML = RENDER[id]();
   CURRENT = id;
   window.scrollTo(0,0);
@@ -201,22 +227,12 @@ function secOverview(){
   ISSUES.forEach(i => bySev[i.severity] = (bySev[i.severity]||0)+1);
   const cov = DATA.coverage || {};
   const top = [...ISSUES].sort((a,b)=>({alert:0,warning:1,info:2}[a.severity]-{alert:0,warning:1,info:2}[b.severity])).slice(0,8);
+  const stat = (arg, big, lbl) =>
+    `<button class="card stat link" data-go="section" data-arg="${arg}"><div class="big">${big}</div><div class="lbl">${lbl}</div></button>`;
   return `
   <h1>${esc(DATA.title)}</h1>
-  <p class="sub">Static analysis of scripted SQL Server Agent jobs, generated ${esc(DATA.generated||"")}
-     by ${esc(DATA.generator||"sqlagent-doc-gen")} ${esc(DATA.engineVersion||"")}.
-     No server was contacted; everything here is derived from the scripts.</p>
-  <div class="grid c4" style="margin-top:1rem">
-    <div class="card stat"><div class="big">${num(JOBS.length)}</div><div class="lbl">jobs scripted</div></div>
-    <div class="card stat"><div class="big">${num(steps)}</div><div class="lbl">steps</div></div>
-    <div class="card stat"><div class="big">${num(schedNames.size)}</div><div class="lbl">schedules (${num((DATA.sharedSchedules||[]).length)} shared)</div></div>
-    <div class="card stat"><div class="big">${num(ssasOps)}</div><div class="lbl">SSAS operations</div></div>
-    <div class="card stat"><div class="big">${num((DATA.entities||[]).length)}</div><div class="lbl">referenced objects</div></div>
-    <div class="card stat"><div class="big">${num(ISSUES.length)}</div><div class="lbl">review issues
-      <span class="mut">${bySev.alert||0} alert · ${bySev.warning||0} warning · ${bySev.info||0} info</span></div></div>
-    <div class="card stat"><div class="big">${num(cov.unrecognisedStatements||0)}</div><div class="lbl">unrecognised statements</div></div>
-    <div class="card stat"><div class="big">${num(DATA.redactions||0)}</div><div class="lbl">secret values withheld</div></div>
-  </div>
+  <p class="sub">Static analysis of scripted SQL Server Agent jobs. No server was contacted;
+     everything here is derived from the scripts. Generation details are in Coverage.</p>
   <div class="card note">
     <b>How to read this document.</b>
     Findings are <i>evidence, not instructions</i>: each review issue states what the scripts say,
@@ -225,12 +241,23 @@ function secOverview(){
     parsed completely, the Coverage section says so; nothing is silently dropped.
   </div>
   ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
-  ${top.length ? `<h2>Most severe findings</h2><div class="card">
+  ${top.length ? `<h2>Review first — most severe findings</h2><div class="card">
     <table class="t"><thead><tr><th>severity</th><th>finding</th><th>job</th></tr></thead><tbody>
     ${top.map(i=>`<tr><td><span class="badge ${sevBadge(i.severity)}">${esc(i.severity)}</span></td>
       <td>${esc(i.message)}</td><td>${i.job?jobLink(jobIdByName(i.job)):""}</td></tr>`).join("")}
     </tbody></table>
-    <p style="margin-top:.5rem">${go("section","issues","Open all review issues →")}</p></div>` : ""}`;
+    <p style="margin-top:.5rem">${go("section","issues","Open all review issues →")}</p></div>` : ""}
+  <h2>Document summary</h2>
+  <div class="grid c4">
+    ${stat("jobs", num(JOBS.length), "jobs scripted")}
+    ${stat("jobs", num(steps), "steps")}
+    ${stat("schedules", num(schedNames.size), `schedules (${num((DATA.sharedSchedules||[]).length)} shared)`)}
+    ${stat("processing", num(ssasOps), "SSAS operations")}
+    ${stat("jobmeta", num((DATA.entities||[]).length), "referenced objects")}
+    ${stat("issues", num(ISSUES.length), `review issues <span class="mut">${bySev.alert||0} alert · ${bySev.warning||0} warning · ${bySev.info||0} info</span>`)}
+    ${stat("coverage", num(cov.unrecognisedStatements||0), "unrecognised statements")}
+    ${stat("coverage", num(DATA.redactions||0), "secret values withheld")}
+  </div>`;
 }
 function jobIdByName(n){ const j = JOBS.find(j=>j.name===n); return j?j.identity:""; }
 
@@ -343,7 +370,7 @@ function flowSVG(g, identity){
 }
 
 function secJob(){
-  if(!JOBS.length) return `<h1>Job detail</h1><div class="empty"><b>No jobs in this input.</b></div>`;
+  if(!JOBS.length) return `<h1>Selected job</h1><div class="empty"><b>No jobs in this input.</b></div>`;
   const j = JIDX[SEL_JOB] || JOBS[0];
   SEL_JOB = j.identity;
   const g = GRAPHS[j.identity] || {nodes:[],edges:[]};
@@ -411,7 +438,7 @@ function secJob(){
       <summary><span class="ref">${s.id!==null&&s.id!==undefined?"#"+esc(s.id):"·"}</span> ${esc(s.name||"(unnamed step)")} ${badges}</summary>
       <div class="body">${body}</div></details>`;
   }).join("");
-  return `<h1>Job detail</h1>${picker}${meta}
+  return `<h1>Selected job</h1>${picker}${meta}
     <h2>Execution flow</h2>${legend}
     <div class="flow">${flowSVG(g, j.identity)||'<span class="mut">No steps scripted.</span>'}</div>
     ${notes.length?`<div class="card note">${notes.map(n=>`<p>${n}</p>`).join("")}</div>`:""}
@@ -526,13 +553,20 @@ function secCoverage(){
     ${rows.map(r=>`<tr><td>${esc(r[0])}</td><td style="text-align:right"><b>${num(r[1]||0)}</b></td></tr>`).join("")}
   </tbody></table></div>
   ${(cov.skippedFiles||[]).length ? `<h2>Skipped files</h2><div class="card"><ul>${cov.skippedFiles.map(f=>`<li><span class="ref">${esc(f)}</span></li>`).join("")}</ul></div>` : ""}
-  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}`;
+  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+  <h2>Document details</h2>
+  <div class="card"><div class="kv">
+    <div class="k">title</div><div>${esc(DATA.title)}</div>
+    <div class="k">generated</div><div>${esc(DATA.generated||"")}</div>
+    <div class="k">generator</div><div>${esc(DATA.generator||"sqlagent-doc-gen")} ${esc(DATA.engineVersion||"")}</div>
+    ${(DATA.producer||{}).bidoc ? `<div class="k">platform</div><div>bi-doc-generator ${esc(DATA.producer.bidoc)}</div>` : ""}
+  </div></div>`;
 }
 
 /* ============================================================ job details */
 function secJobMeta(){
   const ents = DATA.entities || [];
-  return `<h1>Job details</h1>
+  return `<h1>Properties &amp; objects</h1>
   ${JOBS.map(j=>`<div class="card">
     <h2 style="margin-top:0">${esc(j.name||j.identity)}</h2>
     <div class="kv">
