@@ -67,7 +67,7 @@ function mount(...nodes: Child[]): void { main().replaceChildren(...kids(...node
 function notice(kind: "info" | "warn" | "error", text: string, ...extra: Child[]): HTMLElement {
   return h("p", { class: `notice ${kind}`, role: kind === "error" ? "alert" : "status" }, text, ...extra);
 }
-const TYPE_LABEL: Record<string, string> = { power_bi: "Power BI", adf: "Data Factory" };
+const TYPE_LABEL: Record<string, string> = { power_bi: "Power BI", adf: "Data Factory", sql_agent: "SQL Agent" };
 function typeBadge(t: string): HTMLElement { return h("span", { class: `badge type-${t}` }, TYPE_LABEL[t] || t); }
 function date(s: string | null | undefined): string {
   if (!s) return "—";
@@ -117,7 +117,7 @@ async function render(): Promise<void> {
     else if (r.path[0] === "settings") { caps = (await api<Capabilities>("/capabilities")).data; await settingsView(); }
     else if (r.path[0] === "documents" && r.path[1]) await detailsView(r.path[1]);
     else if (r.path[0] === "view" && r.path[1] && r.path[2]) await viewerView(r.path[1], r.path[2], r.params);
-    else await homeView(r.path[0] === "power_bi" || r.path[0] === "adf" ? r.path[0] : null, r.params);
+    else await homeView(r.path[0] === "power_bi" || r.path[0] === "adf" || r.path[0] === "sql_agent" ? r.path[0] : null, r.params);
   } catch (e) {
     container.replaceChildren(...kids(h("h1", {}, "Something went wrong"), notice("error", errorText(e)),
       h("p", {}, h("a", { href: "#/" }, "Back to the library"))));
@@ -179,7 +179,7 @@ async function homeView(type: string | null, params: URLSearchParams): Promise<v
 
   const header = h("section", { class: "toolbar" },
     h("nav", { class: "types", "aria-label": "Document types" },
-      ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"]].map(([t, label]) =>
+      ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"], ["sql_agent", "SQL Agent"]].map(([t, label]) =>
         h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))),
     searchBox,
     h("div", { class: "filters" },
@@ -330,7 +330,7 @@ async function downloadsView(): Promise<void> {
       h("button", { type: "submit" }, "Upload"), out);
   })() : null;
   mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Download the generator"),
-    h("p", { class: "muted" }, "The generator documents Power BI and Data Factory on your computer and can publish to this library."),
+    h("p", { class: "muted" }, "The generator documents Power BI, Data Factory and SQL Agent jobs on your computer and can publish to this library."),
     list.length ? h("div", {}, ...list.map(releaseCard))
       : notice("info", "No generator installer is available from this library yet. Ask your administrator for the generator."),
     upload);
