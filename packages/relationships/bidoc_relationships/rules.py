@@ -1,41 +1,62 @@
-"""rel-rules/1: match ADF activity bindings to Power BI source bindings (handoff 16, 17.2).
+"""rel-rules/2: match ADF activity and SQL Agent step bindings to Power BI source bindings (handoff 16,
+17.2; SQL Agent design v4.1 section 8).
 
 Pure and deterministic, so the hosted library and offline exports compute the same
-result. Direction is stored once: source = ADF activity, target = Power BI source.
+result. Direction is stored once: source = ADF activity or SQL Agent job step (with its
+pipeline or job as parent), target = Power BI source.
 
-    produces   ADF writes the endpoint the Power BI source reads
+    produces   the source writes the endpoint the Power BI source reads, or (SQL Agent)
+               processes or refreshes the Analysis Services model it reads
     deletes    ADF deletes it (never a producer)
-    reads      ADF also reads it (a related reader, never a producer)
+    reads      the source also reads it (a related reader, never a producer)
 
 Confidence:
     exact_static  every identity part present on both sides and equal as written
                   (SQL: server, port, instance, database, schema, object; files:
-                  storage account, container, path), both resolved statically,
-                  and no known environment contradiction
+                  storage account, container, path; Analysis Services: server,
+                  instance, port and a database named by name, as TMSL does),
+                  both resolved statically, and no known environment contradiction
     possible      names match but identity is incomplete, differs only in letter
-                  case, is a folder that contains the file, or is dynamic/opaque
+                  case, is a folder that contains the file, is dynamic/opaque, or
+                  (Analysis Services) the job names the database by its XMLA DatabaseID
+
+Analysis Services endpoints are compared only with Analysis Services endpoints, never
+with SQL tables or files. A SQL Agent `execute` binding counts only when it processes or
+refreshes a model; executing a stored procedure is not a relationship (its effect is not
+known statically), as for ADF.
 
 Contradictions reject a match outright: different known servers, ports, instances,
 databases, storage accounts or containers, or different known environments.
 No match means "No relationship found in the indexed documents", never that no
 upstream system exists.
+
+rel-rules/2 differs from rel-rules/1 by the SQL Agent source and the Analysis Services
+comparison. ADF results are unchanged except one: an ADF binding is no longer compared
+with an Analysis Services endpoint, where rel-rules/1 could match on the object name alone.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
 
-RULE_VERSION = "rel-rules/1"
+RULE_VERSION = "rel-rules/2"
 KINDS = {"write": "produces", "delete": "deletes", "read": "reads"}
+SOURCE_TYPES = ("adf", "sql_agent")
+# "ssas" is the SQL Agent engine's system; the others are the Power BI engine's names for
+# Analysis Services style endpoints (pbidocgen.live_connection.analysis_services_kind).
+AS_SYSTEMS = {"ssas", "SQL Server Analysis Services", "Azure Analysis Services",
+              "Power BI semantic model (XMLA endpoint)"}
+PROCESSING = {"process", "refresh"}          # SQL Agent operations that load a model's data
 
 
 @dataclass(frozen=True)
 class Document:
     document_id: str
     revision_id: str
-    document_type: str            # power_bi | adf
+    document_type: str            # power_bi | adf | sql_agent
     environment_key: str          # "unknown" when not declared
     objects: tuple                # envelope object descriptors (with bindings)
 
@@ -107,6 +128,65 @@ def _compare_file(a: dict, b: dict):
     return None, []
 
 
+def _is_as(ep) -> bool:
+    return ep.get("system") in AS_SYSTEMS
+
+
+def _as_location(ep: dict):
+    """(host, instance, port), lower-cased; a composite 'host\\instance,port' server is split."""
+    server, instance, port = ep.get("server"), ep.get("instance"), ep.get("port")
+    if server and instance is None and port is None:
+        server, instance, port = _split_server(server)
+    return _lower(server), _lower(instance), port
+
+
+def _split_server(server):
+    # bidoc_engines.endpoints.split_server, repeated: this package depends on nothing but the standard library
+    s = re.sub(r"(?i)^tcp:", "", str(server).strip())
+    port = None
+    m = re.search(r"[,:](\d{1,5})$", s)
+    if m and "://" not in s:
+        port, s = int(m.group(1)), s[:m.start()]
+    host, _, instance = s.partition("\\")
+    return host or None, instance or None, port
+
+
+def _compare_as(a: dict, b: dict, context: dict):
+    """A SQL Agent processing target (a) against a Power BI Analysis Services source (b)."""
+    if not a.get("database") or not b.get("database") or _lower(a["database"]) != _lower(b["database"]):
+        return None, []
+    (host_a, inst_a, port_a), (host_b, inst_b, port_b) = _as_location(a), _as_location(b)
+    notes, complete = [], True
+    if host_a and host_b:
+        if host_a != host_b or inst_a != inst_b or (port_a is not None and port_b is not None and port_a != port_b):
+            return None, []
+    else:
+        complete = False
+        notes.append("server known on one side only" if (host_a or host_b) else "server not known on either side")
+    if a["database"] != b["database"]:
+        complete = False
+        notes.append("names differ only in letter case; the collation is unknown")
+    if context.get("command_language") != "tmsl":
+        complete = False
+        notes.append("the job names the database by its XMLA DatabaseID and the report by its name; "
+                     "they are usually, not always, the same")
+    kind, verb = context.get("operation_kind") or "processing", context.get("process_type")
+    what = f"{kind} ({verb})" if verb and verb != kind else kind
+    notes.append(f"the job's {what} targets " + (f"{a['object']} in this model" if a.get("object") else "this model"))
+    return ("exact" if complete else "possible"), notes
+
+
+def _source_kind(document_type: str, sb: dict):
+    kind = KINDS.get(sb["operation"])
+    if kind is not None:
+        return kind
+    context = sb.get("invocation_context") or {}
+    if (document_type == "sql_agent" and sb["operation"] == "execute" and _is_as(sb["normalized_endpoint"])
+            and context.get("operation_kind") in PROCESSING):
+        return "produces"
+    return None
+
+
 def _is_file(ep):
     return bool(ep.get("storage_account") or ep.get("path") or (ep.get("url") and not ep.get("server")))
 
@@ -117,15 +197,15 @@ def _relationship_id(*parts) -> str:
 
 def detect(documents):
     """All detected relationships among the given current revisions, deterministically ordered."""
-    adf = [d for d in documents if d.document_type == "adf"]
+    sources = [d for d in documents if d.document_type in SOURCE_TYPES]
     pbi = [d for d in documents if d.document_type == "power_bi"]
     targets = [(d, o, b) for d in pbi for o in d.objects if o["kind"] == "source"
                for b in o["bindings"] if b["operation"] == "read"]
     found = {}
-    for sd in adf:
+    for sd in sources:
         for so in sd.objects:
             for sb in so["bindings"]:
-                kind = KINDS.get(sb["operation"])
+                kind = _source_kind(sd.document_type, sb)
                 if kind is None:
                     continue
                 for td, to, tb in targets:
@@ -133,9 +213,14 @@ def detect(documents):
                     if len(env) > 1:
                         continue                                   # different known environments
                     a, b = sb["normalized_endpoint"], tb["normalized_endpoint"]
-                    if _is_file(a) != _is_file(b):
+                    if _is_as(a) or _is_as(b):
+                        if not (_is_as(a) and _is_as(b)) or sd.document_type != "sql_agent":
+                            continue                               # a model is never a table or a file
+                        verdict, notes = _compare_as(a, b, sb.get("invocation_context") or {})
+                    elif _is_file(a) != _is_file(b):
                         continue
-                    verdict, notes = (_compare_file if _is_file(a) else _compare_sql)(a, b)
+                    else:
+                        verdict, notes = (_compare_file if _is_file(a) else _compare_sql)(a, b)
                     if verdict is None:
                         continue
                     uncertain = [r for r in (sb["resolution"], tb["resolution"]) if r != "static"]

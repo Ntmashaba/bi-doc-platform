@@ -143,7 +143,8 @@ class Adapter(unittest.TestCase):
         self.assertEqual(execute[0]["normalized_endpoint"]["server"], "ssas-example-01")
         self.assertEqual(execute[0]["invocation_context"],
                          {"subsystem": "ANALYSISCOMMAND", "process_type": "ProcessFull",
-                          "process_object": "SalesDW/Sales"})
+                          "process_object": "SalesDW/Sales", "operation_kind": "process",
+                          "command_language": "xmla"})
 
     def test_process_out_of_line_binding_is_a_sql_read(self):
         step = {o["object_id"]: o for o in self.manifest["objects"]}[f"sqlagent:step:{GUID_ID}/1"]

@@ -199,6 +199,75 @@ class Detected(DerivedTest):
         self.assertEqual(d.relationships(pbi["document_id"])["incoming"], [])      # rebuilt at the newer sequence
 
 
+TMSL_REFRESH_JOB = """\
+-- Synthetic: one SQL Agent job that refreshes the seeded model with TMSL. Names no real system.
+EXEC msdb.dbo.sp_add_job @job_name = N'Seeded Model Refresh', @enabled = 1, @owner_login_name = N'etl'
+EXEC msdb.dbo.sp_add_jobstep @job_name = N'Seeded Model Refresh', @step_id = 1, @step_name = N'Refresh',
+    @subsystem = N'ANALYSISCOMMAND', @server = N'SEEDED-SSAS-01\\TABULAR',
+    @command = N'{"refresh": {"type": "full", "objects": [{"database": "SeededModel"}]}}'
+EXEC msdb.dbo.sp_add_jobserver @job_name = N'Seeded Model Refresh'
+"""
+
+
+class SqlAgentLineage(DerivedTest):
+    """rel-rules/2: a SQL Agent job that refreshes the Analysis Services model a Power BI model reads."""
+
+    def pbi_reading_the_model(self, database="SeededModel"):
+        model = {"model": {"name": "Seeded report model", "tables": [{
+            "name": "Sales", "lineageTag": "3c3d4e5f-0000-4000-8000-000000000001", "columns": [{"name": "Amount"}],
+            "partitions": [{"name": "Sales", "source": {"type": "m", "expression":
+                            f'let Source = AnalysisServices.Database("SEEDED-SSAS-01\\TABULAR", "{database}")'
+                            '\nin\n    Source'}}]}]}}
+        folder = self.tmp / f"pbi-{database}"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "model.bim").write_text(json.dumps(model), encoding="utf-8")
+        return self.publish(self.artifact("power_bi", folder / "model.bim", "bim"))
+
+    def publish_job(self):
+        script = self.tmp / "jobs" / "refresh.sql"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(TMSL_REFRESH_JOB, encoding="utf-8")
+        return self.publish(self.artifact("sql_agent", script, "agent_script"))
+
+    def thin_report(self, database="SeededModel"):
+        """A live-connected PBIR report: it reads the model through its connection, statically resolved."""
+        report = self.tmp / f"thin-{database}" / "Seeded.Report"
+        (report / "definition" / "pages").mkdir(parents=True, exist_ok=True)
+        (report / "definition.pbir").write_text(json.dumps({"version": "4.0", "datasetReference": {"byConnection": {
+            "connectionString": f"Data Source=SEEDED-SSAS-01\\TABULAR;Initial Catalog={database}"}}}), encoding="utf-8")
+        (report / "definition" / "report.json").write_text("{}", encoding="utf-8")
+        (report / "definition" / "pages" / "pages.json").write_text('{"pageOrder": []}', encoding="utf-8")
+        return self.publish(self.artifact("power_bi", report, "pbir"))
+
+    def test_job_refreshing_the_model_a_live_report_reads(self):
+        job, pbi = self.publish_job(), self.thin_report()
+        incoming = self.rel(pbi["document_id"])["incoming"]
+        self.assertEqual([(r["kind"], r["confidence"]) for r in incoming], [("produces", "exact_static")])
+        link = incoming[0]
+        self.assertEqual((link["counterpart"]["document_id"], link["counterpart"]["document_type"]),
+                         (job["document_id"], "sql_agent"))
+        self.assertTrue(link["counterpart"]["object_id"].startswith("sqlagent:step:"))
+        self.assertTrue(link["counterpart"]["parent_object_id"].startswith("sqlagent:job:"))
+        self.assertIn("the job's refresh (full) targets this model", link["evidence"]["notes"])
+        outgoing = self.rel(job["document_id"])["outgoing"]
+        self.assertEqual([r["counterpart"]["document_id"] for r in outgoing], [pbi["document_id"]])
+        self.assertEqual(self.rel(pbi["document_id"])["generation"]["rule_version"], "rel-rules/2")
+        self.assertEqual(self.c.get("/api/v1/capabilities").json()["relationship_schema_version"], "rel-rules/2")
+
+    def test_an_import_query_against_the_model_is_possible(self):
+        # Power BI resolves an AnalysisServices.Database query only partly (no table named), so never exact
+        self.publish_job()
+        pbi = self.pbi_reading_the_model()
+        incoming = self.rel(pbi["document_id"])["incoming"]
+        self.assertEqual([(r["kind"], r["confidence"]) for r in incoming], [("produces", "possible")])
+        self.assertIn("resolution is partial", incoming[0]["evidence"]["notes"])
+
+    def test_a_different_model_is_not_related(self):
+        self.publish_job()
+        self.assertEqual(self.rel(self.thin_report("OtherModel")["document_id"])["incoming"], [])
+        self.assertEqual(self.rel(self.pbi_reading_the_model("OtherModel")["document_id"])["incoming"], [])
+
+
 class Manual(DerivedTest):
     def link(self, adf, pbi, **kw):
         body = {"source_document_id": adf["document_id"], "source_revision_id": adf["revision_id"],
@@ -244,7 +313,7 @@ class Manual(DerivedTest):
 
 from backends import add_variants  # noqa: E402
 
-add_variants(globals(), (Search, ServerSearch, Detected, Manual))
+add_variants(globals(), (Search, ServerSearch, Detected, SqlAgentLineage, Manual))
 
 if __name__ == "__main__":
     unittest.main()

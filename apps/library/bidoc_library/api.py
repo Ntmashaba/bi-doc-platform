@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from bidoc_contracts import SCHEMA_VERSION, Limits
+from bidoc_relationships import RULE_VERSION
 
 from . import __version__
 from .access import AccessPolicy, Principal, forbidden, load_session_secret
@@ -731,7 +732,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                 "processing": jobs.processing()[0], "worker_status": jobs.processing()[1], "installer_available": bool(publishing.releases()), "search_available": True,
                 "search_mode": search_mode(),
                 "can_manage_relationships": p.can("publish"), "can_administer": p.can("admin"),
-                "relationship_schema_version": "rel-rules/1"}
+                "relationship_schema_version": RULE_VERSION}
 
     # ---- documents --------------------------------------------------------------
 

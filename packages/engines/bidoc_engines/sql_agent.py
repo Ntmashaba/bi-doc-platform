@@ -212,7 +212,11 @@ def _step_bindings(job: dict, step: dict, ref: str, coverage: str, sid: str) -> 
             # flat scalars only: the envelope's invocation_context admits nothing else
             context = {"subsystem": sub,
                        "process_type": op.get("verb") or op.get("kind"),
-                       "process_object": op.get("object")}
+                       "process_object": op.get("object"),
+                       # what the operation is (process, refresh, backup, …) and how the command names the
+                       # database (xmla: by DatabaseID; tmsl: by name): relationship rules need both
+                       "operation_kind": (op.get("kind") or "").lower() or None,
+                       "command_language": op.get("source")}
             objpath = op.get("object")
             if objpath:
                 parts = [p for p in objpath.split("/") if p]
