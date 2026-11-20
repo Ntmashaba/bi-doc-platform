@@ -262,6 +262,26 @@ class SqlAgentLineage(DerivedTest):
         self.assertEqual([(r["kind"], r["confidence"]) for r in incoming], [("produces", "possible")])
         self.assertIn("resolution is partial", incoming[0]["evidence"]["notes"])
 
+    def test_an_upgrade_keeps_the_generation_until_the_next_catalogue_change(self):
+        # Documented upgrade behaviour (docs/relationships.md): derived state is keyed to the catalogue sequence, so
+        # a generation built by older rules stays current, labelled with its own rule_version, until a change.
+        from unittest import mock
+        import bidoc_library.derived as derived
+        with mock.patch.object(derived, "RULE_VERSION", "rel-rules/1"):
+            job, pbi = self.publish_job(), self.thin_report()
+        before = self.rel(pbi["document_id"])["generation"]
+        self.assertEqual(before["rule_version"], "rel-rules/1")
+        again = self.rel(pbi["document_id"])["generation"]                    # a read alone rebuilds nothing
+        self.assertEqual((again["generation_id"], again["rule_version"], again["state"]),
+                         (before["generation_id"], "rel-rules/1", "ready"))
+        self.assertEqual(self.c.get("/api/v1/capabilities").json()["relationship_schema_version"], "rel-rules/2")
+        self.pbi_reading_the_model("OtherModel")                              # the next committed change
+        after = self.rel(pbi["document_id"])["generation"]
+        self.assertNotEqual(after["generation_id"], before["generation_id"])
+        self.assertEqual(after["rule_version"], "rel-rules/2")
+        pinned = self.rel(pbi["document_id"], generation_id=before["generation_id"])["generation"]
+        self.assertEqual((pinned["rule_version"], pinned["state"]), ("rel-rules/1", "pinned"))   # history kept
+
     def test_a_different_model_is_not_related(self):
         self.publish_job()
         self.assertEqual(self.rel(self.thin_report("OtherModel")["document_id"])["incoming"], [])

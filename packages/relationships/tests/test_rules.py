@@ -147,6 +147,31 @@ class SqlAgentSource(unittest.TestCase):
         self.assertEqual(one([agent(ssas(server=None)), pbi(AS_SOURCE)]), [("produces", "possible")])
         self.assertEqual(one([agent(ssas(database="salesmodel")), pbi(AS_SOURCE)]), [("produces", "possible")])
 
+    def test_ports(self):
+        found = detect([agent(ssas()), pbi(dict(AS_SOURCE, port=2383))])                        # report only
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
+        self.assertIn("port known on one side only", found[0]["evidence"]["notes"])
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(AS_SOURCE)]), [("produces", "possible")])          # job only
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(dict(AS_SOURCE, port=2383))]), [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(dict(AS_SOURCE, port=2384))]), [])                  # different
+
+    def test_composite_server_with_a_separate_port(self):
+        # SQL Agent keeps @server as written; a separate, consistent port must not hide the instance
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\TABULAR", port=2383)), pbi(dict(AS_SOURCE, port=2383))]),
+                         [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\TABULAR,2383")), pbi(dict(AS_SOURCE, port=2383))]),
+                         [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\MULTIDIM", port=2383)), pbi(dict(AS_SOURCE, port=2383))]), [])
+
+    def test_non_processing_model_bindings_never_relate(self):
+        # a Synchronize or Restore source arrives as a read on an Analysis Services endpoint
+        source_read = binding("read", dict(system="ssas", server="ASSERVER\\TABULAR", database="SalesModel"))
+        source_read["invocation_context"] = {"subsystem": "ANALYSISCOMMAND", "operation_kind": "synchronize",
+                                             "command_language": "xmla"}
+        self.assertEqual(one([agent(source_read), pbi(AS_SOURCE)]), [])
+        model_write = binding("write", dict(system="ssas", server="ASSERVER\\TABULAR", database="SalesModel"))
+        self.assertEqual(one([agent(model_write), pbi(AS_SOURCE)]), [])
+
     def test_only_processing_produces(self):
         for kind in ("backup", "restore", "alter", "delete", "clearcache", "sync"):
             with self.subTest(kind=kind):

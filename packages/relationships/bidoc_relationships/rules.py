@@ -133,10 +133,14 @@ def _is_as(ep) -> bool:
 
 
 def _as_location(ep: dict):
-    """(host, instance, port), lower-cased; a composite 'host\\instance,port' server is split."""
+    """(host, instance, port), lower-cased. A composite 'host\\instance,port' server is always split; separate
+    instance and port fields fill what the composite form leaves out (the Power BI engine splits, the SQL Agent
+    engine keeps @server as written)."""
     server, instance, port = ep.get("server"), ep.get("instance"), ep.get("port")
-    if server and instance is None and port is None:
-        server, instance, port = _split_server(server)
+    if server:
+        server, split_instance, split_port = _split_server(server)
+        instance = instance if instance is not None else split_instance
+        port = port if port is not None else split_port
     return _lower(server), _lower(instance), port
 
 
@@ -160,6 +164,9 @@ def _compare_as(a: dict, b: dict, context: dict):
     if host_a and host_b:
         if host_a != host_b or inst_a != inst_b or (port_a is not None and port_b is not None and port_a != port_b):
             return None, []
+        if (port_a is None) != (port_b is None):
+            complete = False
+            notes.append("port known on one side only")
     else:
         complete = False
         notes.append("server known on one side only" if (host_a or host_b) else "server not known on either side")
@@ -177,14 +184,16 @@ def _compare_as(a: dict, b: dict, context: dict):
 
 
 def _source_kind(document_type: str, sb: dict):
-    kind = KINDS.get(sb["operation"])
-    if kind is not None:
-        return kind
-    context = sb.get("invocation_context") or {}
-    if (document_type == "sql_agent" and sb["operation"] == "execute" and _is_as(sb["normalized_endpoint"])
-            and context.get("operation_kind") in PROCESSING):
-        return "produces"
-    return None
+    if document_type == "sql_agent" and _is_as(sb["normalized_endpoint"]):
+        # From SQL Agent, an Analysis Services binding counts only when the job processes or refreshes the model.
+        # A Synchronize or Restore source, a backup or any other model command is not a relationship, whatever its
+        # binding operation. Relational reads (a processing operation's out-of-line source) are SQL endpoints and
+        # take the ordinary path below.
+        context = sb.get("invocation_context") or {}
+        if sb["operation"] == "execute" and context.get("operation_kind") in PROCESSING:
+            return "produces"
+        return None
+    return KINDS.get(sb["operation"])
 
 
 def _is_file(ep):
