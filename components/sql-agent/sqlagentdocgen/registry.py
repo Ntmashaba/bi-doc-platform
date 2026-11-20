@@ -185,6 +185,23 @@ def _int(call: Call, name: str) -> Optional[int]:
 # Registry
 
 
+def _apply_job_settings(job: "JobDraft", call: Call) -> None:
+    """The job settings sp_add_job and sp_update_job share; only those the call scripts change."""
+    for p in ("enabled", "start_step_id", "notify_level_eventlog", "notify_level_email", "notify_level_netsend",
+              "notify_level_page", "delete_level"):
+        v = _int(call, p)
+        if v is not None:
+            setattr(job, p, v)
+    for p, attr in (("description", "description"), ("category_name", "category_name"),
+                    ("owner_login_name", "owner_login_name"),
+                    ("notify_email_operator_name", "notify_email_operator_name"),
+                    ("notify_netsend_operator_name", "notify_netsend_operator_name"),
+                    ("notify_page_operator_name", "notify_page_operator_name")):
+        v = _str(call, p)[0]
+        if v:
+            setattr(job, attr, v)
+
+
 class Registry:
     def __init__(self) -> None:
         self.jobs: Dict[str, JobDraft] = {}
@@ -393,25 +410,7 @@ class Registry:
             job.guid = guid
             self.job_by_guid[guid] = key
 
-        job.enabled = _int(call, "enabled") if _int(call, "enabled") is not None else job.enabled
-        job.description = _str(call, "description")[0] or job.description
-        job.start_step_id = _int(call, "start_step_id") or job.start_step_id
-        job.category_name = _str(call, "category_name")[0] or job.category_name
-        job.owner_login_name = _str(call, "owner_login_name")[0] or job.owner_login_name
-        for p in (
-            "notify_level_eventlog", "notify_level_email", "notify_level_netsend",
-            "notify_level_page", "delete_level",
-        ):
-            v = _int(call, p)
-            if v is not None:
-                setattr(job, p, v)
-        for p in (
-            "notify_email_operator_name", "notify_netsend_operator_name",
-            "notify_page_operator_name",
-        ):
-            v = _str(call, p)[0]
-            if v:
-                setattr(job, p, v)
+        _apply_job_settings(job, call)
         job.originating_server = (
             _str(call, "originating_server")[0]
             or _str(call, "originating_server_name")[0]
@@ -486,7 +485,7 @@ class Registry:
             self.sched_by_name.setdefault(norm_ident(name), key)
         self._fill_schedule(sched, call)
         if job is not None:
-            if key not in sched.attached_jobs:
+            if job.key not in sched.attached_jobs:
                 sched.attached_jobs.append(job.key)
             if key not in job.schedule_keys:
                 job.schedule_keys.append(key)
@@ -549,7 +548,7 @@ class Registry:
                     f"schedule (offset {call.pos})"
                 )
             return
-        if sched.key not in sched.attached_jobs:
+        if job.key not in sched.attached_jobs:
             sched.attached_jobs.append(job.key)
         if sched.key not in job.schedule_keys:
             job.schedule_keys.append(sched.key)
@@ -573,15 +572,12 @@ class Registry:
         job = self._resolve_job(_job_ref(call), source_file, call.pos)
         if job is None:
             return
-        v = _int(call, "enabled")
-        if v is not None:
-            job.enabled = v  # applied in script order: last write wins
+        # Every setting sp_add_job takes, applied in script order (last write wins). SSMS's "Script Job as > CREATE"
+        # leaves @start_step_id out of sp_add_job and sets it here, after the steps exist.
+        _apply_job_settings(job, call)
         new_name = _str(call, "new_name")[0]
         if new_name:
             self._rename_job(job, new_name)
-        owner = _str(call, "owner_login_name")[0]
-        if owner:
-            job.owner_login_name = owner
 
     def _rename_job(self, job: JobDraft, new_name: str) -> None:
         """sp_update_job @new_name: keep the name index consistent.
@@ -660,7 +656,28 @@ class Registry:
         if sid == 0:
             job.steps.clear()
         elif sid is not None:
+            # msdb renumbers the later steps and updates the steps that reference the deleted one (documented for
+            # sp_delete_jobstep): later steps move up one and jumps to them follow. What a jump *to the deleted step*
+            # becomes is not documented, so it is shown as the plain quit (success / failure) and a warning says so.
             job.steps = [s for s in job.steps if s.step_id != sid]
+            for s in job.steps:
+                if s.step_id is not None and s.step_id > sid:
+                    s.step_id -= 1
+                for action, target, quit_code in (("on_success_action", "on_success_step_id", 1),
+                                                  ("on_fail_action", "on_fail_step_id", 2)):
+                    goto = getattr(s, target)
+                    if goto == sid and getattr(s, action) == 4:
+                        setattr(s, action, quit_code)
+                        setattr(s, target, None)
+                        self.warnings.append(
+                            f"{source_file}: step '{s.step_name}' of job '{job.name or job.key}' jumped to step "
+                            f"{sid}, which the script deletes; shown as quit (offset {call.pos})")
+                    elif goto is not None and goto > sid:
+                        setattr(s, target, goto - 1)
+            if job.start_step_id is not None and job.start_step_id > sid:
+                job.start_step_id -= 1
+            elif job.start_step_id == sid:
+                job.start_step_id = None          # the job then starts at its first step
 
     def _on_sp_delete_schedule(self, call: Call, source_file: str) -> None:
         sched = self._resolve_schedule(_schedule_ref(call), source_file, call.pos)

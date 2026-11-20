@@ -135,11 +135,15 @@ def test_coverage_only_sanitizes_load_errors(tmp_path, capsys):
     assert "job.sql: could not be read" in out
 
 
-def test_full_mode_keeps_error_detail(tmp_path, capsys):
+def test_full_mode_prints_error_detail_to_the_console_only(tmp_path, capsys):
+    # The payload is what the HTML, Word, CSV and agent outputs render and what gets published, so it carries the
+    # public form; the full reason (path, OS error) is printed to this console's stderr for local diagnosis.
     secret = tmp_path / "Customer Payroll"
     secret.mkdir()
     os.symlink(secret / "missing.sql", secret / "job.sql")
     rc = cli.main([str(tmp_path)])
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
     assert rc == 0
-    assert "Customer Payroll" in out  # full payload keeps local detail
+    assert "Customer Payroll" not in captured.out and str(tmp_path) not in captured.out
+    assert '"job.sql: could not be read"' in captured.out          # the file name only: folder names can be sensitive
+    assert "Customer Payroll" in captured.err

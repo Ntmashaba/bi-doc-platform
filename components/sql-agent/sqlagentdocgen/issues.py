@@ -74,6 +74,15 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
         ))
 
     for job in registry.jobs.values():
+        if job.created and job.deleted:
+            label = job.name or job.key
+            issues.append(Issue(
+                "info", "job-deleted",
+                f"Job '{label}' is created and then deleted by '{job.source_file}'; it is not documented as a job "
+                f"that exists after the script runs.",
+                job=label,
+            ))
+            continue
         if not job.created:
             issues.append(Issue(
                 "info", "job-not-created",

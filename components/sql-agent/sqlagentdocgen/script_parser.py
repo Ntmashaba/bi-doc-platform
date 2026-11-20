@@ -221,7 +221,7 @@ class _VarTracker:
 
     # -- statement handlers (i points past the leading keyword) -------------
 
-    def declare(self, toks: List[Tok], i: int, n: int) -> int:
+    def declare(self, toks: List[Tok], i: int, n: int, conditional: bool = False) -> int:
         while i < n:
             if toks[i].kind != "var":
                 break
@@ -248,7 +248,10 @@ class _VarTracker:
             if assigned:
                 parts, i = _collect_rhs(toks, i, n)
                 lit = _literal_of(parts)
-                if lit is not None:
+                if conditional:
+                    # under IF / ELSE the value may or may not be assigned: it is not statically known
+                    self.values.pop(var, None)
+                elif lit is not None:
                     self.values[var] = lit
                 else:
                     self.values.pop(var, None)
@@ -258,7 +261,7 @@ class _VarTracker:
             break
         return i
 
-    def set(self, toks: List[Tok], i: int, n: int) -> int:
+    def set(self, toks: List[Tok], i: int, n: int, conditional: bool = False) -> int:
         if (
             i + 1 < n
             and toks[i].kind == "var"
@@ -267,7 +270,11 @@ class _VarTracker:
         ):
             var = toks[i].text.lower()
             parts, j = _collect_rhs(toks, i + 2, n)
-            self._assign(var, parts)
+            if conditional:
+                # IF … SET @v = …: the variable holds either value afterwards, so it is not statically known
+                self.values.pop(var, None)
+            else:
+                self._assign(var, parts)
             return j
         return i
 
@@ -333,8 +340,8 @@ class _VarTracker:
         if not (j < n and toks[j].kind == "word" and toks[j].text.upper() == "FROM"):
             return i
         j += 1
-        if toks[j].kind not in ("word", "ident"):
-            return i
+        if j >= n or toks[j].kind not in ("word", "ident"):
+            return i                                   # a script cut off after FROM
         parts: List[str] = [toks[j].text]
         j += 1
         while (
@@ -351,13 +358,16 @@ class _VarTracker:
             return i
         j += 1
         if not (
-            toks[j].kind in ("word", "ident")
+            j + 1 < n
+            and toks[j].kind in ("word", "ident")
             and toks[j].text.lower() == "name"
             and toks[j + 1].kind == "sym"
             and toks[j + 1].text == "="
         ):
             return i
         j += 2
+        if j >= n:
+            return i                                   # a script cut off after WHERE name =
         name: Optional[str] = None
         t = toks[j]
         if t.kind == "string":
@@ -541,6 +551,7 @@ def parse_calls(
     pending_if = False
     cond_stack: List[bool] = []  # BEGIN..END blocks: True = conditional block
     depth = 0  # parenthesis depth — IF (SELECT ...) bodies are not statements
+    case_depth = 0  # CASE … ELSE … END is an expression: its ELSE and END are not control flow
     while i < n:
         t = toks[i]
         if t.kind == "sym" and t.text == "(":
@@ -549,7 +560,13 @@ def parse_calls(
             depth = max(0, depth - 1)
         elif t.kind == "word":
             w = t.text.upper()
-            if w == "IF":
+            if w == "CASE":
+                case_depth += 1
+            elif w == "ELSE" and case_depth:
+                pass
+            elif w == "END" and case_depth:
+                case_depth -= 1
+            elif w == "IF":
                 pending_if = True
             elif w == "ELSE":
                 pending_if = True
@@ -560,12 +577,14 @@ def parse_calls(
                 if cond_stack:
                     cond_stack.pop()
             elif w == "DECLARE" and depth == 0:
+                conditional = pending_if or any(cond_stack)
                 pending_if = False
-                i = tracker.declare(toks, i + 1, n)
+                i = tracker.declare(toks, i + 1, n, conditional)
                 continue
             elif w == "SET" and depth == 0:
+                conditional = pending_if or any(cond_stack)
                 pending_if = False
-                ni = tracker.set(toks, i + 1, n)
+                ni = tracker.set(toks, i + 1, n, conditional)
                 if ni != i + 1:
                     i = ni
                     continue

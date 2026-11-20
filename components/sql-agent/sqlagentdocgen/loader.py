@@ -47,6 +47,18 @@ class LoadResult:
     files: List[LoadedFile] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)  # paths, as given
     errors: List[LoadError] = field(default_factory=list)
+    root: Optional[Path] = None  # the selected folder, or a selected file's folder
+
+    def relative(self, path) -> str:
+        """A file's name in everything the tool writes: its path below the selection (dev/jobs.sql), never the
+        machine's full path. Two files with one name in different folders stay apart."""
+        path = Path(path)
+        if self.root is not None:
+            try:
+                return path.relative_to(self.root).as_posix()
+            except ValueError:
+                pass
+        return path.name
 
 
 def _detect_encoding(head: bytes) -> str:
@@ -91,7 +103,7 @@ def load_file(path: Path) -> Optional[LoadedFile]:
 
 def load_path(target: Path) -> LoadResult:
     """Load a single .sql file or every .sql file in a folder (recursively)."""
-    result = LoadResult()
+    result = LoadResult(root=target if target.is_dir() else target.parent)
     if target.is_file():
         try:
             loaded = load_file(target)

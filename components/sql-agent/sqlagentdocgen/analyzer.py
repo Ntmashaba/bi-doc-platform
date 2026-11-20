@@ -131,7 +131,7 @@ def _analyse_command(step: StepDraft, coverage: Coverage) -> Dict[str, Any]:
 
 def scope_key(jobs: List[JobDraft]) -> str:
     """Selection-only scope: hash of canonical sorted job identities."""
-    identities = sorted(j.identity for j in jobs if j.created)
+    identities = sorted(j.identity for j in jobs if j.created and not j.deleted)
     digest = hashlib.sha256("|".join(identities).encode("utf-8")).hexdigest()
     return "selection-" + digest[:16]
 
@@ -235,15 +235,24 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
     registry = Registry()
     coverage = Coverage()
     coverage.input_files = len(load.files)
-    coverage.skipped_files = list(load.skipped)
+    coverage.skipped_files = [load.relative(p) for p in load.skipped]
     coverage.load_errors = len(load.errors)
 
+    analysis_errors: List[str] = []
     for loaded in load.files:
-        source_name = loaded.path.name
-        for batch_text, offset in statements(loaded.text):
-            bindings: List[Tuple[int, str, str]] = []
-            calls = parse_calls(lex(batch_text), bindings_out=bindings)
-            registry.consume(calls, source_name, bindings=bindings)
+        source_name = load.relative(loaded.path)       # dev/jobs.sql and prod/jobs.sql are different files
+        previous = None
+        try:
+            for batch_text, offset in statements(loaded.text):
+                if (batch_text, offset) == previous:
+                    continue        # GO n repeats the same batch; running it again re-creates nothing new
+                previous = (batch_text, offset)
+                bindings: List[Tuple[int, str, str]] = []
+                calls = parse_calls(lex(batch_text), bindings_out=bindings)
+                registry.consume(calls, source_name, bindings=bindings)
+        except Exception:  # noqa: BLE001 - one unreadable script must not stop the others; it is reported
+            analysis_errors.append(f"{source_name}: could not be analysed completely")
+            coverage.load_errors += 1
     coverage.unrecognised_statements = len(registry.unrecognised)
     coverage.unparsed_steps = registry.unparsed_steps
 
@@ -255,7 +264,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
 
     jobs_payload: List[Dict[str, Any]] = []
     for job in sorted(
-        (j for j in registry.jobs.values() if j.created),
+        (j for j in registry.jobs.values() if j.created and not j.deleted),
         key=lambda j: (j.name or j.key).lower(),
     ):
         steps_payload: List[Dict[str, Any]] = []
@@ -341,6 +350,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         "executionGraphs": build_graphs(jobs_payload),
         "processing": processing,
         "issues": [i.as_dict() for i in found_issues],
-        "warnings": registry.warnings + [e.detail for e in load.errors],
+        # the public form: a file name and a generic reason, never a full path or a raw OS error (detail stays local)
+        "warnings": registry.warnings + analysis_errors + [e.public for e in load.errors],
         "coverage": coverage.as_dict(),
     }

@@ -166,6 +166,10 @@ def main(argv=None) -> int:
 
     load = load_path(target)
     analysis = analyse(load)
+    if not args.coverage_only:
+        # the full reason (path, OS error) is for this console only; the document carries the public form
+        for err in load.errors:
+            print(f"warning: {err.detail}", file=sys.stderr)
 
     if args.coverage_only:
         cov = analysis["coverage"]
