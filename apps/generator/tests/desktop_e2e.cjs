@@ -1,5 +1,5 @@
 /* Browser acceptance for the generator desktop UI (served without a window).
-   Run through check_desktop_browser.py. Env: APP_URL, FACTORY, PBIX, MISSING, OUT_DIR; CHROMIUM_PATH optional. */
+   Run through check_desktop_browser.py. Env: APP_URL, FACTORY, PBIX, MISSING, OUT_DIR, JOBS, JOBS_DIR; CHROMIUM_PATH optional. */
 const { chromium } = require("playwright");
 const assert = require("assert");
 
@@ -17,6 +17,18 @@ const step = (name) => console.log("  ok " + name);
   await page.getByRole("heading", { name: "Prerequisites" }).waitFor();
   await page.getByText("never need Power BI Desktop or pbi-tools").waitFor();
   step("prerequisites per input type");
+
+  // SQL Agent inputs read as words, not as the kind strings agent_script / agent_folder.
+  await page.getByRole("cell", { name: "SQL Agent job script", exact: true }).waitFor();
+  await page.getByRole("cell", { name: "SQL Agent job scripts (folder)", exact: true }).waitFor();
+  assert.equal(await page.getByRole("cell", { name: /^agent_(script|folder)$/ }).count(), 0);
+  await page.goto(URL + "/#/");
+  await page.getByLabel("Inputs").fill([process.env.JOBS, process.env.JOBS_DIR].join("\n"));
+  await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
+  await page.getByRole("button", { name: "Review inputs" }).click();
+  await page.getByRole("cell", { name: "SQL Agent job script", exact: true }).waitFor();
+  await page.getByRole("cell", { name: "SQL Agent job scripts (folder)", exact: true }).waitFor();
+  step("SQL Agent inputs have readable labels in prerequisites and review");
 
   // A folder that is not itself a project is searched; the review lists what it holds, with paths that tell files apart.
   await page.goto(URL + "/#/");

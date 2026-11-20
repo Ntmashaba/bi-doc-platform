@@ -55,7 +55,7 @@ const step = (name) => console.log("  ok " + name);
   const pbiRev = await page.evaluate(async (id) => (await (await fetch(`/api/v1/documents/${id}`)).json()).current_revision_id, process.env.PBI_DOC);
   await page.goto(`${URL}/#/view/${process.env.PBI_DOC}/${pbiRev}`);
   const related = page.getByRole("complementary", { name: "Related documentation" });
-  await related.getByText("Upstream: pipelines that write this").waitFor();
+  await related.getByText("Upstream: pipelines and jobs that write or refresh this").waitFor();
   assert.match(await related.innerText(), /Exact \(static evidence\)/);
   step("Power BI source shows its exact upstream pipeline");
 
@@ -72,7 +72,7 @@ const step = (name) => console.log("  ok " + name);
   // Back restores the Power BI view and panel
   await page.goBack();
   await page.waitForURL(new RegExp(`#/view/${process.env.PBI_DOC}/`));
-  await page.getByRole("complementary", { name: "Related documentation" }).getByText("Upstream: pipelines that write this").waitFor();
+  await page.getByRole("complementary", { name: "Related documentation" }).getByText("Upstream: pipelines and jobs that write or refresh this").waitFor();
   step("Back restores the origin");
 
   // Object selection inside the Power BI viewer: a measure

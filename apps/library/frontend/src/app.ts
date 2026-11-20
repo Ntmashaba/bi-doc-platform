@@ -800,7 +800,7 @@ async function relatedPanel(panel: HTMLElement, id: string, rev: string, objectI
     pinned: `Evidence as computed ${date(g.computed_at)} for this version (not current evidence).`,
     evidence_unavailable: "No relationship evidence is available for this version." };
   const groups: Array<[string, Link[]]> = [
-    ["Upstream: pipelines that write this", rel.incoming.filter((l) => l.kind === "produces")],
+    ["Upstream: pipelines and jobs that write or refresh this", rel.incoming.filter((l) => l.kind === "produces")],
     ["Downstream: reports that read this", rel.outgoing.filter((l) => l.kind === "produces")],
     ["Other readers", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "reads")],
     ["Deletions", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "deletes")],

@@ -16,7 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "packages" / "engines" / "tests"))
-from fixtures import adf_factory  # noqa: E402
+from fixtures import adf_factory, sql_agent_jobs  # noqa: E402
 
 from bidoc_generator.batch import Runner  # noqa: E402
 from bidoc_generator.desktop.app import create_app  # noqa: E402
@@ -50,7 +50,11 @@ def main():
             (folder / name).parent.mkdir(parents=True, exist_ok=True)
             (folder / name).write_bytes(b"PK")
         adf_factory(folder / "Factory")
+        jobs = sql_agent_jobs(tmp / "agent" / "nightly.sql")                 # one job script, and a folder of them
+        jobs_dir = tmp / "Agent Jobs"
+        sql_agent_jobs(jobs_dir / "nightly.sql")
         env = dict(os.environ, APP_URL=f"http://127.0.0.1:{port}", FACTORY=str(adf_factory(tmp / "factory")),
+                   JOBS=str(jobs), JOBS_DIR=str(jobs_dir),
                    MISSING=str(tmp / "missing-factory"), PBIX=str(pbix), FOLDER=str(folder), OUT_DIR=str(tmp / "out"),
                    NODE_PATH=str(ROOT / "apps" / "library" / "frontend" / "node_modules"))
         if Path("/opt/pw-browsers/chromium").exists() and "CHROMIUM_PATH" not in env:

@@ -670,7 +670,7 @@ async function relatedPanel(panel, id, rev, objectId, generation, objects) {
         evidence_unavailable: "No relationship evidence is available for this version."
     };
     const groups = [
-        ["Upstream: pipelines that write this", rel.incoming.filter((l) => l.kind === "produces")],
+        ["Upstream: pipelines and jobs that write or refresh this", rel.incoming.filter((l) => l.kind === "produces")],
         ["Downstream: reports that read this", rel.outgoing.filter((l) => l.kind === "produces")],
         ["Other readers", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "reads")],
         ["Deletions", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "deletes")],

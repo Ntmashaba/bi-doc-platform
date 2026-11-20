@@ -53,7 +53,8 @@ const STATE_LABEL = { queued: "Queued", validating: "Validating", extracting: "E
     failed: "Failed", cancelled: "Cancelled", interrupted: "Interrupted" };
 const KIND_LABEL = { abf: "Analysis Services Tabular backup", pbix: "Power BI PBIX", pbip: "Power BI project", tmdl: "Power BI model (TMDL)",
     bim: "Power BI model (.bim)", pbir: "Power BI report (PBIR)", extracted: "pbi-tools extract",
-    adf_git: "Data Factory Git folder", adf_arm: "Data Factory ARM export", adf_resources: "Data Factory resource JSON" };
+    adf_git: "Data Factory Git folder", adf_arm: "Data Factory ARM export", adf_resources: "Data Factory resource JSON",
+    agent_script: "SQL Agent job script", agent_folder: "SQL Agent job scripts (folder)" };
 const ACTIVE = new Set(["queued", "validating", "extracting", "analysing", "rendering"]);
 const RETRYABLE = new Set(["failed", "cancelled", "interrupted"]);
 let timer;
@@ -155,7 +156,9 @@ async function startView() {
     mount(h("h1", {}, "New batch"), h("div", { class: "card" }, h("label", { for: "inputs" }, "Inputs"), h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
         ".pbix and .abf files, .bim models and project folders; a folder you add that holds only Data Factory resource JSON " +
-        "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
+        "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. " +
+        "A SQL Server Agent job script (.sql from \u201cScript Job as \u2192 CREATE To\u201d) is read when you add the file itself, and a folder you add " +
+        "that holds job scripts is one SQL Agent input; other .sql files are not inputs. A .pbip file alone is only a pointer: choose its project folder."), inputs, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"), h("button", { type: "button", onclick: async () => add(await bridge.pick_folder()) }, "Add folder…")) : null, h("label", { for: "output" }, "Output folder"), output, bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
             const f = await bridge.pick_folder();
             if (f[0]) {
                 output.value = f[0];
@@ -283,7 +286,7 @@ async function historyView() {
 }
 async function prerequisitesView() {
     const d = await api("/api/doctor");
-    mount(h("h1", {}, "Prerequisites"), h("p", { class: "muted" }, d.platform), h("div", { class: "card" }, h("table", {}, h("tbody", {}, ...d.checks.map(c => h("tr", {}, h("td", {}, c.check), h("td", { class: c.ok ? "s-completed" : "s-failed" }, c.ok ? "Found" : "Missing"), h("td", {}, c.detail, c.fix ? h("div", { class: "muted small" }, c.fix) : null)))))), h("h2", {}, "What this machine can document"), h("div", { class: "card" }, h("table", {}, h("tbody", {}, ...Object.entries(d.inputs).map(([k, r]) => h("tr", {}, h("td", {}, KIND_LABEL[k] || k), h("td", { class: r.available ? "s-completed" : "s-failed" }, r.available ? "Ready" : "Unavailable"), h("td", { class: "muted small" }, r.reason || "")))))), h("p", { class: "muted small" }, "PBIP, model and Data Factory inputs never need Power BI Desktop or pbi-tools."));
+    mount(h("h1", {}, "Prerequisites"), h("p", { class: "muted" }, d.platform), h("div", { class: "card" }, h("table", {}, h("tbody", {}, ...d.checks.map(c => h("tr", {}, h("td", {}, c.check), h("td", { class: c.ok ? "s-completed" : "s-failed" }, c.ok ? "Found" : "Missing"), h("td", {}, c.detail, c.fix ? h("div", { class: "muted small" }, c.fix) : null)))))), h("h2", {}, "What this machine can document"), h("div", { class: "card" }, h("table", {}, h("tbody", {}, ...Object.entries(d.inputs).map(([k, r]) => h("tr", {}, h("td", {}, KIND_LABEL[k] || k), h("td", { class: r.available ? "s-completed" : "s-failed" }, r.available ? "Ready" : "Unavailable"), h("td", { class: "muted small" }, r.reason || "")))))), h("p", { class: "muted small" }, "PBIP, model, Data Factory and SQL Agent inputs never need Power BI Desktop or pbi-tools."));
 }
 async function route() {
     stopPolling();
