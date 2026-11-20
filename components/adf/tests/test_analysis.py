@@ -332,6 +332,39 @@ class SqlReader(unittest.TestCase):
         self.assertEqual(h("UPDATE t SET a=1 FROM dbo.T t; EXEC dbo.usp_X"),
                          (["dbo.T"], ["dbo.T"], ["dbo.usp_X"]))
 
+    def test_database_with_the_default_schema(self):
+        # db..table: the schema is left out, not the database; the empty part is kept
+        from adfdocgen.sql_harvest import harvest_sql as h
+        self.assertEqual(h("SELECT * FROM Sales..FactSales"), (["Sales..FactSales"], [], []))
+        self.assertEqual(h("SELECT * FROM [Sales]..[Fact Sales]"), (["Sales..[Fact Sales]"], [], []))
+        self.assertEqual(h("INSERT INTO SRV.Sales..T SELECT 1; EXEC Sales..usp_Load"),
+                         ([], ["SRV.Sales..T"], ["Sales..usp_Load"]))
+        self.assertEqual(h("SELECT * FROM Sales.dbo.FactSales"), (["Sales.dbo.FactSales"], [], []))
+
+    def test_split_table_is_positional(self):
+        from adfdocgen.common import split_table
+        self.assertEqual(split_table("Sales..FactSales"), (None, "FactSales"))
+        self.assertEqual(split_table("[Sales]..[Fact Sales]"), (None, "Fact Sales"))
+        self.assertEqual(split_table("Sales.dbo.FactSales"), ("dbo", "FactSales"))
+        self.assertEqual(split_table("dbo.T"), ("dbo", "T"))
+        self.assertEqual(split_table("T"), (None, "T"))
+        self.assertEqual(split_table("[a.b].T"), ("a.b", "T"))
+
+
+class DefaultSchemaQuery(unittest.TestCase):
+    def test_query_naming_its_database_with_the_default_schema(self):
+        f = Factory(
+            sql_ls("Prod", "prod.sql.example", "SalesDW"),
+            table_ds("Src", "Prod", "dbo", "Sales"),
+            table_ds("Dst", "Prod", "dbo", "Out"),
+            pipeline("PL", copy("Q", "Src", "Dst", source={
+                "type": "AzureSqlSource", "sqlReaderQuery": "SELECT * FROM ArchiveDW..Orders"})),
+        )
+        orders = f.ents[f.activity("PL", "Q")["reads"][0]]
+        self.assertEqual((orders["endpoint"]["server"], orders["endpoint"]["database"],
+                          orders["endpoint"]["schema"], orders["endpoint"]["object"]),
+                         ("prod.sql.example", "ArchiveDW", None, "Orders"))
+
 
 if __name__ == "__main__":
     unittest.main()

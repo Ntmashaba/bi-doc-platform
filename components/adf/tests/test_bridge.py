@@ -45,6 +45,8 @@ class Bridge(unittest.TestCase):
             src("Archive port", "SQL Server", "contoso-archive.database.windows.net,1433", "ArchiveDW", "dbo", "FactSales"),
             src("Other port", "SQL Server", "contoso-archive.database.windows.net,1444", "ArchiveDW", "dbo", "FactSales"),
             src("Case only", "SQL Server", "contoso-archive.database.windows.net", "ArchiveDW", "dbo", "FACTSALES"),
+            src("Archive native db..", "SQL Server", "contoso-archive.database.windows.net", "ArchiveDW",
+                sql="SELECT * FROM ArchiveDW..FactSales"),
             src("Folder case", "Azure Blob Storage",
                 "https://contosolake.blob.core.windows.net/curated/SALES/orders_enriched/part-0.parquet"),
         ]}
@@ -74,6 +76,10 @@ class Bridge(unittest.TestCase):
         self.assertEqual(self.rows["Other port"]["match"], "none")
         # Case-only differences are not proven equal (collation unknown).
         self.assertEqual(self.rows["Case only"]["match"], "possible")
+        # db..table leaves the schema out: matched on the object, so possible at most (was no match: the
+        # database was read as the schema).
+        self.assertEqual(self.rows["Archive native db.."]["match"], "possible")
+        self.assertEqual(self.rows["Archive native db.."]["producers"][0]["pipeline"], "PL_Transform_Sales")
         # Paths keep their case: SALES is not sales.
         self.assertEqual(self.rows["Folder case"]["match"], "none")
         # producers carry the triggers that start them

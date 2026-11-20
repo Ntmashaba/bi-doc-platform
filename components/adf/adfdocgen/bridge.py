@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
-from .common import SQL_SERVER_SYSTEMS, _norm_host, effective_port
+from .common import SQL_SERVER_SYSTEMS, _norm_host, effective_port, name_parts
 from .details import json_script
 from .sql_harvest import harvest_sql
 
@@ -183,8 +183,9 @@ def build_bridge(adf_path, pbi_path, output) -> Path:
             if s.get("object") and not file_like:
                 targets.append(("table", _name(s.get("schema"), s.get("object"))))
             for t in harvest_sql(s.get("sql") or "")[0]:
-                parts = [x.strip("[]\"`") for x in t.split(".")]
-                targets.append(("native query", ".".join(parts[-2:])))
+                parts = name_parts(t)
+                # schema.object; with the schema left out (db..table) just the object, matched as such
+                targets.append(("native query", ".".join(p for p in parts[-2:] if p)))
             hits = []
             for how, name in targets:
                 hits += [(a, level, how) for a, level in _match_table(host, db, name, adf, port, port_known)]

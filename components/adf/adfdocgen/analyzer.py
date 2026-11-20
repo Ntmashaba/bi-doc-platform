@@ -42,7 +42,7 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .common import arm_parameter, obj, lst, as_text, squeeze, is_dynamic, canon_table, _norm_host, physical_key, split_table, EMPTY_ENDPOINT  # noqa: F401
+from .common import arm_parameter, obj, lst, as_text, squeeze, is_dynamic, canon_table, _norm_host, physical_key, split_table, name_parts, EMPTY_ENDPOINT  # noqa: F401
 from .activities import ACTIVITY_CATALOG, OPAQUE_TYPES  # noqa: F401
 from .resources import (describe_dataset, describe_linked_service, describe_trigger,  # noqa: F401
                         friendly_system, is_sql_source, sql_names_dynamic, bind_dataset_params)
@@ -220,11 +220,11 @@ class Analyzer(PipelineMixin, DataflowMixin, GraphMixin, ChecksMixin, OutputMixi
         base = {k: (context or {}).get(k) for k in ("system", "server", "port", "database", "url")}
 
         def endpoint(name):
-            parts = [x for x in re.split(r"\.(?![^\[]*\])", name) if x]
+            parts = name_parts(name)
             ep = {**EMPTY_ENDPOINT, **base,
                   "schema": split_table(name)[0], "object": split_table(name)[1]}
-            if len(parts) >= 3:     # database named in the query wins
-                ep["database"] = parts[-3].strip("[]\"`")
+            if len(parts) >= 3 and parts[-3]:     # database named in the query wins (Sales.dbo.T, Sales..T)
+                ep["database"] = parts[-3]
             return ep
 
         rk = [self.node("table", t, read_role, ref, endpoint=endpoint(t), scope=scope)

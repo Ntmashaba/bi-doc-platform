@@ -112,6 +112,17 @@ def test_cross_database_names_bind_to_their_own_database(tmp_path):
     assert entities["sql/master/dbo.staged"]["database"] == "master"
 
 
+def test_database_with_the_default_schema(tmp_path):
+    # the shared harvester keeps the empty part of Sales..FactSales: database Sales, schema left out
+    script = ("EXEC msdb.dbo.sp_add_job @job_name = N'Load'\n"
+              "EXEC msdb.dbo.sp_add_jobstep @job_name = N'Load', @step_name = N'load', @database_name = N'master',\n"
+              "    @command = N'INSERT INTO Sales..FactSales SELECT 1'\n")
+    p = analysed(tmp_path, {"load.sql": script})
+    assert p["jobs"][0]["steps"][0]["sql"]["writes"] == ["Sales..FactSales"]
+    assert [e["endpoint"] for e in p["entities"]] == [
+        {"system": "sql", "database": "Sales", "schema": None, "object": "FactSales"}]
+
+
 def test_if_else_alternatives_in_one_file_are_one_job(tmp_path):
     # the shape of First Responder Kit's sp_AllNightLog_Setup: one sp_add_job per branch, exactly one runs
     script = ("IF @enable = 1\n    BEGIN\n    EXEC msdb.dbo.sp_add_job @job_name = N'Poll', @enabled = 1\n    END\n"

@@ -138,13 +138,27 @@ def physical_key(kind: str, label: str, endpoint: Optional[dict], scope: str = "
 
 
 def split_table(name: str) -> Tuple[Optional[str], Optional[str]]:
-    """schema, object from a possibly bracketed multi-part table name."""
-    parts = [p.strip().strip("[]\"`") for p in re.split(r"\.(?![^\[]*\])", name or "") if p.strip()]
+    """schema, object from a possibly bracketed multi-part table name.
+
+    Parts are positional: in 'Sales..FactSales' the schema is left out (the default), so it is None, not 'Sales'.
+    """
+    parts = name_parts(name)
     if not parts:
         return None, None
     if len(parts) == 1:
         return None, parts[0]
-    return parts[-2], parts[-1]
+    return parts[-2] or None, parts[-1]
+
+
+def name_parts(name: str) -> List[str]:
+    """The dot-separated parts of a possibly bracketed name, delimiters removed. An empty interior part
+    (db..table) is kept as ''; leading and trailing empty parts are dropped."""
+    parts = [p.strip().strip("[]\"`") for p in re.split(r"\.(?![^\[]*\])", name or "")]
+    while parts and not parts[0]:
+        parts.pop(0)
+    while parts and not parts[-1]:
+        parts.pop()
+    return parts
 
 
 EMPTY_ENDPOINT = {"system": None, "server": None, "port": None, "database": None, "schema": None,
