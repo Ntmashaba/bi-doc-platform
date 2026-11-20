@@ -777,3 +777,13 @@ Each finding reproduced on `0b1b325` first; compared against the pushed engine w
   exception type and message (`IndexError: …`) for debugging.
 - Tests: `test_review_round4.py` (27; 16 fail on the previous engine, the others are the forms that must keep working).
   Corpus unchanged; every suite green.
+
+### 2026-11-21 — SQL Agent review round 5 (follow-ups)
+
+- PowerShell `-Password <value>` / `-Password:<value>` (`Invoke-Sqlcmd`, for one) was not redacted; a literal value now
+  is, a `$variable` and a following parameter are not, and `-PasswordFile` / `-PasswordNeverExpires` are untouched.
+- A glued `-PSecret` on a continuation line (a sqlcmd / bcp / osql call split with a PowerShell backtick or a cmd
+  caret) was not redacted: the continued lines now belong to the tool's line.
+- The platform's scope warning said "file(s) could not be read" for scripts that could not be analysed too; it now
+  says "could not be read or analysed".
+- Tests: `test_review_round5.py` (11) and a scope-warning test; 7 fail on the previous code. Corpus unchanged.

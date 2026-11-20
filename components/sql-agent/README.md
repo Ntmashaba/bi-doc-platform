@@ -31,8 +31,9 @@ Every rendered output passes through the redaction safety net (`redact.py`)
 before it is written: passwords and keys as `name = value` in connection strings and T-SQL (including `N'…'`
 literals and parameters such as `@rmtpassword`; an unquoted value runs to `;` in a connection string and to the
 next space in T-SQL, and `NULL` is not a secret), URL credentials and SAS tokens, bearer tokens, `-P <value>`, and
-`-P<value>` on a line that runs `sqlcmd`, `bcp` or `osql` (elsewhere `-Path`, `-Port` and `-PassThru` are ordinary
-PowerShell parameters, and `Invoke-Sqlcmd` is a cmdlet), `dtexec /De[crypt]`, PowerShell `ConvertTo-SecureString '…' -AsPlainText`, and backup passwords
+`-P<value>` on a line that runs `sqlcmd`, `bcp` or `osql`, continuation lines included (elsewhere `-Path`, `-Port`
+and `-PassThru` are ordinary PowerShell parameters, and `Invoke-Sqlcmd` is a cmdlet), a PowerShell
+`-Password <literal>` (`Invoke-Sqlcmd`, for one), `dtexec /De[crypt]`, PowerShell `ConvertTo-SecureString '…' -AsPlainText`, and backup passwords
 (XMLA `<Password>`, TMSL `"password"`) are replaced with `[redacted]`. A `@variable` that holds a secret is left
 as it is: it names where the secret is. Redaction counts only what it actually replaced.
 
