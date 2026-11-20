@@ -68,7 +68,7 @@ $code = Run-Setup $Installer (Join-Path $Work "install.log")
 Check "silent install exits 0" ($code -eq 0) "exit $code"
 $v1 = Installed-Version
 Check "registered for uninstall (per user)" ([bool]$v1) "version $v1"
-foreach ($f in "bidoc.exe", "BI Documentation Generator.exe", "unins000.exe") {
+foreach ($f in "bidoc.exe", "BI Documentation Generator.exe", "unins000.exe", "LICENSE.txt") {
   Check "installed $f" (Test-Path (Join-Path $App $f))
 }
 $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\BI Documentation Generator"
@@ -83,6 +83,7 @@ $r = Bidoc @("doctor", "--json")
 $doctor = $r.text | ConvertFrom-Json
 Check "doctor: PBIP ready" ([bool]$doctor.inputs.pbip.available)
 Check "doctor: ADF ready" ([bool]$doctor.inputs.adf_git.available)
+Check "doctor: SQL Agent ready" ([bool]$doctor.inputs.agent_script.available -and [bool]$doctor.inputs.agent_folder.available)
 $pbix = $doctor.inputs.pbix
 Check "doctor: PBIX readiness explained" ([bool]$pbix.available -or [bool]$pbix.reason) $(if ($pbix.available) { "ready" } else { $pbix.reason })
 $portable = @($doctor.checks | Where-Object { $_.check -eq "pbixray" })[0]
@@ -102,6 +103,16 @@ $docs = @(Get-ChildItem $out -Filter *.shared.html -ErrorAction SilentlyContinue
 Check "shared documents written with a publication manifest" ($docs.Count -eq 2 -and ($docs | Where-Object { (Get-Content $_.FullName -Raw) -match 'id="pbidoc-manifest"' }).Count -eq 2) "$($docs.Count) file(s)"
 $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "pbip", "--source", "$Work\inputs\Sales", "--output-dir", "$Work\out-local")
 Check "local generation of a PBIP project" ($r.code -eq 0) "exit $($r.code)"
+# SQL Agent: a synthetic SSMS-scripted job (verify-inputs\jobs, names no real system). The shared document goes through the
+# trusted projection, so the step command is withheld while the target server stays.
+$r = Bidoc @("generate", "--engine", "sql_agent", "--kind", "agent_script", "--source", "$Work\inputs\jobs\nightly.sql", "--output-dir", "$Work\out-agent", "--profile", "shared", "--json")
+$agent = $null
+try { $agent = $r.text | ConvertFrom-Json } catch { }
+$agentHtml = if ($agent -and $agent.artifact_path -and (Test-Path $agent.artifact_path)) { Get-Content $agent.artifact_path -Raw } else { "" }
+Check "SQL Agent generation (shared profile)" ($r.code -eq 0 -and $agent.status -eq "completed") "exit $($r.code)"
+Check "SQL Agent shared document withholds the step command" ($agentHtml -and $agentHtml -notmatch "<Batch Transaction" -and $agentHtml -match "SEEDED-SSAS-01")
+$r = Bidoc @("generate", "--engine", "sql_agent", "--kind", "agent_folder", "--source", "$Work\inputs\jobs", "--output-dir", "$Work\out-agent-folder")
+Check "SQL Agent generation from a folder of job scripts" ($r.code -eq 0 -and @(Get-ChildItem "$Work\out-agent-folder" -Filter *.html -ErrorAction SilentlyContinue).Count -eq 1) "exit $($r.code)"
 # The frozen executable cannot run "python -m", so it re-invokes itself with --portable-extract.
 $r = Bidoc @("generate", "--engine", "power_bi", "--kind", "pbix", "--source", "$Work\inputs\dp500-08-composite.pbix", "--output-dir", "$Work\out-pbix", "--pbixray")
 $pbixDocs = @(Get-ChildItem "$Work\out-pbix" -Filter *.html -ErrorAction SilentlyContinue)

@@ -56,7 +56,7 @@ if (-not $iscc) {
 if ($LASTEXITCODE) { throw "Inno Setup failed" }
 $setup = Get-Item "dist\installer\bidoc-setup-$Version-unsigned.exe"
 
-$versions = python -c "import json,platform,pbidocgen,adfdocgen,bidoc_generator,PyInstaller,webview; print(json.dumps({'python': platform.python_version(), 'generator': bidoc_generator.__version__, 'pbi-doc-gen': pbidocgen.__version__, 'adf-doc-gen': adfdocgen.__version__, 'pyinstaller': PyInstaller.__version__, 'pywebview': webview.__version__ if hasattr(webview, '__version__') else 'unknown'}))" | ConvertFrom-Json
+$versions = python -c "import json,platform,pbidocgen,adfdocgen,sqlagentdocgen,bidoc_generator,PyInstaller,webview; print(json.dumps({'python': platform.python_version(), 'generator': bidoc_generator.__version__, 'pbi-doc-gen': pbidocgen.__version__, 'adf-doc-gen': adfdocgen.__version__, 'sqlagent-doc-gen': sqlagentdocgen.__version__, 'pyinstaller': PyInstaller.__version__, 'pywebview': webview.__version__ if hasattr(webview, '__version__') else 'unknown'}))" | ConvertFrom-Json
 $commit = (git rev-parse HEAD 2>$null)
 $release = [ordered]@{
   version = $Version; label = $BuildLabel; signed = $false; commit = $commit
@@ -72,6 +72,6 @@ $release | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 dist\release.jso
 (Get-Content packaging/windows/RELEASE-NOTES.template.md -Raw).
   Replace("{{VERSION}}", $Version).Replace("{{LABEL}}", $BuildLabel).Replace("{{COMMIT}}", "$commit").
   Replace("{{SHA256}}", $release.sha256).Replace("{{INSTALLER}}", $setup.Name).
-  Replace("{{PBIDOCGEN}}", $versions.'pbi-doc-gen').Replace("{{ADFDOCGEN}}", $versions.'adf-doc-gen').
+  Replace("{{PBIDOCGEN}}", $versions.'pbi-doc-gen').Replace("{{ADFDOCGEN}}", $versions.'adf-doc-gen').Replace("{{SQLAGENTDOCGEN}}", $versions.'sqlagent-doc-gen').
   Replace("{{PYTHON}}", $versions.python) | Set-Content -Encoding utf8 dist\RELEASE-NOTES.md
 Write-Host "Built $($setup.FullName) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
