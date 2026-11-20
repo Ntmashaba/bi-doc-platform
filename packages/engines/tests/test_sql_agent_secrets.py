@@ -41,3 +41,12 @@ class BackupPasswords(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScopeWarning(unittest.TestCase):
+    def test_load_errors_read_as_read_or_analysed(self):
+        from bidoc_engines.sql_agent import scope
+        payload = {"jobs": [{"identity": "name:j"}], "coverage": {"loadErrors": 1}}
+        _, complete, warnings = scope(payload)
+        self.assertFalse(complete)
+        self.assertIn("1 file(s) could not be read or analysed.", warnings)

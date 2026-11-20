@@ -38,7 +38,11 @@ _SQLCMD_PASSWORD = re.compile(r"(\s-P\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"]+)")
 # ... the glued form (-PSecret) only on a line that runs one of those tools: elsewhere -Path, -Port and -PassThru
 # are ordinary PowerShell parameters
 # (not after a hyphen: Invoke-Sqlcmd is a PowerShell cmdlet with named parameters such as -Port)
-_SQL_TOOL_LINE = re.compile(r"(?im)^.*(?<![\w-])(?:sqlcmd|bcp|osql)(?:\.exe)?\b.*$")
+# A call continued over several lines (a PowerShell backtick or a cmd caret ending the line) is one line here.
+_SQL_TOOL_LINE = re.compile(r"(?im)^.*(?<![\w-])(?:sqlcmd|bcp|osql)(?:\.exe)?\b(?:.*[`^][ \t]*\r?\n)*.*$")
+# PowerShell -Password <value> / -Password:<value> (Invoke-Sqlcmd, New-PSDrive …): a literal, not a $variable
+_PS_PASSWORD = re.compile(
+    r"(?i)(-password(?::|\s+))(?![$-]|['\"]?\[redacted\])('(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"|[^\s'\"]+)")
 _GLUED_P = re.compile(r"(\s-P)(?![\s\"]|\[redacted\])([^\s\"]+)|(\s-P)(\"[^\"]*\")")
 # dtexec: /De[crypt] <password> decrypts a package
 _DTEXEC_DECRYPT = re.compile(r"(?i)(/de(?:crypt)?\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"/]+)")
@@ -92,6 +96,7 @@ def scrub_text(text: str) -> Tuple[str, int]:
     text = sub(_BEARER, r"\1" + REDACTED, text)
     text = sub(_SQLCMD_PASSWORD, r"\1" + REDACTED, text)
     text = _SQL_TOOL_LINE.sub(glued, text)
+    text = sub(_PS_PASSWORD, r"\1" + REDACTED, text)
     text = sub(_DTEXEC_DECRYPT, r"\1" + REDACTED, text)
 
     def plain_text_literals(match):

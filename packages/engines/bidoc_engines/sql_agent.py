@@ -113,8 +113,8 @@ def scope(payload):
     """(descriptor, complete, coverage warnings).
 
     The scope is always a selection of jobs (v4 §2): identity is the scripted GUID where
-    present, else the job name. A file that could not be read at all means the declared
-    scope was not fully read: not complete. Skipped files are .sql files that are not job
+    present, else the job name. A file that could not be read, or could not be analysed
+    completely, means the declared scope was not fully read: not complete. Skipped files are .sql files that are not job
     scripts — a legitimate scoping decision, not an incomplete read — so they are a
     coverage warning, as are unparsed steps and unknown operations.
     """
@@ -126,7 +126,8 @@ def scope(payload):
                              "publication scope."]
     warnings = []
     if cov.get("loadErrors"):
-        warnings.append(f"{cov['loadErrors']} file(s) could not be read.")
+        # loadErrors counts files that could not be read and scripts that could not be analysed completely
+        warnings.append(f"{cov['loadErrors']} file(s) could not be read or analysed.")
     if cov.get("skippedFiles"):
         warnings.append(f"{len(cov['skippedFiles'])} .sql file(s) were not job scripts and were skipped.")
     if cov.get("unrecognisedStatements"):
