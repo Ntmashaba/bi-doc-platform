@@ -1,0 +1,143 @@
+{
+  "description": "Public SQL Agent job scripts the engine is checked against by hand (scripts/sql_agent_corpus.py). Nothing here is committed or vendored: each entry pins a source file by commit and SHA-256 and records the coverage counters the engine reports for it. 'baseline' files are SSMS-style scripted jobs and must parse with no warnings (DarlingData sp_WhoIsActive Logging keeps unparsedSteps=1: its step command is a concatenated variable). 'reported' files are out of scope for static analysis and show that what the engine cannot read is counted or warned about, never dropped.",
+  "files": [
+    {
+      "id": "darlingdata-whoisactive-logging",
+      "group": "baseline",
+      "file": "darlingdata-whoisactive-logging.sql",
+      "source": "https://github.com/erikdarlingdata/DarlingData",
+      "path": "sp_WhoIsActive Logging/04 sp_WhoIsActive Logging Agent Job.sql",
+      "commit": "205fc5137eb02ce1385b60701eac0cdbd666906a",
+      "url": "https://raw.githubusercontent.com/erikdarlingdata/DarlingData/205fc5137eb02ce1385b60701eac0cdbd666906a/sp_WhoIsActive%20Logging/04%20sp_WhoIsActive%20Logging%20Agent%20Job.sql",
+      "bytes": 5160,
+      "sha256": "13f599f3df3fed608512a74711d70129f95ec3e6c2a391e9267da5ddba9a67fe",
+      "license": "MIT (Copyright (c) 2021 Darling Data, LLC)",
+      "note": "One T-SQL job whose step command is a variable assembled by string concatenation, so it cannot be read statically: the expected unparsedSteps=1.",
+      "expected": {
+        "inputFiles": 1,
+        "skippedFiles": 0,
+        "jobs": 1,
+        "steps": 1,
+        "unparsedSteps": 1,
+        "unrecognisedStatements": 0,
+        "unknownOperations": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "darlingdata-humanevents",
+      "group": "baseline",
+      "file": "darlingdata-humanevents.sql",
+      "source": "https://github.com/erikdarlingdata/DarlingData",
+      "path": "sp_HumanEvents/sp_Human Events Agent Job Example.sql",
+      "commit": "205fc5137eb02ce1385b60701eac0cdbd666906a",
+      "url": "https://raw.githubusercontent.com/erikdarlingdata/DarlingData/205fc5137eb02ce1385b60701eac0cdbd666906a/sp_HumanEvents/sp_Human%20Events%20Agent%20Job%20Example.sql",
+      "bytes": 4117,
+      "sha256": "749e735d3d40cceac17d421963954f46a85206324e0813a121a6fa33284ff5a2",
+      "license": "MIT (Copyright (c) 2021 Darling Data, LLC)",
+      "note": "SSMS script-out, @jobId OUTPUT form, category preamble.",
+      "expected": {
+        "inputFiles": 1,
+        "skippedFiles": 0,
+        "jobs": 1,
+        "steps": 1,
+        "unparsedSteps": 0,
+        "unrecognisedStatements": 0,
+        "unknownOperations": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "darlingdata-cleartokenperm",
+      "group": "baseline",
+      "file": "darlingdata-cleartokenperm.sql",
+      "source": "https://github.com/erikdarlingdata/DarlingData",
+      "path": "Clear Token Perm/ClearTokenPerm Agent Job.sql",
+      "commit": "205fc5137eb02ce1385b60701eac0cdbd666906a",
+      "url": "https://raw.githubusercontent.com/erikdarlingdata/DarlingData/205fc5137eb02ce1385b60701eac0cdbd666906a/Clear%20Token%20Perm/ClearTokenPerm%20Agent%20Job.sql",
+      "bytes": 4557,
+      "sha256": "caa511df2815309aec6f1374748d5b35ee008a758dadfd603769be8fd016d1d0",
+      "license": "MIT (Copyright (c) 2021 Darling Data, LLC)",
+      "note": "SSMS script-out, @jobId OUTPUT form, one T-SQL job.",
+      "expected": {
+        "inputFiles": 1,
+        "skippedFiles": 0,
+        "jobs": 1,
+        "steps": 1,
+        "unparsedSteps": 0,
+        "unrecognisedStatements": 0,
+        "unknownOperations": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "darlingdata-ola-stats-only",
+      "group": "baseline",
+      "file": "darlingdata-ola-stats-only.sql",
+      "source": "https://github.com/erikdarlingdata/DarlingData",
+      "path": "Ola Stats Only Job/Ola Stats Only Job.sql",
+      "commit": "205fc5137eb02ce1385b60701eac0cdbd666906a",
+      "url": "https://raw.githubusercontent.com/erikdarlingdata/DarlingData/205fc5137eb02ce1385b60701eac0cdbd666906a/Ola%20Stats%20Only%20Job/Ola%20Stats%20Only%20Job.sql",
+      "bytes": 5045,
+      "sha256": "4d21194bbef9e400af3b9b6cf9bdef9d3759fa9b9b14647045ae11338a6f3e18",
+      "license": "MIT (Copyright (c) 2021 Darling Data, LLC)",
+      "note": "SSMS script-out calling Ola Hallengren's IndexOptimize.",
+      "expected": {
+        "inputFiles": 1,
+        "skippedFiles": 0,
+        "jobs": 1,
+        "steps": 1,
+        "unparsedSteps": 0,
+        "unrecognisedStatements": 0,
+        "unknownOperations": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "hallengren-maintenance-solution",
+      "group": "reported",
+      "file": "hallengren-maintenance-solution.sql",
+      "source": "https://github.com/olahallengren/sql-server-maintenance-solution",
+      "path": "MaintenanceSolution.sql",
+      "commit": "41617578643e722b790ea4d57ef80f8de38ae747",
+      "url": "https://raw.githubusercontent.com/olahallengren/sql-server-maintenance-solution/41617578643e722b790ea4d57ef80f8de38ae747/MaintenanceSolution.sql",
+      "bytes": 595994,
+      "sha256": "d76b83a0a7b8317421d0d4c06aeab30d1e86c15d7ec857640109cccce858ce5f",
+      "license": "MIT (Copyright (c) Ola Hallengren)",
+      "note": "Installer that creates jobs from variables inside dynamic logic: not a scripted job, so the file is counted as skipped, not silently dropped.",
+      "expected": {
+        "inputFiles": 0,
+        "skippedFiles": 1,
+        "jobs": 0,
+        "steps": 0,
+        "unparsedSteps": 0,
+        "unrecognisedStatements": 0,
+        "unknownOperations": 0,
+        "warnings": 0
+      }
+    },
+    {
+      "id": "firstresponderkit-allnightlog-setup",
+      "group": "reported",
+      "file": "firstresponderkit-allnightlog-setup.sql",
+      "source": "https://github.com/BrentOzarULTD/SQL-Server-First-Responder-Kit",
+      "path": "Deprecated/sp_AllNightLog_Setup.sql",
+      "commit": "5d3a6811a44e4aef1115aee75254e930e2e60938",
+      "url": "https://raw.githubusercontent.com/BrentOzarULTD/SQL-Server-First-Responder-Kit/5d3a6811a44e4aef1115aee75254e930e2e60938/Deprecated/sp_AllNightLog_Setup.sql",
+      "bytes": 43835,
+      "sha256": "bde329b2567b50acfe717c41d5969ab3b032014ef5fdd014f377ca0fd075dd07",
+      "license": "MIT (Brent Ozar Unlimited; portions Microsoft)",
+      "note": "Setup procedure that creates jobs from procedure parameters: unresolved job references surface as warnings.",
+      "expected": {
+        "inputFiles": 1,
+        "skippedFiles": 0,
+        "jobs": 2,
+        "steps": 0,
+        "unparsedSteps": 0,
+        "unrecognisedStatements": 6,
+        "unknownOperations": 0,
+        "warnings": 12
+      }
+    }
+  ]
+}
