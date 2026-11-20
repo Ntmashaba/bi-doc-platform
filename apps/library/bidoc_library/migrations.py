@@ -184,6 +184,29 @@ MIGRATIONS = [
     ALTER TABLE imports ADD COLUMN job_attempt INTEGER;
     ALTER TABLE imports ADD COLUMN job_lease_hash TEXT
     """),
+    (6, "SQL Agent documents in the catalogue", """
+    -- SQLite cannot alter a CHECK: rebuild documents with the widened document_type.
+    CREATE TABLE documents_new (
+        document_id TEXT PRIMARY KEY,
+        document_type TEXT NOT NULL CHECK (document_type IN ('power_bi', 'adf', 'sql_agent')),
+        asset_id TEXT NOT NULL,
+        environment_key TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        business_area TEXT NOT NULL, environment TEXT NOT NULL, owner TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT NOT NULL, tags TEXT NOT NULL,
+        current_revision_id TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        etag TEXT NOT NULL,
+        revision_metadata TEXT,
+        UNIQUE (asset_id, document_type, environment_key, scope_key)
+    );
+    INSERT INTO documents_new SELECT document_id, document_type, asset_id, environment_key, scope_key,
+        business_area, environment, owner, title, description, tags, current_revision_id, archived,
+        created_at, updated_at, etag, revision_metadata FROM documents;
+    DROP TABLE documents;
+    ALTER TABLE documents_new RENAME TO documents
+    """),
 ]
 
 
