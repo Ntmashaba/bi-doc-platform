@@ -47,6 +47,45 @@ before it is written.
 - T-SQL step bodies via `adf-doc-gen`'s token-based harvester (tables read /
   written, procedures executed — never delete).
 
+## Review findings
+
+Findings are evidence about the scripts, not instructions. Each one states only what a script can show:
+
+| Code | Severity | What it says |
+|---|---|---|
+| `job-failure-unnotified` | warning | *Potentially unnotified failure*: a failure path ends with no e-mail, net send or pager notification scripted. A script cannot show external monitoring, so this does not claim there is none. |
+| `job-owner-sa` | warning | The job owner is `sa`. |
+| `step-proxy` | info | A non-T-SQL step uses a configured proxy. Owner and proxy are reported as separate facts: the owner is not claimed to be the identity every step runs as. |
+| `job-owner-missing`, `job-not-created` | info | Likely a partial script. |
+| `job-disabled`, `job-unscheduled` | info | The final scripted state, after every `sp_update_job` in script order. |
+| `job-schedules-disabled` | info | The job has schedules, but every attached schedule is scripted `@enabled = 0` (an unscripted `@enabled` is msdb's default, enabled). |
+| `step-no-retry` | warning | An SSAS processing step has `retryAttempts = 0`. |
+| `step-local-ssas` | info | An Analysis Services step has no `@server`, so it targets the local instance. |
+| `process-full-database`, `process-full-granularity` | info | `ProcessFull` at database or cube scope while no job in this script set processes at partition granularity. |
+| `schedules-coincide` | info | Jobs that process the same SSAS database have schedules with the same frequency and start time (or share one schedule). Jobs with no common processing target are not compared. Scripts carry no durations, so this is about start times only. |
+
+Anything the parser cannot read is counted in **Coverage** (`unrecognisedStatements`, `unparsedSteps`,
+`unknownOperations`, skipped files) and listed as a warning; it is never dropped silently.
+
+## Shared documents
+
+`bidoc generate --profile shared` (and the library) withhold every step's `command`, whatever its subsystem: XMLA,
+TMSL, T-SQL, PowerShell and CmdExec text does not reach a shared document unless the publisher opts in with
+`--include-query-code`. The document is rendered from the structured
+fields instead (operations, processed objects, harvested tables, schedules, endpoints). Infrastructure names are kept,
+as Data Factory linked-service endpoints are: job and step names, the SSAS `@server`, `@database_name` and the
+entities. The cleaning of other fields (personal paths, credentials in text) is best effort, as it is for the other
+engines; it is not a guarantee.
+
+## Real-world corpus
+
+Committed tests use synthetic and adversarial fixtures only. Public job scripts are checked by hand, never vendored:
+[`samples/sql-agent-corpus.json`](../../samples/sql-agent-corpus.json) pins each file by commit and SHA-256 with its
+license and expected coverage counters, and `python scripts/sql_agent_corpus.py` downloads, verifies and compares them
+(counts only in its output). The expected baseline is DarlingData's *sp_WhoIsActive Logging* job at `unparsedSteps = 1`
+(its step command is a concatenated variable). Run it after any change to the tokenizer, parser or registry; a
+difference is investigated before anything else.
+
 ## Layout
 
 ```

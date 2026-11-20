@@ -557,3 +557,57 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 Steps 1–8 of the UI rework spec, one commit each, plus fixes from an independent review. Gate evidence and what
 is still open: `docs/ui-rework/GATES.md`. The final gate (walking the reporting user through their own file) is
 owner-run.
+
+### 2026-11-20 — SQL Server Agent engine (branch `feature/sql-agent-engine`), Phases 1–7
+
+A third engine, `components/sql-agent` (`sqlagent-doc-gen`), documents scripted SQL Server Agent jobs (SSMS *Script Job
+as → CREATE To*), with SSAS processing (XMLA and TMSL) as its focus. Design: *SQL Agent Job Analysis — Design Document
+v4.1* (v4 plus the conformance update below). Static analysis only; it never connects to a server.
+
+- Phases 1–3 (engine): string- and comment-aware tokenizer; `sp_add_job*` / `sp_add_schedule` / `sp_attach_schedule` /
+  `sp_add_jobserver` / `sp_update_job` parser with job and schedule identity through `OUTPUT` variables, GUIDs and ids;
+  XMLA and TMSL analysis; T-SQL footprints through `adfdocgen.sql_harvest` (reused, not copied); the full msdb schedule
+  model; execution-flow and processing-sequence graphs; review findings under the §6 wording contract; HTML, JSON, Word,
+  CSV and agent outputs; `--coverage-only`. Phase 2 checked one real script locally, reporting counts only.
+- Phases 4–6 (platform): envelope `document_type` `sql_agent` with source kinds `agent_script` and `agent_folder`,
+  selection-only scope; the `bidoc_engines.sql_agent` adapter (SSAS targets as `execute` bindings with flat scalar
+  `invocation_context`; T-SQL as read/write/execute only); `bidoc generate`, `batch`, discovery and `doctor`; shared
+  projection withholds every step `command` (`SQLAGENT_CODE_KEYS`); library admission (migration 6) and the library and
+  offline frontends.
+- Phase 7 (this entry): packaging, CI coverage, docs, corpus manifest, LICENSE, and the conformance review:
+  - Packaging: the root requirements, `packages/engines`, the `Dockerfile` and the PyInstaller spec already carried the
+    engine. `requirements-lock.txt` gains nothing (standard library plus `adf-doc-gen`). The Windows installer check
+    (`packaging/windows/verify-install.ps1`) now generates SQL Agent documentation from the frozen `bidoc.exe` with no
+    Python on `PATH`: `doctor` readiness, a shared document whose step command is withheld while the SSAS server stays, and
+    a folder of job scripts, from a synthetic input in `verify-inputs/jobs`. `build.ps1` records the `sqlagent-doc-gen`
+    version in `release.json` and the release notes.
+  - Tests: `scripts/test.py` runs the SQL Agent pytest suite, as CI's separate "SQL Agent engine tests (pytest)" step does
+    (the suite uses pytest fixtures, which `unittest discover` cannot run).
+  - Conformance review of Phases 1–6: a **disabled-schedule** finding (`job-schedules-disabled`, info: every attached
+    schedule scripted `@enabled = 0`); **schedule coincidence** restricted to jobs that process the same SSAS database, as
+    §6 says (the finding is now built from the processing view; two unrelated jobs at 23:00 are no longer a finding);
+    §4.2 of the design rewritten to the payload as implemented. 9 tests added (and 3 signature tests rewritten to use
+    jobs that share a model); 5 of the new ones fail on the previous code.
+  - Corpus: `samples/sql-agent-corpus.json` and `scripts/sql_agent_corpus.py`. Six public scripts, pinned by commit and
+    SHA-256 of the published bytes, with licence (all MIT) and expected coverage. Four DarlingData job scripts parse with
+    no warnings; `sp_WhoIsActive Logging` keeps the expected `unparsedSteps = 1` (its command is a concatenated variable).
+    Ola Hallengren's `MaintenanceSolution.sql` (jobs built inside procedure logic) is counted as a skipped file, and the
+    First Responder Kit's `sp_AllNightLog_Setup.sql` (jobs built from procedure parameters) reports 6 unrecognised
+    statements and 12 warnings: nothing unreadable is dropped silently. Counters are identical with LF and CRLF line
+    endings. Not vendored and not run in CI.
+  - Docs: README (feature table, examples, sidebar, guides, contributors, limitations), `docs/generator.md` (a SQL Server
+    Agent section: kinds, sniffing, discovery, shared profile, `--also`, `doctor`), `components/README.md` (provenance and
+    the `sql_harvest` coupling) and the engine README (findings with codes and severities, shared documents, corpus).
+  - LICENSE: MIT, at the root, declared in every `pyproject.toml` and installed with the Windows build as `LICENSE.txt`.
+- Verified locally (Linux, Python 3.13): `components/sql-agent` 179 passed; `packages/engines` 159, `packages/contracts`
+  45, `packages/relationships` 10, `apps/generator` 171, `apps/library` 186 of 187. The library failure is
+  `test_committed_openapi_is_current` and is environmental: Python 3.13 names HTTP 413 "Content Too Large" (RFC 9110),
+  3.11 (CI) "Request Entity Too Large"; the committed `docs/openapi-v1.json` is correct for CI. All eight wheels build and
+  carry `License: MIT`. Links check clean.
+- Not verified here: the CI pipeline on this tip (this session had no push access; the changes went to the owner as a
+  patch); `verify-install.ps1` itself (PowerShell, Windows), whose `bidoc` commands were dry-run through the Python CLI.
+  No public repository-pinned SSAS (XMLA/TMSL) job script was found, so the corpus has no SSAS-processing file; the
+  earlier sessions' 9-file corpus was not named in the repository and could not be reconstructed exactly.
+- Next: Phase 8 (relationship rules with SQL Agent as a lineage source; friendly labels for `agent_script` /
+  `agent_folder` in the desktop review and prerequisites tables). Then the Power BI / Data Factory UX rework on its own
+  branch.

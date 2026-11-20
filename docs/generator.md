@@ -8,6 +8,7 @@ pip install -r requirements.txt          # contracts, engines (components/), gen
 bidoc doctor                             # what this machine can generate, with fixes
 bidoc generate --engine adf --kind adf_git --source path/to/factory --output-dir docs
 bidoc generate --engine power_bi --kind pbip --source Sales.pbip --output-dir docs --profile shared
+bidoc generate --engine sql_agent --kind agent_script --source NightlyJobs.sql --output-dir docs   # a scripted SQL Agent job
 bidoc generate --engine power_bi --kind pbix --source Sales.pbix --output-dir docs    # pbi-tools if configured, else portable
 bidoc batch "h3 Reports" Sales-project/ adf-repo/ --output-dir docs                   # folders are searched; one at a time
 bidoc history                                                                          # recent batches
@@ -17,8 +18,8 @@ bidoc desktop                                                                   
 
 | Option | Meaning |
 |---|---|
-| `--engine` | `power_bi` or `adf` |
-| `--kind` | Power BI: `pbix` (extracted first: pbi-tools if configured, otherwise the portable reader, see `portable-extraction.md`), `abf` (Tabular backup), `pbip`, `tmdl`, `bim` (a `model.bim`, or an SSMS CREATE script of a tabular database saved as `.xmla`; JSON at compatibility level 1200 and later, XML at 1100 and 1103), `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources` |
+| `--engine` | `power_bi`, `adf` or `sql_agent` |
+| `--kind` | Power BI: `pbix` (extracted first: pbi-tools if configured, otherwise the portable reader, see `portable-extraction.md`), `abf` (Tabular backup), `pbip`, `tmdl`, `bim` (a `model.bim`, or an SSMS CREATE script of a tabular database saved as `.xmla`; JSON at compatibility level 1200 and later, XML at 1100 and 1103), `pbir`, `extracted` (pbi-tools extract folder). ADF: `adf_git`, `adf_arm`, `adf_resources`. SQL Agent: `agent_script` (one job script), `agent_folder` (a folder of them); see [SQL Server Agent job scripts](#sql-server-agent-job-scripts) |
 | `--profile local` (default) | Everything the engines produce, query code included, for your own use |
 | `--profile shared` | Projected for the shared library: machine paths removed, credentials, URL tokens and entered data cleaned (best effort), query code withheld |
 | `--include-query-code` | Shared profile only: publish M/SQL as written. The cleaning above still runs, but it is not a guarantee |
@@ -264,7 +265,9 @@ describe one document (a batch titles each document after its source).
   (`.xmla`), at compatibility level 1100 and later. A `.xmla` file is read only when it is named or added itself;
   what is read and what is not is in `components/power-bi/README.md`;
 - pbi-tools extracts;
-- Data Factory Git folders, and ARM or resource JSON.
+- Data Factory Git folders, and ARM or resource JSON;
+- SQL Server Agent job scripts (`.sql`), only when the file or its folder is selected itself; see
+  [SQL Server Agent job scripts](#sql-server-agent-job-scripts).
 
 **Any other folder is searched** (`bidoc_generator/discovery.py`, used by the command line, the desktop review and the desktop
 submission alike), subfolders included, for `.pbix` and `.abf` files, `.bim` models and project folders:
@@ -316,6 +319,40 @@ History is kept in `history.sqlite3` in the generator home: `BIDOC_HOME`, otherw
 not a background service. If the app closes while an item runs, that item is marked
 `interrupted` at the next launch and can be retried; nothing claims it carried on.
 
+## SQL Server Agent job scripts
+
+The SQL Agent engine documents **scripted jobs**: the T-SQL that SSMS writes for **Script Job as → CREATE To**, or the same
+`msdb` procedure calls written by hand (`sp_add_job`, `sp_add_jobstep`, `sp_add_jobschedule`, `sp_add_schedule` with
+`sp_attach_schedule`, `sp_add_jobserver`, `sp_update_job`). It never connects to a server: a document covers the scripts you
+select, not every job on an instance, and has no run history or durations.
+
+```powershell
+bidoc generate --engine sql_agent --kind agent_script --source "C:\Scripts\NightlyJobs.sql" --output-dir ".\Documentation"
+bidoc generate --engine sql_agent --kind agent_folder --source "C:\Scripts\AgentJobs" --output-dir ".\Documentation" --also csv
+bidoc batch "C:\Scripts\AgentJobs" --output-dir ".\Documentation"      # a selected folder of job scripts is one input
+```
+
+- **What counts as a job script.** A `.sql` file is read only when its first 64 KB name `sp_add_job`, `sp_add_schedule` or
+  `sp_attach_schedule`. Any other `.sql` file is not an input: selected on its own it is a failed item that says so
+  (`not a recognised job script`), and inside an `agent_folder` it is skipped and counted in the document's **Coverage**.
+- **Discovery.** A selected `.sql` file is classified by that rule. A selected folder becomes one `agent_folder` input when the
+  search finds nothing else in it and at least one of its own `.sql` files is a job script. The recursive search never looks
+  at `.sql` files, so a folder met while searching a reports tree is never treated as job scripts.
+- **`--profile shared`** withholds every step's command (XMLA, TMSL, T-SQL, PowerShell, CmdExec) and renders the document
+  from the parsed structure: SSAS operations and the objects they process, harvested tables and procedures, schedules and
+  endpoints. Job, step, server and database names stay, as Data Factory endpoints do. `--include-query-code` publishes the
+  commands as written (still cleaned, best effort).
+- **`--also`**: `json` (the engine payload), `word`, `csv` (six inventories: jobs, steps, operations, schedules, issues,
+  entities) and `agent`.
+- **`bidoc doctor`** lists `sqlagent-doc-gen` with its version and reports `agent_script` and `agent_folder` as ready. The
+  engine needs nothing outside the platform packages (it uses only the Python standard library and the Data Factory
+  engine's T-SQL harvester).
+
+The engine also runs on its own, without the platform envelope:
+`python -m sqlagentdocgen <file or folder> --html docs.html --also json,word,csv,agent`. Its `--coverage-only` mode prints
+counts and warning texts only, never job names or command text, so it is safe for checking real scripts without sharing
+them. What the engine reads, its review findings and their exact wording: [SQL Agent engine guide](../components/sql-agent/README.md).
+
 ## Desktop app
 
 `bidoc desktop` opens a pywebview window (`pip install bi-doc-generator[desktop]`).
@@ -339,7 +376,7 @@ Security follows the library's local mode:
   network;
 - in the desktop window, previews open in a separate window with no host bridge.
 
-The existing `pbi-doc-gen` and `adf-doc-gen` command lines are unchanged.
+The existing `pbi-doc-gen`, `adf-doc-gen` and `sqlagent-doc-gen` command lines are unchanged.
 
 ## Documents above the publication limit
 
