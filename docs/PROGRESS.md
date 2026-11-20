@@ -787,3 +787,13 @@ Each finding reproduced on `0b1b325` first; compared against the pushed engine w
 - The platform's scope warning said "file(s) could not be read" for scripts that could not be analysed too; it now
   says "could not be read or analysed".
 - Tests: `test_review_round5.py` (11) and a scope-warning test; 7 fail on the previous code. Corpus unchanged.
+
+### 2026-11-21 — Fix a redaction regression from `d37c76b`
+
+- The new PowerShell `-Password` rule took `(ConvertTo-SecureString` as the password value and ran before the
+  `ConvertTo-SecureString` rule, so `-Password (ConvertTo-SecureString 'secret' -AsPlainText -Force)`, the usual
+  PowerShell form, showed the secret again while counting one redaction (`b9bd329` handled it). `-Password` now leaves
+  a `(subexpression)`, `@(…)`, `[cast]` or `{script block}` alone, like a `$variable`, and the
+  `ConvertTo-SecureString` rule runs first. Reordering alone would not have been enough: the `-Password` rule would then
+  have redacted `(ConvertTo-SecureString` as well, garbling the line and counting two secrets.
+- Tests: 3 regression cases and 5 expression forms added to `test_review_round5.py`; all 8 fail on `83dcdfa`.

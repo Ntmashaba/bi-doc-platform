@@ -40,9 +40,11 @@ _SQLCMD_PASSWORD = re.compile(r"(\s-P\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"]+)")
 # (not after a hyphen: Invoke-Sqlcmd is a PowerShell cmdlet with named parameters such as -Port)
 # A call continued over several lines (a PowerShell backtick or a cmd caret ending the line) is one line here.
 _SQL_TOOL_LINE = re.compile(r"(?im)^.*(?<![\w-])(?:sqlcmd|bcp|osql)(?:\.exe)?\b(?:.*[`^][ \t]*\r?\n)*.*$")
-# PowerShell -Password <value> / -Password:<value> (Invoke-Sqlcmd, New-PSDrive …): a literal, not a $variable
+# PowerShell -Password <value> / -Password:<value> (Invoke-Sqlcmd, New-PSDrive …): a literal only. A $variable,
+# a (subexpression), @(…), a [cast] or a {script block} is not the secret: -Password (ConvertTo-SecureString '…' …)
+# is left to the ConvertTo-SecureString rule, which runs first and redacts the literal inside.
 _PS_PASSWORD = re.compile(
-    r"(?i)(-password(?::|\s+))(?![$-]|['\"]?\[redacted\])('(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"|[^\s'\"]+)")
+    r"(?i)(-password(?::|\s+))(?![$(@\[{-]|['\"]?\[redacted\])('(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"|[^\s'\"]+)")
 _GLUED_P = re.compile(r"(\s-P)(?![\s\"]|\[redacted\])([^\s\"]+)|(\s-P)(\"[^\"]*\")")
 # dtexec: /De[crypt] <password> decrypts a package
 _DTEXEC_DECRYPT = re.compile(r"(?i)(/de(?:crypt)?\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"/]+)")
@@ -96,7 +98,6 @@ def scrub_text(text: str) -> Tuple[str, int]:
     text = sub(_BEARER, r"\1" + REDACTED, text)
     text = sub(_SQLCMD_PASSWORD, r"\1" + REDACTED, text)
     text = _SQL_TOOL_LINE.sub(glued, text)
-    text = sub(_PS_PASSWORD, r"\1" + REDACTED, text)
     text = sub(_DTEXEC_DECRYPT, r"\1" + REDACTED, text)
 
     def plain_text_literals(match):
@@ -116,6 +117,7 @@ def scrub_text(text: str) -> Tuple[str, int]:
         return _PS_LITERAL.sub(one, statement)
 
     text = _SECURE_STRING.sub(plain_text_literals, text)
+    text = sub(_PS_PASSWORD, r"\1" + REDACTED, text)          # after ConvertTo-SecureString (see _PS_PASSWORD)
     text = sub(_XML_SECRET, r"\1" + REDACTED + r"\3", text)
     text = sub(_JSON_SECRET, r'\1"' + REDACTED + '"', text)
     return text, count
