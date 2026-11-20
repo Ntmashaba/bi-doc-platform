@@ -604,9 +604,10 @@ v4.1* (v4 plus the conformance update below). Static analysis only; it never con
   `test_committed_openapi_is_current` and is environmental: Python 3.13 names HTTP 413 "Content Too Large" (RFC 9110),
   3.11 (CI) "Request Entity Too Large"; the committed `docs/openapi-v1.json` is correct for CI. All eight wheels build and
   carry `License: MIT`. Links check clean.
-- Not verified here: the CI pipeline on this tip (this session had no push access; the changes went to the owner as a
-  patch); `verify-install.ps1` itself (PowerShell, Windows), whose `bidoc` commands were dry-run through the Python CLI.
-  No public repository-pinned SSAS (XMLA/TMSL) job script was found, so the corpus has no SSAS-processing file; the
+- CI on `e11e220`: all 11 jobs green. `windows-installer` ran the new checks against the frozen, installed `bidoc.exe`
+  (44 checks, none failed: SQL Agent readiness, shared generation with the command withheld, folder generation,
+  `LICENSE.txt` installed); the SQL Agent pytest step ran 179 tests with none skipped.
+- Not verified: no public repository-pinned SSAS (XMLA/TMSL) job script was found, so the corpus has no SSAS-processing file; the
   earlier sessions' 9-file corpus was not named in the repository and could not be reconstructed exactly.
 - Next: Phase 8 (relationship rules with SQL Agent as a lineage source; friendly labels for `agent_script` /
   `agent_folder` in the desktop review and prerequisites tables). Then the Power BI / Data Factory UX rework on its own
