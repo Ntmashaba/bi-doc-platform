@@ -756,3 +756,24 @@ compared against the pushed engine with bytecode disabled and caches removed.
   updated but not what a jump to the deleted step becomes, so that case is shown as a quit with a coverage warning.
 - Tests: `test_redaction.py`, `test_review_round3.py` (14); 26 of 39 fail on the previous engine, the rest are the
   intended invariants. Corpus unchanged (DarlingData `unparsedSteps = 1`); every suite green.
+
+### 2026-11-21 — SQL Agent review round 4 (redaction precision, CASE in assignments, deleted jobs' schedules)
+
+Each finding reproduced on `0b1b325` first; compared against the pushed engine with bytecode disabled.
+
+- **`-P` hid PowerShell parameters** (introduced in round 3 to catch `-PSecret`): `-Path`, `-Port`, `-PassThru` became
+  `-P[redacted]` and were counted as withheld secrets. The glued form now applies only on a line that runs `sqlcmd`,
+  `bcp` or `osql` (not after a hyphen: `Invoke-Sqlcmd` is a cmdlet with named parameters); `-P <value>` stays global.
+- **Unquoted values ran to the end of the line**: `SET secret = NULL WHERE id = 1` lost its `WHERE`. In a connection
+  string (the key follows `;`, or the value ends at one) the value still runs to `;` and may hold spaces and commas; in
+  T-SQL it ends at the next space; `NULL` is not counted as a secret. Remaining trade-off, documented in the code: a
+  lone `Password=two words` with no `;` on either side reads as T-SQL, so only `two` is redacted.
+- **CASE in `SET` / `DECLARE`** (round 3 fixed the main loop only): the value collector stopped at the `CASE`'s
+  `ELSE` / `END`, which the main loop then read as control flow, marking the next `EXEC` conditional, so two creations
+  of one job read as `IF` / `ELSE` alternatives and were merged. The collector now keeps a `CASE` depth.
+- **A deleted job stayed on shared schedules** (and the platform's "Applies to" named it); deleting a job now detaches
+  it, as re-creating one already did.
+- **Parser failures**: recorded as load errors, so the document gets the public form and the command line prints the
+  exception type and message (`IndexError: …`) for debugging.
+- Tests: `test_review_round4.py` (27; 16 fail on the previous engine, the others are the forms that must keep working).
+  Corpus unchanged; every suite green.

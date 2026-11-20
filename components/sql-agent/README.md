@@ -29,8 +29,10 @@ next to it: the JSON payload, a Word document, CSV inventories (jobs, steps,
 operations, schedules, issues, entities) and an agent context markdown.
 Every rendered output passes through the redaction safety net (`redact.py`)
 before it is written: passwords and keys as `name = value` in connection strings and T-SQL (including `N'…'`
-literals and parameters such as `@rmtpassword`), URL credentials and SAS tokens, bearer tokens, `sqlcmd -P`
-(spaced or not), `dtexec /De[crypt]`, PowerShell `ConvertTo-SecureString '…' -AsPlainText`, and backup passwords
+literals and parameters such as `@rmtpassword`; an unquoted value runs to `;` in a connection string and to the
+next space in T-SQL, and `NULL` is not a secret), URL credentials and SAS tokens, bearer tokens, `-P <value>`, and
+`-P<value>` on a line that runs `sqlcmd`, `bcp` or `osql` (elsewhere `-Path`, `-Port` and `-PassThru` are ordinary
+PowerShell parameters, and `Invoke-Sqlcmd` is a cmdlet), `dtexec /De[crypt]`, PowerShell `ConvertTo-SecureString '…' -AsPlainText`, and backup passwords
 (XMLA `<Password>`, TMSL `"password"`) are replaced with `[redacted]`. A `@variable` that holds a secret is left
 as it is: it names where the secret is. Redaction counts only what it actually replaced.
 
@@ -66,7 +68,7 @@ Findings are evidence about the scripts, not instructions. Each one states only 
 | `step-proxy` | info | A non-T-SQL step uses a configured proxy. Owner and proxy are reported as separate facts: the owner is not claimed to be the identity every step runs as. |
 | `job-owner-missing`, `job-not-created` | info | Likely a partial script. |
 | `job-duplicate` | warning | The same job is created in two files (dev and prod script-outs, say), or twice in one file without being deleted in between. Each definition is documented as its own job, never merged; the later one's identity carries its file (`name:nightly@prod.sql`). Alternatives under `IF` / `ELSE` in one file are one job, and a job deleted and created again in one file is replaced. |
-| `job-deleted` | info | The script creates the job and then deletes it; the job is not documented as one that exists after the script runs. |
+| `job-deleted` | info | The script creates the job and then deletes it; the job is not documented as one that exists after the script runs, and its schedules no longer list it. |
 | `job-disabled`, `job-unscheduled` | info | The final scripted state, after every `sp_update_job` in script order. |
 | `job-schedules-disabled` | info | The job has schedules, but every attached schedule is scripted `@enabled = 0` (an unscripted `@enabled` is msdb's default, enabled). |
 | `step-no-retry` | warning | An SSAS processing step has `retryAttempts = 0`. |
@@ -112,7 +114,8 @@ difference is investigated before anything else.
   bracketed or bare.
 - A command built only from string literals (`N'INSERT …' + N'SELECT …'`) is one known command and is parsed. A
   command that involves a variable, a function or anything else is counted in `unparsedSteps`. A variable assigned
-  under `IF` / `ELSE` holds one of several values afterwards, so it is unknown too.
+  under `IF` / `ELSE` holds one of several values afterwards, so it is unknown too. A `CASE … ELSE … END` is an
+  expression wherever it appears (`SET`, `DECLARE`, `SELECT`): its `ELSE` and `END` are not control flow.
 - `sp_update_job` applies every setting `sp_add_job` takes, in script order: SSMS's *Script Job as → CREATE* sets the
   start step that way (`@start_step_id`), after the steps exist.
 - `sp_delete_jobstep` renumbers the later steps and updates the jumps to them (Microsoft documents that deleting a step
@@ -121,7 +124,8 @@ difference is investigated before anything else.
 - Files are named by their path below the selected folder (`prod/jobs.sql`), so `dev/jobs.sql` and `prod/jobs.sql`
   are two files. A script that cannot be analysed is a coverage warning (`could not be analysed completely`); the
   other files are still documented. Load errors in a document carry the file name and a generic reason only; the
-  command line prints the full reason to its own console.
+  command line prints the full reason to its own console, for a script that could not be analysed with the
+  exception type and message.
 - T-SQL object names keep their own database: `Sales.dbo.FactSales` is database `Sales` whatever the step's
   `@database_name`; `Sales..FactSales` is database `Sales` with the default schema left out; a four-part name records
   its linked server.
