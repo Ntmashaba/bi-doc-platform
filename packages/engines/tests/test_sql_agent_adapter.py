@@ -227,14 +227,20 @@ class FolderInputs(unittest.TestCase):
         self.assertEqual(r.status, "local_only")
         self.assertTrue(r.artifact_path.endswith(".local.html"))
 
-    def test_shared_profile_is_refused_until_projection_is_registered(self):
+    def test_shared_profile_round_trips_with_command_withheld(self):
         r = generate(GenerateRequest(engine="sql_agent", source_path=str(self.folder()),
                                      source_kind="agent_folder", output_dir=str(self.tmp / "shared"),
                                      profile="shared"))
-        self.assertEqual(r.status, "failed")
-        self.assertEqual(r.errors[0]["code"], "INVALID_INPUT")
-        self.assertIn("shared publication is not available", r.errors[0]["message"])
-        self.assertFalse((self.tmp / "shared").exists(), "nothing is written")
+        self.assertEqual(r.status, "completed", r.errors)
+        raw = Path(r.artifact_path).read_bytes()
+        m = validate_artifact(raw)
+        self.assertEqual(m["projection"]["profile"], "shared")
+        self.assertEqual(m["projection"]["options"], {"query_code": "withheld"})
+        for leaked in (b"<Batch Transaction", b"INSERT INTO dbo.Archive"):
+            self.assertNotIn(leaked, raw)
+        # the document still renders from structured fields alone
+        for kept in (b"SSAS-EXAMPLE-01", b"SalesDW", b"Process Sales cube"):
+            self.assertIn(kept, raw)
 
     def test_wrong_kind_rejected(self):
         r = generate(GenerateRequest(engine="sql_agent", source_path=str(self.folder()),

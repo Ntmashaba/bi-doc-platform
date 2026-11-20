@@ -41,7 +41,14 @@ PBI_CODE_PATHS = [("model", "expressions", "*", "expression")]      # shared M q
 # like prose to a pattern (it published SQL in shared documents until 2026-10-08).
 PBI_DOCUMENTATION_KINDS = {"DAX"}
 ADF_CODE_KEYS = {"query", "sqlReaderQuery", "script", "preCopyScript"}
-MACHINE_PATHS = {"power_bi": [("model", "sourcePath")], "adf": []}
+# A job step's `command` is the only code field the sql_agent payload carries: XMLA, TMSL, T-SQL,
+# PowerShell and CmdExec all travel in it, and the generic detector recognises SQL and M only, so the
+# field rule is the guarantee (v4 5.3). The payload has no field that is always a machine path: SSIS
+# package paths, CmdExec working directories and script paths live inside `command`, and the one
+# structured path surface (a file-based ssis_package entity's endpoint.path and key) is handled by the
+# generic personal-path cleaner, which keeps the file name and a stable reference.
+SQLAGENT_CODE_KEYS = {"command"}
+MACHINE_PATHS = {"power_bi": [("model", "sourcePath")], "adf": [], "sql_agent": []}
 # Human-written prose: never withheld as code by pattern (credentials are still cleaned).
 PROSE_KEYS = {"description", "title", "name", "label", "message", "notes", "runbook", "displayFolder"}
 
@@ -307,6 +314,8 @@ def _is_code_field(document_type: str, path, parent=None) -> bool:
                 and parent["queryKind"] not in PBI_DOCUMENTATION_KINDS:
             return True
         return key in PBI_CODE_KEYS or any(_matches(path, p) for p in PBI_CODE_PATHS)
+    if document_type == "sql_agent":
+        return key in SQLAGENT_CODE_KEYS
     return key in ADF_CODE_KEYS
 
 

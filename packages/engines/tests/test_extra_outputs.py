@@ -57,8 +57,7 @@ class Written(Base):
                 "sql_agent": lambda s: [f"{s}-csv/{n}.csv" for n in
                                         ("jobs", "steps", "operations", "schedules", "issues", "entities")]}
         for engine in ("power_bi", "adf", "sql_agent"):
-            # shared publication for sql_agent arrives with its projection registration; until then it is refused
-            for profile in (("local", "shared") if engine != "sql_agent" else ("local",)):
+            for profile in ("local", "shared"):
                 with self.subTest(engine=engine, profile=profile):
                     result = self.run_engine(engine, out=f"{engine}-{profile}", profile=profile, also=ALL)
                     html = Path(result.artifact_path)

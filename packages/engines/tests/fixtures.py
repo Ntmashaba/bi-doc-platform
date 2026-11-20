@@ -158,3 +158,84 @@ def sql_agent_jobs(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(SQL_AGENT_SCRIPT, encoding="utf-8")
     return path
+
+
+SQL_AGENT_MIXED_SCRIPT = r"""\
+-- Synthetic projection/admission fixture (v4 5.3): one job touching every step
+-- subsystem, with a marker token in each command that shared projection must
+-- never keep. It names no real system.
+USE [msdb]
+GO
+EXEC msdb.dbo.sp_add_job
+    @job_name = N'Seeded Mixed Subsystems',
+    @enabled = 1,
+    @description = N'One step per subsystem, for projection tests.',
+    @owner_login_name = N'sa'
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 1,
+    @step_name = N'Process the cube',
+    @subsystem = N'ANALYSISCOMMAND',
+    @server = N'SEEDED-SSAS-01',
+    @command = N'<Batch Transaction="true" data-seeded="MARKER-XMLA-a11ce" xmlns="http://schemas.microsoft.com/analysisservices/2003/engine">
+  <Process>
+    <Type>ProcessFull</Type>
+    <Object>
+      <DatabaseID>SeededDW</DatabaseID>
+      <CubeID>Sales</CubeID>
+    </Object>
+  </Process>
+</Batch>'
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 2,
+    @step_name = N'Refresh the table',
+    @subsystem = N'ANALYSISQUERY',
+    @server = N'SEEDED-SSAS-01',
+    @command = N'{"refresh": {"type": "full", "note": {"text": "MARKER-TMSL-b22df"}, "objects": [{"database": "SeededDW", "table": "Sales"}]}}'
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 3,
+    @step_name = N'Run the loader',
+    @subsystem = N'TSQL',
+    @command = N'EXEC dbo.usp_SeededLoad -- MARKER-TSQL-c33e0'
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 4,
+    @step_name = N'Shell out',
+    @subsystem = N'PowerShell',
+    @command = N'Write-Output ''MARKER-POSH-d44f1'''
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 5,
+    @step_name = N'Echo a marker',
+    @subsystem = N'CmdExec',
+    @command = N'cmd /c echo MARKER-CMDEXEC-e55f2'
+EXEC msdb.dbo.sp_add_jobstep
+    @job_name = N'Seeded Mixed Subsystems',
+    @step_id = 6,
+    @step_name = N'Run the package',
+    @subsystem = N'SSIS',
+    @command = N'dtexec /FILE "D:\SeededETL\Nightly.dtsx"'
+EXEC msdb.dbo.sp_add_jobserver @job_name = N'Seeded Mixed Subsystems'
+GO
+"""
+
+# Tokens that exist only inside raw step commands (or, for ssis_path, in the extracted
+# file-package path surfaces): none of them may survive shared projection.
+SQL_AGENT_MARKERS = {
+    "xmla": "MARKER-XMLA-a11ce",
+    "tmsl": "MARKER-TMSL-b22df",
+    "tsql": "MARKER-TSQL-c33e0",
+    "powershell": "MARKER-POSH-d44f1",
+    "cmdexec": "MARKER-CMDEXEC-e55f2",
+    "ssis_path": "SeededETL",
+}
+
+
+def sql_agent_mixed(path: Path) -> Path:
+    """One scripted job with a step per subsystem at `path` (projection and admission tests)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(SQL_AGENT_MIXED_SCRIPT, encoding="utf-8")
+    return path

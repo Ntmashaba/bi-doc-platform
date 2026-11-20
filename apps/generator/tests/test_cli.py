@@ -137,13 +137,14 @@ class Cli(unittest.TestCase):
         code, _, err = run(["generate", "--engine", "sql_agent", "--source", str(folder),
                             "--kind", "adf_git", "--output-dir", str(self.tmp / "wrong")])
         self.assertEqual(code, 2)
-        # shared publication needs the projection registration, which is a later phase: refused cleanly
-        code, _, err = run(["generate", "--engine", "sql_agent", "--source", str(script),
-                            "--kind", "agent_script", "--output-dir", str(self.tmp / "shared"),
-                            "--profile", "shared"])
-        self.assertEqual(code, 2)
-        self.assertIn("shared publication is not available", err)
-        self.assertFalse((self.tmp / "shared").exists())
+        # shared publication goes through the trusted projection: step commands withheld
+        code, out, err = run(["generate", "--engine", "sql_agent", "--source", str(script),
+                              "--kind", "agent_script", "--output-dir", str(self.tmp / "shared"),
+                              "--profile", "shared", "--json"])
+        self.assertEqual(code, 0, err)
+        raw = Path(json.loads(out)["artifact_path"]).read_bytes()
+        self.assertNotIn(b"<Batch Transaction", raw)
+        self.assertIn(b"SEEDED-SSAS-01", raw)
 
     def test_an_unexpected_failure_is_shown_without_its_sensitive_text(self):
         from bidoc_engines.generate import GenerateResult  # noqa: PLC0415
