@@ -29,12 +29,17 @@ _QUERY_SECRET = re.compile(
 _CONN_SECRET = re.compile(
     r"(?i)((?:@?\w*(?:password|pwd|secret)|\b(?:accountkey|sharedaccesskey|sharedaccesssignature|"
     r"clientsecret|accesskey|token))\s*=\s*)(?!N?['\"]?\[redacted\])"
-    # unquoted: up to ; quote or line end (connection-string passwords may hold spaces and commas), except a T-SQL
-    # @variable, which names where the secret is and is not the secret
-    r"(?:N?\"(?:[^\"]|\"\")*\"|N?'(?:[^']|'')*'|(?![\s@])[^;'\"\r\n]+)")
+    # group 2: a quoted literal (T-SQL N'…' included), or an unquoted run up to ; quote or line end, of which
+    # scrub_text keeps only the value (see conn_value). A T-SQL @variable names where the secret is; it is no secret.
+    r"(N?\"(?:[^\"]|\"\")*\"|N?'(?:[^']|'')*'|(?![\s@])[^;'\"\r\n]+)")
 _BEARER = re.compile(r"(?i)\b(bearer\s+)[a-z0-9._~+/=-]{8,}")
-# sqlcmd / bcp style: an uppercase -P switch carries the password, with or without a space (-PSecret)
-_SQLCMD_PASSWORD = re.compile(r"(\s-P\s*)(?!\[redacted\])(\"[^\"]*\"|[^\s\"]+)")
+# sqlcmd / bcp / osql: an uppercase -P switch carries the password. "-P value" is redacted anywhere ...
+_SQLCMD_PASSWORD = re.compile(r"(\s-P\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"]+)")
+# ... the glued form (-PSecret) only on a line that runs one of those tools: elsewhere -Path, -Port and -PassThru
+# are ordinary PowerShell parameters
+# (not after a hyphen: Invoke-Sqlcmd is a PowerShell cmdlet with named parameters such as -Port)
+_SQL_TOOL_LINE = re.compile(r"(?im)^.*(?<![\w-])(?:sqlcmd|bcp|osql)(?:\.exe)?\b.*$")
+_GLUED_P = re.compile(r"(\s-P)(?![\s\"]|\[redacted\])([^\s\"]+)|(\s-P)(\"[^\"]*\")")
 # dtexec: /De[crypt] <password> decrypts a package
 _DTEXEC_DECRYPT = re.compile(r"(?i)(/de(?:crypt)?\s+)(?!\[redacted\])(\"[^\"]*\"|[^\s\"/]+)")
 # PowerShell: ConvertTo-SecureString '<plain text>' -AsPlainText; only quoted literals in that statement
@@ -62,9 +67,31 @@ def scrub_text(text: str) -> Tuple[str, int]:
 
     text = sub(_URL_USERINFO, r"\1" + REDACTED + "@", text)
     text = sub(_QUERY_SECRET, r"\1" + REDACTED, text)
-    text = sub(_CONN_SECRET, r"\1" + REDACTED, text)
+    def conn_value(match):
+        # Quoted: the whole literal. Unquoted: in a connection string (the key follows a ';', or the value ends at
+        # one) the value runs to ';' and may hold spaces and commas; in T-SQL it ends at the first space, so
+        # "SET pwd = 0x01 WHERE id = 1" keeps its WHERE clause. NULL is no secret. Trade-off: a lone
+        # "Password=two words" with no ';' on either side reads as T-SQL, so only "two" is redacted.
+        nonlocal count
+        key, value = match.group(1), match.group(2)
+        if value[:1] in "\"'" or value[:2] in ("N'", 'N"'):
+            count += 1
+            return key + REDACTED
+        in_connection_string = (match.string[:match.start()].rstrip().endswith(";")
+                                or match.string[match.end():match.end() + 1] == ";")
+        head = value.rstrip() if in_connection_string else value.split(None, 1)[0]
+        if head.upper() == "NULL":
+            return match.group(0)
+        count += 1
+        return key + REDACTED + value[len(head):]
+
+    def glued(line):
+        return sub(_GLUED_P, lambda m: (m.group(1) or m.group(3)) + REDACTED, line.group(0))
+
+    text = _CONN_SECRET.sub(conn_value, text)
     text = sub(_BEARER, r"\1" + REDACTED, text)
     text = sub(_SQLCMD_PASSWORD, r"\1" + REDACTED, text)
+    text = _SQL_TOOL_LINE.sub(glued, text)
     text = sub(_DTEXEC_DECRYPT, r"\1" + REDACTED, text)
 
     def plain_text_literals(match):

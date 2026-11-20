@@ -629,6 +629,8 @@ class Registry:
             job.recreate_preamble = True
             if job.created:
                 job.deleted = True
+                # a deleted job no longer uses its schedules (a shared one stays, attached to the others)
+                self._detach_schedules(job)
         elif ref.kind == "name":
             # deletion of a job that is only created later in the script
             key = "name:" + norm_ident(ref.value)

@@ -17,7 +17,7 @@ from adfdocgen.sql_harvest import harvest_sql
 from . import __version__, details, issues as issues_mod, tmsl, xmla
 from .common import split_sql_name
 from .execution_graph import build_graphs
-from .loader import LoadResult
+from .loader import LoadError, LoadResult
 from .processing import build_processing
 from .registry import JobDraft, Registry, StepDraft
 from .schedules import describe_schedule
@@ -236,9 +236,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
     coverage = Coverage()
     coverage.input_files = len(load.files)
     coverage.skipped_files = [load.relative(p) for p in load.skipped]
-    coverage.load_errors = len(load.errors)
 
-    analysis_errors: List[str] = []
     for loaded in load.files:
         source_name = load.relative(loaded.path)       # dev/jobs.sql and prod/jobs.sql are different files
         previous = None
@@ -250,9 +248,13 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
                 bindings: List[Tuple[int, str, str]] = []
                 calls = parse_calls(lex(batch_text), bindings_out=bindings)
                 registry.consume(calls, source_name, bindings=bindings)
-        except Exception:  # noqa: BLE001 - one unreadable script must not stop the others; it is reported
-            analysis_errors.append(f"{source_name}: could not be analysed completely")
-            coverage.load_errors += 1
+        except Exception as exc:  # noqa: BLE001 - one unreadable script must not stop the others; it is reported
+            # recorded like a load error: the document gets the public form, the console (CLI) the exception type
+            # and message, so a real parser bug is still visible to whoever runs the tool
+            load.errors.append(LoadError(
+                detail=f"{loaded.path}: could not be analysed completely ({type(exc).__name__}: {exc})",
+                public=f"{source_name}: could not be analysed completely"))
+    coverage.load_errors = len(load.errors)
     coverage.unrecognised_statements = len(registry.unrecognised)
     coverage.unparsed_steps = registry.unparsed_steps
 
@@ -351,6 +353,6 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         "processing": processing,
         "issues": [i.as_dict() for i in found_issues],
         # the public form: a file name and a generic reason, never a full path or a raw OS error (detail stays local)
-        "warnings": registry.warnings + analysis_errors + [e.public for e in load.errors],
+        "warnings": registry.warnings + [e.public for e in load.errors],
         "coverage": coverage.as_dict(),
     }

@@ -172,20 +172,32 @@ _STMT_STARTERS = {
 
 
 def _collect_rhs(toks: List[Tok], i: int, n: int) -> (List[Tok], int):
-    """Collect the tokens of an assignment right-hand side."""
+    """Collect the tokens of an assignment right-hand side.
+
+    A CASE expression is part of the value: its ELSE and END are not statement starters, so they never reach the
+    main loop as control flow (SET @x = CASE … ELSE 0 END must not make the next EXEC conditional).
+    """
     depth = 0
+    case_depth = 0
     out: List[Tok] = []
     while i < n:
         t = toks[i]
+        word = t.text.upper() if t.kind == "word" else None
         if t.kind == "sym" and t.text == "(":
             depth += 1
         elif t.kind == "sym" and t.text == ")":
             if depth == 0:
                 break
             depth -= 1
-        elif depth == 0 and t.kind == "sym" and t.text in (",", ";"):
+        elif word == "CASE":
+            case_depth += 1
+        elif case_depth and word == "END":
+            case_depth -= 1
+        elif case_depth and word in ("ELSE", "WHEN", "THEN"):
+            pass
+        elif depth == 0 and case_depth == 0 and t.kind == "sym" and t.text in (",", ";"):
             break
-        elif depth == 0 and t.kind == "word" and t.text.upper() in _STMT_STARTERS:
+        elif depth == 0 and case_depth == 0 and word in _STMT_STARTERS:
             break
         out.append(t)
         i += 1
