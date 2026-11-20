@@ -684,3 +684,25 @@ Each defect was reproduced on `626deac` first; each fix has tests that fail on t
 - Not changed, found on the way: the shared T-SQL harvester reports `Sales..FactSales` as `Sales.FactSales` (it reads as
   schema `Sales`); a fix there changes Data Factory output too. The real XMLA `Synchronize` shape (source under
   `Source/Object`) yields no bindings at all.
+
+### 2026-11-20 — `db..table` in the shared T-SQL harvester; XMLA Synchronize as SSMS scripts it
+
+- **Harvester** (`adfdocgen.sql_harvest`, shared by Data Factory and SQL Agent): `Sales..FactSales` (default schema)
+  came out as `Sales.FactSales`, which every consumer read as schema `Sales`. The empty part is now kept
+  (`Sales..FactSales`), and the consumers read names positionally: `adfdocgen.common.split_table` (schema `None`),
+  Data Factory's query endpoints (database `Sales`, from a new `name_parts`), the Power BI bridge's native-query
+  matching (object only, so *possible* at most; it was no match), and SQL Agent's `split_sql_name`. Measured on the
+  95 pinned Microsoft templates (`check_adf_templates.py`): all 190 Data Factory documents are identical before and
+  after (manifests compared by title, per-run fields removed); none of them uses `db..table`, so the change reaches only
+  scripts that do, where the previous output was wrong.
+- **Synchronize**: the layout SSMS scripts (source under `Source/Object`, source server in `Source/ConnectionString`)
+  gave no bindings and no entities. The target is now the database on the step's server and the source the same
+  database ID on the connection string's `Data Source`; nothing else is taken from that string (a test plants a password
+  and checks every output: HTML, JSON, Word, CSV, agent). The adapter's read uses the source server (unknown when only
+  a `DatabaseID` is given), no longer the destination's. Found on the way: the known-operation list said `sync`, but the
+  element is `Synchronize`, so every Synchronize had been counted in `unknownOperations`. Relationship rules are
+  unchanged: Synchronize still relates to nothing.
+- Tests: 4 Data Factory (harvester forms, positional `split_table`, a query endpoint, the bridge row "Archive native
+  db.." now *possible*), 2 SQL Agent harvester-path tests (entity and a real-adapter link, *possible* with "schema not
+  known on both sides"), 5 Synchronize tests and a real-adapter one; each fix's tests fail on the previous code.
+- Not changed: a `Restore` still yields no bindings (its target is a `DatabaseName`, not an object path).

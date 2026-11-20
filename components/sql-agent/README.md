@@ -40,8 +40,10 @@ before it is written.
   recreate preambles.
 - XMLA `<Batch>`: Transaction/ProcessAffectedObjects attributes, `<Parallel>`,
   `<ErrorConfiguration>`, Process (all types; ProcessAdd out-of-line Bindings
-  count as reads), Backup, Restore, Alter, Create, Delete, Sync, Detach,
-  Attach, ClearCache.
+  count as reads), Backup, Restore, Alter, Create, Delete, Synchronize, Detach,
+  Attach, ClearCache. A Synchronize targets its database on the step's server
+  and reads it from the server its source connection string names (only the
+  server is kept from that string, never credentials or other settings).
 - TMSL JSON: refresh (type + database/table/partition objects),
   createOrReplace, alter, delete, backup, restore, sequence envelopes.
 - T-SQL step bodies via `adf-doc-gen`'s token-based harvester (tables read /
@@ -104,8 +106,8 @@ difference is investigated before anything else.
 - A command built only from string literals (`N'INSERT …' + N'SELECT …'`) is one known command and is parsed. A
   command that involves a variable, a function or anything else is counted in `unparsedSteps`.
 - T-SQL object names keep their own database: `Sales.dbo.FactSales` is database `Sales` whatever the step's
-  `@database_name`; a four-part name records its linked server. Known limitation: the shared T-SQL harvester reports
-  `Sales..FactSales` (default schema) as `Sales.FactSales`, which reads as schema `Sales`.
+  `@database_name`; `Sales..FactSales` is database `Sales` with the default schema left out; a four-part name records
+  its linked server.
 
 ## Layout
 
