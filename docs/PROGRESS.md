@@ -562,7 +562,7 @@ owner-run.
 
 A third engine, `components/sql-agent` (`sqlagent-doc-gen`), documents scripted SQL Server Agent jobs (SSMS *Script Job
 as → CREATE To*), with SSAS processing (XMLA and TMSL) as its focus. Design: *SQL Agent Job Analysis — Design Document
-v4.1* (v4 plus the conformance update below). Static analysis only; it never connects to a server.
+v4.1* (v4 plus the conformance update below), kept with the owner's project documents, not in this repository. Static analysis only; it never connects to a server.
 
 - Phases 1–3 (engine): string- and comment-aware tokenizer; `sp_add_job*` / `sp_add_schedule` / `sp_attach_schedule` /
   `sp_add_jobserver` / `sp_update_job` parser with job and schedule identity through `OUTPUT` variables, GUIDs and ids;
@@ -648,3 +648,39 @@ v4.1* (v4 plus the conformance update below). Static analysis only; it never con
   different model does not link. `desktop_e2e.cjs` checks both labels in prerequisites and review, and fails on the
   previous build. Locally: relationships 21, engines 159, library and generator suites green; desktop and library
   browser checks pass in Chromium.
+
+### 2026-11-20 — SQL Agent review fixes (Phase 8 review; four engine defects)
+
+Each defect was reproduced on `626deac` first; each fix has tests that fail on the previous code.
+
+- **Relationship rules** (Phase 8 review): (1) an Analysis Services port known on one side only made a match
+  `exact_static`; it is now `possible`, "port known on one side only". A composite `host\instance` server with a separate
+  port is now split too (it was a false non-match). (2) From SQL Agent, an Analysis Services binding relates only when the
+  job processes or refreshes the model: a `Synchronize` or `Restore` source, reaching the rules as a `read`, created a
+  `reads` link. Relational out-of-line reads of processing operations still relate. New: 3 rule tests, a real-adapter
+  suite (`packages/engines/tests/test_sql_agent_lineage.py`: Synchronize relates to neither model, ProcessAdd and its
+  relational read still relate, the port matrix), and a library test locking the documented upgrade behaviour (an
+  unchanged catalogue keeps its `rel-rules/1` generation; the next change rebuilds with `rel-rules/2`; the old generation
+  stays pinnable).
+- **Duplicate jobs were merged silently** (high): the same job created in two files (dev and prod script-outs) became one
+  job with both files' steps. Each definition is now its own job and a `job-duplicate` warning names both files; a later
+  copy's identity carries its file (`name:nightly@prod.sql`), and every other job keeps its identity and scope key. A drop
+  and create preamble in another file belongs to that file's job and does not "replace" the first; a job deleted and
+  created again in the same file is replaced; `IF` / `ELSE` alternatives in one file stay one job (the corpus caught a
+  first version of this fix that split First Responder Kit's `sp_AllNightLog_Setup.sql` jobs into four). Steps added from
+  another file without re-creating the job still extend it.
+- **Three-part names** (medium-high): `Sales.dbo.FactSales` bound as database `master` (the step's), schema `Sales.dbo`,
+  in both the engine's entities and the adapter's bindings, so a cross-database load never linked to the Power BI report
+  reading that table (confirmed through the real engines). One bracket- and quote-aware splitter
+  (`sqlagentdocgen.common.split_sql_name`) now serves both; it links `produces / possible` (a T-SQL step has no server in
+  the script). A four-part name's linked server is binding context, not the endpoint's server, since it is an alias.
+- **`msdb..sp_add_job`** (medium): the default-schema form was not recognised, so the document was empty (counted in
+  coverage). Every qualification now parses.
+- **`@command = N'a' + N'b'`** (low-medium): a concatenation of string literals only is one known command and is parsed,
+  in a call and in a `DECLARE`; anything with a variable, a function or a number stays unparsed. DarlingData's
+  `sp_WhoIsActive Logging` (a concatenation with a variable) keeps `unparsedSteps = 1`.
+- Verified locally: SQL Agent 194, engines 165, relationships 24, library 195 (the one failure is the Python 3.13 HTTP 413
+  phrase; passes on 3.11), generator 171; desktop, library and offline browser checks pass; the corpus matches its manifest.
+- Not changed, found on the way: the shared T-SQL harvester reports `Sales..FactSales` as `Sales.FactSales` (it reads as
+  schema `Sales`); a fix there changes Data Factory output too. The real XMLA `Synchronize` shape (source under
+  `Source/Object`) yields no bindings at all.

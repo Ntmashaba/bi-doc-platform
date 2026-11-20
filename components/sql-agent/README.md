@@ -57,6 +57,7 @@ Findings are evidence about the scripts, not instructions. Each one states only 
 | `job-owner-sa` | warning | The job owner is `sa`. |
 | `step-proxy` | info | A non-T-SQL step uses a configured proxy. Owner and proxy are reported as separate facts: the owner is not claimed to be the identity every step runs as. |
 | `job-owner-missing`, `job-not-created` | info | Likely a partial script. |
+| `job-duplicate` | warning | The same job is created in two files (dev and prod script-outs, say), or twice in one file without being deleted in between. Each definition is documented as its own job, never merged; the later one's identity carries its file (`name:nightly@prod.sql`). Alternatives under `IF` / `ELSE` in one file are one job, and a job deleted and created again in one file is replaced. |
 | `job-disabled`, `job-unscheduled` | info | The final scripted state, after every `sp_update_job` in script order. |
 | `job-schedules-disabled` | info | The job has schedules, but every attached schedule is scripted `@enabled = 0` (an unscripted `@enabled` is msdb's default, enabled). |
 | `step-no-retry` | warning | An SSAS processing step has `retryAttempts = 0`. |
@@ -95,6 +96,16 @@ license and expected coverage counters, and `python scripts/sql_agent_corpus.py`
 (counts only in its output). The expected baseline is DarlingData's *sp_WhoIsActive Logging* job at `unparsedSteps = 1`
 (its step command is a concatenated variable). Run it after any change to the tokenizer, parser or registry; a
 difference is investigated before anything else.
+
+## Names and command forms
+
+- Procedures are recognised however they are qualified: `msdb.dbo.sp_add_job`, `msdb..sp_add_job`, `dbo.sp_add_job`,
+  bracketed or bare.
+- A command built only from string literals (`N'INSERT …' + N'SELECT …'`) is one known command and is parsed. A
+  command that involves a variable, a function or anything else is counted in `unparsedSteps`.
+- T-SQL object names keep their own database: `Sales.dbo.FactSales` is database `Sales` whatever the step's
+  `@database_name`; a four-part name records its linked server. Known limitation: the shared T-SQL harvester reports
+  `Sales..FactSales` (default schema) as `Sales.FactSales`, which reads as schema `Sales`.
 
 ## Layout
 

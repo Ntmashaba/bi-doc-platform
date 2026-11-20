@@ -26,7 +26,8 @@ import commit (`63d210c`); later changes to `components/` are in git history and
 ## `sql-agent`
 
 `sql-agent` (`sqlagent-doc-gen`, package `sqlagentdocgen`) has no standalone predecessor: it was written here on the
-`feature/sql-agent-engine` branch, starting at `bff031f`, to the design in *SQL Agent Job Analysis — Design Document v4*.
+`feature/sql-agent-engine` branch, starting at `bff031f`, to the design in *SQL Agent Job Analysis — Design Document v4* (v4.1 since the conformance review; kept with the
+owner's project documents, not in this repository).
 `scripts/verify_components.py` does not apply to it.
 
 It **depends on `adf-doc-gen`** and imports one module from it: `adfdocgen.sql_harvest.harvest_sql`, the token-based T-SQL
