@@ -7,7 +7,7 @@ name = "sqlagent-doc-gen"
 description = "SQL Server Agent job script analysis for bi-doc-platform (static analysis only; never connects to a server)"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 dynamic = ["version"]
 dependencies = [
     "adf-doc-gen",

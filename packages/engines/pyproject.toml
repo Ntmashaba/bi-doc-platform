@@ -7,6 +7,7 @@ name = "bi-doc-engines"
 dynamic = ["version"]
 description = "Adapters from pbi-doc-gen, adf-doc-gen and sqlagent-doc-gen to BI Documentation Platform envelope-v1 artifacts."
 requires-python = ">=3.11"
+license = { text = "MIT" }
 # bi-doc-contracts is a local package: install it from packages/contracts first
 # (requirements.txt does). Engine packages are also installed from components/.
 dependencies = ["pbi-doc-gen[portable]", "adf-doc-gen", "sqlagent-doc-gen"]

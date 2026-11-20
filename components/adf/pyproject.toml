@@ -8,6 +8,7 @@ dynamic = ["version"]
 description = "Self-contained HTML documentation generator for Azure Data Factory."
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
 dependencies = []
 
 [project.scripts]
