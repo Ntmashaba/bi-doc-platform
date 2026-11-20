@@ -173,6 +173,15 @@ class Adapter(unittest.TestCase):
         for b in step["bindings"]:
             self.assertEqual(b["endpoint"]["database"], "StagingDW")
 
+    def test_write_extras_csv_uses_the_declared_inventory(self):
+        from bidoc_engines.sql_agent import extra_owned_names, write_extras
+        payload = self.manifest["native_payload"]["data"]
+        written, notes = write_extras(payload, self.tmp / "csv-out" / "doc.html", ("csv",))
+        self.assertEqual(notes, [])
+        self.assertEqual({Path(p).relative_to(self.tmp / "csv-out").as_posix() for p in written},
+                         extra_owned_names("doc"), "the files written are exactly the ones the engine declares")
+        self.assertEqual(len(written), 6)
+
     def test_native_schema_registered_for_conversion(self):
         self.assertIn("sqlagent-doc-gen/1", SUPPORTED_NATIVE_SCHEMAS["sql_agent"])
 
@@ -217,6 +226,15 @@ class FolderInputs(unittest.TestCase):
                                      source_kind="agent_folder", output_dir=str(self.tmp / "out")))
         self.assertEqual(r.status, "local_only")
         self.assertTrue(r.artifact_path.endswith(".local.html"))
+
+    def test_shared_profile_is_refused_until_projection_is_registered(self):
+        r = generate(GenerateRequest(engine="sql_agent", source_path=str(self.folder()),
+                                     source_kind="agent_folder", output_dir=str(self.tmp / "shared"),
+                                     profile="shared"))
+        self.assertEqual(r.status, "failed")
+        self.assertEqual(r.errors[0]["code"], "INVALID_INPUT")
+        self.assertIn("shared publication is not available", r.errors[0]["message"])
+        self.assertFalse((self.tmp / "shared").exists(), "nothing is written")
 
     def test_wrong_kind_rejected(self):
         r = generate(GenerateRequest(engine="sql_agent", source_path=str(self.folder()),

@@ -15,7 +15,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fixtures import ADF_MARKERS, PBI_MARKERS, adf_factory, pbi_model  # noqa: E402
+from fixtures import ADF_MARKERS, PBI_MARKERS, adf_factory, pbi_model, sql_agent_jobs  # noqa: E402
 from bidoc_contracts import validate_artifact  # noqa: E402
 from bidoc_engines import power_bi  # noqa: E402
 from bidoc_engines.generate import EXTRAS, GenerateRequest, generate  # noqa: E402
@@ -38,9 +38,11 @@ class Base(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.model = pbi_model(self.tmp / "model")
         self.factory = adf_factory(self.tmp / "factory")
+        self.jobs = sql_agent_jobs(self.tmp / "jobs.sql")
 
     def run_engine(self, engine, out="out", **kw):
-        source, kind = (self.model, "bim") if engine == "power_bi" else (self.factory, "adf_git")
+        source, kind = {"power_bi": (self.model, "bim"), "adf": (self.factory, "adf_git"),
+                        "sql_agent": (self.jobs, "agent_script")}[engine]
         result = generate(GenerateRequest(engine=engine, source_path=str(source), source_kind=kind,
                                           output_dir=str(self.tmp / out), **kw))
         self.assertIn(result.status, ("completed", "local_only"), result.errors)
@@ -48,18 +50,22 @@ class Base(unittest.TestCase):
 
 
 class Written(Base):
-    def test_every_output_beside_the_document_in_both_engines(self):
+    def test_every_output_beside_the_document_in_every_engine(self):
         self.assertEqual(EXTRAS, ALL)
-        for engine in ("power_bi", "adf"):
-            for profile in ("local", "shared"):
+        csvs = {"power_bi": lambda s: [f"{s}.columns.csv"],
+                "adf": lambda s: [f"{s}-csv/{n}.csv" for n in ("edges", "issues", "objects", "usage")],
+                "sql_agent": lambda s: [f"{s}-csv/{n}.csv" for n in
+                                        ("jobs", "steps", "operations", "schedules", "issues", "entities")]}
+        for engine in ("power_bi", "adf", "sql_agent"):
+            # shared publication for sql_agent arrives with its projection registration; until then it is refused
+            for profile in (("local", "shared") if engine != "sql_agent" else ("local",)):
                 with self.subTest(engine=engine, profile=profile):
                     result = self.run_engine(engine, out=f"{engine}-{profile}", profile=profile, also=ALL)
                     html = Path(result.artifact_path)
                     stem = html.with_suffix("")
                     names = sorted(Path(p).relative_to(html.parent).as_posix() for p in result.extra_paths)
                     expected = [f"{stem.name}.agent.md", f"{stem.name}.docx", f"{stem.name}.json"]
-                    expected += ([f"{stem.name}.columns.csv"] if engine == "power_bi" else
-                                 [f"{stem.name}-csv/{n}.csv" for n in ("edges", "issues", "objects", "usage")])
+                    expected += csvs[engine](stem.name)
                     self.assertEqual(names, sorted(expected))
                     manifest = validate_artifact(html.read_bytes())
                     self.assertEqual(json.loads(Path(f"{stem}.json").read_text(encoding="utf-8")),
@@ -141,6 +147,15 @@ class Regeneration(Base):
         self.assertEqual(self.record(second)["outputs"], [f"{stem}.json"])
         third = self.run_engine("adf")
         self.assertEqual(self.files(third), [f"{stem}.html"], "HTML only again: no extras and no record")
+
+    def test_sql_agent_csv_inventory_is_tracked_and_removed(self):
+        first = self.run_engine("sql_agent", also=("csv",))
+        stem = Path(first.artifact_path).stem
+        names = [f"{stem}-csv/{n}.csv" for n in ("jobs", "steps", "operations", "schedules", "issues", "entities")]
+        self.assertEqual(self.record(first)["outputs"], names)
+        self.assertEqual(self.files(first), sorted([f"{stem}.html", f"{stem}.outputs.json"] + names))
+        second = self.run_engine("sql_agent")
+        self.assertEqual(self.files(second), [f"{stem}.html"], "HTML only again: no extras and no record")
 
     def test_files_the_generator_did_not_write_are_never_touched(self):
         first = self.run_engine("adf")
