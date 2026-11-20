@@ -15,7 +15,7 @@ Source: `apps/library/frontend/src/*.ts` (TypeScript 5.9, strict). Compiled with
 
 ## Related documentation panel
 
-- **Groups:** upstream pipelines that write this, downstream reports that read this, other readers, deletions, and manual links.
+- **Groups:** upstream pipelines and jobs that write or refresh this, downstream reports that read this, other readers, deletions, and manual links.
 - **Each link** shows type, document and object, confidence ("Exact (static evidence)", "Possible", "Manual — user asserted"), environment, status (Needs review / Archived) and expandable evidence (both endpoints, resolutions, notes).
 - **Evidence state** is always shown: computed at, updating (prior evidence labelled), pinned for an earlier version, or unavailable.
 - With no links, the panel says "No relationship found in the indexed documents."

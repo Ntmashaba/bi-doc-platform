@@ -77,6 +77,16 @@ as Data Factory linked-service endpoints are: job and step names, the SSAS `@ser
 entities. The cleaning of other fields (personal paths, credentials in text) is best effort, as it is for the other
 engines; it is not a guarantee.
 
+## Links to Power BI
+
+In the library and the offline catalogue, a job step is linked to the Power BI sources it feeds
+([relationship rules `rel-rules/2`](../../docs/relationships.md#detected-relationships-rel-rules2)): a step that
+**processes or refreshes** an Analysis Services model is upstream of every Power BI source that reads that model (exact
+when the job names the database as TMSL does and the report is live-connected; *possible* for an XMLA `DatabaseID`,
+which is usually but not always the model's name), and a T-SQL step that writes a table is upstream of the sources that
+read it (*possible* at most: a T-SQL step runs on the job's own server, which the script does not name). Backups,
+restores, other model commands and stored-procedure calls are not links.
+
 ## Real-world corpus
 
 Committed tests use synthetic and adversarial fixtures only. Public job scripts are checked by hand, never vendored:

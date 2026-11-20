@@ -100,7 +100,7 @@ Retry a failed item with `bidoc retry ITEM_ID` (`bidoc history` lists them). [Ba
 bidoc export-library ".\Documentation-Hub" ".\Documentation"
 ```
 
-Open `Documentation-Hub\index.html`: a catalogue with search, a viewer and links between related Power BI and Data Factory
+Open `Documentation-Hub\index.html`: a catalogue with search, a viewer and links between related Power BI, Data Factory and SQL Agent
 objects. It is a snapshot; run the command again after regenerating. [Offline export](docs/portable-export.md).
 
 ## Find a feature
@@ -258,7 +258,7 @@ it is were not checked. A report that has its own model is never given another.
 |---|---|
 | [`components/power-bi`](components/power-bi) · [`components/adf`](components/adf) · [`components/sql-agent`](components/sql-agent) | The documentation engines (`pbidocgen`, `adfdocgen`, `sqlagentdocgen`) |
 | [`packages/contracts`](packages/contracts) | Manifest (envelope) and validation contracts |
-| [`packages/engines`](packages/engines) · [`packages/relationships`](packages/relationships) | Engine adapters, projection and identity; links between Data Factory activities and Power BI sources |
+| [`packages/engines`](packages/engines) · [`packages/relationships`](packages/relationships) | Engine adapters, projection and identity; links from Data Factory activities and SQL Agent job steps to Power BI sources |
 | [`apps/generator`](apps/generator) | `bidoc`: command line, batches, history, desktop app |
 | [`apps/library`](apps/library) | Shared library: API, web interface, local or Azure storage |
 | [`packaging/windows`](packaging/windows) · [`deploy/azure`](deploy/azure) · [`Dockerfile`](Dockerfile) | Windows installer (unsigned development build), Azure template, Docker image |

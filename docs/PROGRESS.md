@@ -612,3 +612,39 @@ v4.1* (v4 plus the conformance update below). Static analysis only; it never con
 - Next: Phase 8 (relationship rules with SQL Agent as a lineage source; friendly labels for `agent_script` /
   `agent_folder` in the desktop review and prerequisites tables). Then the Power BI / Data Factory UX rework on its own
   branch.
+
+### 2026-11-20 — SQL Agent Phase 8: lineage to Power BI (`rel-rules/2`) and desktop labels
+
+- **Relationship rules `rel-rules/2`** (`packages/relationships`): sources are Data Factory activities **and SQL Agent job
+  steps**; targets stay Power BI sources; the kinds are unchanged (`produces`, `reads`, `deletes`), so the library, the API
+  and the offline export needed no new kind. A step that **processes or refreshes** an Analysis Services model `produces`
+  the Power BI sources that read it: exact when server, instance and a database named by name (TMSL) match and both sides
+  are statically resolved (a live-connected report); *possible* when the job names the database by its XMLA `DatabaseID`,
+  when its server is unscripted (the local instance), on a letter-case difference, or when Power BI resolved the source
+  only partly (an `AnalysisServices.Database` import query names no table). The evidence says what the job runs ("the
+  job's process (ProcessFull) targets Sales in this model"). T-SQL writes and reads link as for Data Factory, *possible*
+  at most (a T-SQL step has no server of its own in the script). Backups, restores, other model commands and stored
+  procedure calls are not links. Analysis Services endpoints are compared only with each other: before, an `ssas`
+  target would have reached the SQL comparison, which matches on the object name, so a cube named like a table could
+  have linked to it. ADF results are unchanged except that an ADF binding is no longer compared with an Analysis
+  Services endpoint.
+- **Adapter:** SSAS bindings' `invocation_context` gains two scalars, `operation_kind` and `command_language`, so the rules
+  can tell processing from a backup and an XMLA ID from a TMSL name. Golden fixtures unchanged.
+- **Library:** `GET /capabilities` reports `relationship_schema_version` from the rules package instead of a literal. The
+  Related panel's upstream group reads "Upstream: pipelines and jobs that write or refresh this" (library frontend
+  recompiled; `browser_e2e.cjs` and `docs/library-ui.md` follow). Known limitation, documented in
+  `docs/relationships.md`: derived state is keyed to the catalogue sequence, so an upgraded library recomputes with
+  `rel-rules/2` at its next catalogue change, not at upgrade; for ADF and Power BI documents the results only differ in the
+  Analysis Services case above. A forced rebuild at an unchanged sequence was not added: it would need either a sequence
+  change in both stores or a tie-break between two generations at one sequence.
+- **Desktop app:** `agent_script` / `agent_folder` read "SQL Agent job script" / "SQL Agent job scripts (folder)" in the
+  review and prerequisites tables; the input hint and the prerequisites note mention SQL Agent inputs. Desktop UI
+  recompiled.
+- **Tests:** 11 rule tests (TMSL exact, live connection with a composite server, XMLA possible, contradictions, local
+  instance and letter case, non-processing operations, model-is-never-a-table both ways, T-SQL write and read, procedures,
+  ADF never compared with Analysis Services, determinism with mixed sources); the 10 ADF rule tests are unchanged. 3
+  library tests drive the real engines end to end (`SqlAgentLineage`, local and Azure-store variants): a TMSL refresh job
+  and a live-connected PBIR report link `exact_static`; an import query links `possible` with "resolution is partial"; a
+  different model does not link. `desktop_e2e.cjs` checks both labels in prerequisites and review, and fails on the
+  previous build. Locally: relationships 21, engines 159, library and generator suites green; desktop and library
+  browser checks pass in Chromium.

@@ -27,22 +27,37 @@ Reference: `bidoc_library/search.py`. The browser implementation (B06b) must mat
 - Only current, active revisions are indexed.
 - Query code withheld from shared documents is not in the index at all.
 
-## Detected relationships `rel-rules/1`
+## Detected relationships `rel-rules/2`
 
-Package `packages/relationships` (pure, shared with the offline export later).
+Package `packages/relationships` (pure, standard library only; the library and the offline export use the same code).
+Sources are **Data Factory activities** and **SQL Agent job steps**; targets are **Power BI sources**.
 
 | Situation | Result |
 |---|---|
-| ADF write; SQL server, port, instance, database, schema and object all known and equal as written; both statically resolved | `produces`, `exact_static` |
+| ADF or SQL Agent write; SQL server, port, instance, database, schema and object all known and equal as written; both statically resolved | `produces`, `exact_static` |
 | ADF file write to the same account, container and path | `produces`, `exact_static` |
-| Location part missing on one side; letter-case-only difference; folder containing the file; dynamic, opaque or partial resolution | `possible` |
-| ADF delete / ADF read of the same endpoint | `deletes` / `reads`, never `produces` |
+| SQL Agent step that processes or refreshes an Analysis Services model, and a Power BI source that reads that model: same server and instance, same database **named by name** (TMSL), both statically resolved (a live-connected report) | `produces`, `exact_static` |
+| The same, but the job names the database by its XMLA `DatabaseID` | `produces`, `possible` (an ID is usually, not always, the model's name) |
+| Location part missing on one side (a SQL Agent T-SQL step has no server: it runs on the job's own); letter-case-only difference; folder containing the file; dynamic, opaque or partial resolution (a Power BI `AnalysisServices.Database` import query names no table, so it is partial) | `possible` |
+| ADF delete / ADF or SQL Agent read of the same endpoint | `deletes` / `reads`, never `produces` |
+| SQL Agent backup, restore, alter, delete, sync or clear-cache of a model; executing a stored procedure | no relationship (only processing and refresh load a model's data; a procedure's effect is not known statically) |
+| An Analysis Services endpoint against a SQL table or a file, either way round | no relationship (a model is never a table) |
 | Different known server, port, instance, database, account, container or environment | no relationship |
 | Environment undeclared on either side | allowed, with the note "environment not declared on both documents" |
 
-- **Stored once:** each relationship is stored with source = ADF activity (and its parent pipeline) and target = Power BI source, and is served in both directions.
-- **Evidence:** raw endpoints, both resolutions, environments, binding IDs and notes.
+- **Stored once:** each relationship is stored with source = ADF activity or SQL Agent job step (and its parent pipeline
+  or job) and target = Power BI source, and is served in both directions. The library groups both producers under
+  "Upstream: pipelines and jobs that write or refresh this".
+- **Evidence:** raw endpoints, both resolutions, environments, binding IDs and notes. A SQL Agent processing link says
+  what the job runs, for example "the job's process (ProcessFull) targets Sales in this model".
 - **No match** means "No relationship found in the indexed documents".
+- **`rel-rules/1` → `rel-rules/2`:** a library recomputes relationships at its next catalogue change (a publish,
+  archive, restore or manual link), not at upgrade: derived state is keyed to the catalogue sequence, and an upgrade
+  does not move it. Until then the current generation keeps `rel-rules/1` and says so in its `rule_version`, while
+  `GET /capabilities` reports the running rules (`relationship_schema_version: rel-rules/2`). For a library of ADF and
+  Power BI documents the two versions give the same results except one case: an ADF binding is no longer compared with
+  an Analysis Services endpoint (`rel-rules/1` could match one on the object name alone). SQL Agent documents are
+  published after the upgrade, and that publication is a catalogue change, so their relationships use `rel-rules/2`.
 
 ## Generations and history
 
