@@ -85,6 +85,18 @@ class RealAdapterLineage(_Engines):
         self.assertEqual(self.found([job, self.live_report("SeededStaging")]), [])
         self.assertEqual(self.found([job, self.live_report("SeededModel")]), [])
 
+    def test_scripted_synchronize_reads_from_its_source_server_and_still_relates_to_nothing(self):
+        sync = (f"<Synchronize {NS}><Source><ConnectionString>Provider=MSOLAP;Data Source=SEEDED-SRC\\TABULAR;"
+                f"Integrated Security=SSPI</ConnectionString><Object><DatabaseID>SeededModel</DatabaseID></Object>"
+                f"</Source><SynchronizeSecurity>CopyAll</SynchronizeSecurity></Synchronize>")
+        job = self.job("Scripted sync", sync)
+        eps = sorted((b["operation"], b["endpoint"]["server"], b["endpoint"]["database"])
+                     for o in job.objects for b in o["bindings"])
+        self.assertEqual(eps, [("execute", "SEEDED-SSAS-01\\TABULAR", "SeededModel"),
+                               ("read", "SEEDED-SRC\\TABULAR", "SeededModel")])
+        self.assertEqual(self.found([job, self.live_report("SeededModel")]), [])
+        self.assertEqual(self.found([job, self.live_report("SeededModel", server="SEEDED-SRC\\TABULAR")]), [])
+
     def test_processing_still_relates_and_its_relational_read_is_a_reader(self):
         process_add = (f"<Batch {NS}><Process><Type>ProcessAdd</Type><Object><DatabaseID>SeededModel</DatabaseID>"
                        f"<CubeID>Sales</CubeID></Object><Bindings><Binding><DataSourceID>Staging</DataSourceID>"
@@ -128,6 +140,15 @@ class CrossDatabaseLoads(_Engines):
         self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
         self.assertIn("server known on one side only", found[0]["evidence"]["notes"])
         self.assertEqual(self.found([job, self.sql_model("sql1.corp.local", "master", "dbo", "FactSales")]), [])
+
+    def test_a_default_schema_write_links_as_possible(self):
+        job = self.tsql_job("INSERT INTO Sales..FactSales SELECT 1")
+        write = next(b for o in job.objects for b in o["bindings"] if b["operation"] == "write")
+        self.assertEqual((write["endpoint"]["database"], write["endpoint"]["schema"], write["endpoint"]["object"]),
+                         ("Sales", None, "FactSales"))
+        found = detect([job, self.sql_model("sql1.corp.local", "Sales", "dbo", "FactSales")])
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
+        self.assertIn("schema not known on both sides", found[0]["evidence"]["notes"])
 
     def test_a_linked_server_name_is_context_not_the_server(self):
         job = self.tsql_job("INSERT INTO REMOTE.Sales.dbo.FactSales SELECT 1")

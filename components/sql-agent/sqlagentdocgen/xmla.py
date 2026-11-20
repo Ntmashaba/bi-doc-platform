@@ -4,7 +4,9 @@ Understands <Batch> envelopes (Transaction / ProcessAffectedObjects /
 WriteBackTableCreation attributes, <Parallel>, <ErrorConfiguration>) and the
 operation elements seen in SSAS processing jobs: Process (with Type and the
 Object ID hierarchy; ProcessAdd out-of-line Bindings count as reads), Backup,
-Restore, Alter, Create, Delete, Sync, Detach, Attach, ClearCache.
+Restore, Alter, Create, Delete, Synchronize (its source database and the source
+server from the connection string, never the string itself), Detach, Attach,
+ClearCache.
 
 Parsing is namespace-agnostic and never fails hard: malformed XML yields a
 result with ok=False so the caller can count it as an unknown operation.
@@ -116,11 +118,33 @@ def _parse_generic(elem: ET.Element) -> XmlaOperation:
         elif child.tag == "DatabaseName" and child.text:
             op.detail["database"] = child.text.strip()
         elif child.tag == "Source":
-            src_db = _child_text(child, "DatabaseID")
+            # Synchronize names its source as SSMS scripts it: <Source><ConnectionString>…</ConnectionString>
+            # <Object><DatabaseID>…</DatabaseID></Object></Source>. A DatabaseID directly under Source is read too.
+            src_obj = next((c for c in child if c.tag == "Object"), None)
+            src_db = _child_text(child, "DatabaseID") or (_object_path(src_obj) or "").split("/")[0] or None
             if src_db:
                 op.reads.append(src_db)
+            server = _data_source(_child_text(child, "ConnectionString"))
+            if server:
+                op.detail["sourceServer"] = server         # the server only: the string may carry credentials
     op.object_path = _object_path(obj)
+    if op.object_path is None and op.kind == "synchronize" and op.reads:
+        # the destination is the server the step runs on, holding the database under the same ID
+        op.object_path = op.reads[0]
     return op
+
+
+_DATA_SOURCE_KEYS = ("data source", "datasource", "server", "address", "addr", "network address")
+
+
+def _data_source(connection_string: Optional[str]) -> Optional[str]:
+    """The Data Source of an MSOLAP connection string, nothing else from it."""
+    for pair in (connection_string or "").split(";"):
+        key, sep, value = pair.partition("=")
+        if sep and key.strip().lower() in _DATA_SOURCE_KEYS:
+            value = value.strip().strip("\"'")
+            return value or None
+    return None
 
 
 def analyse_xmla(command: str) -> XmlaBatch:

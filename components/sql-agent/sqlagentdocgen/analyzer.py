@@ -25,7 +25,8 @@ from .script_parser import parse_calls
 from .tokenizer import statements, lex
 
 _KNOWN_XMLA_KINDS = {
-    "process", "backup", "restore", "alter", "create", "delete", "sync",
+    # element names, lower-cased: Synchronize, not "sync" (there is no <Sync>, so every Synchronize counted as unknown)
+    "process", "backup", "restore", "alter", "create", "delete", "synchronize",
     "detach", "attach", "clearcache",
 }
 _KNOWN_TMSL_KINDS = {
@@ -189,6 +190,13 @@ def _build_entities(jobs_payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                                  "database": parts[0], "object": "/".join(parts[1:])},
                                 jname, sname, operation)
                     for read in op.get("reads", []):
+                        if operation == "synchronize":
+                            # the source database, on the server the connection string names (if any)
+                            source = (op.get("detail") or {}).get("sourceServer")
+                            use(f"ssas/{source or '(unknown)'}/{read}".lower(), "ssas_database",
+                                {"system": "ssas", "server": source, "database": read},
+                                jname, sname, "read")
+                            continue
                         use(f"ssas/{server}/datasource/{read}".lower(), "ssas_object",
                             {"system": "ssas", "server": raw_server, "object": read},
                             jname, sname, "read")

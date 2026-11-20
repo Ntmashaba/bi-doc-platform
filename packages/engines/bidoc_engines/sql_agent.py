@@ -219,8 +219,11 @@ def _step_bindings(job: dict, step: dict, ref: str, coverage: str, sid: str) -> 
                 if (op.get("kind") or "").lower() in _PROCESS_KINDS:
                     # out-of-line binding source (the query/table behind the data source id)
                     add("read", endpoints.endpoint(system="sql", object=source), context)
+                elif (op.get("kind") or "").lower() == "synchronize":
+                    # the source database lives on another server: the one its connection string names, else unknown
+                    source_server = (op.get("detail") or {}).get("sourceServer")
+                    add("read", endpoints.endpoint(system="ssas", server=source_server, database=source), context)
                 else:
-                    # e.g. a Synchronize / Restore source database: an SSAS-side read
                     add("read", endpoints.endpoint(system="ssas", server=server, database=source), context)
     elif sub == "TSQL":
         db = step.get("database")
