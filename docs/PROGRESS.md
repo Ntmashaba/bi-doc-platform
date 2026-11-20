@@ -724,3 +724,35 @@ Each defect was reproduced on `626deac` first; each fix has tests that fail on t
 - Tests: `test_backup_restore.py` (Restore target by name and by ID, the entity, every standalone output for XMLA and
   TMSL backup and restore, the redaction patterns) and `test_sql_agent_secrets.py` (every `bidoc generate` output, local
   and shared, with every extra), plus a real-adapter Restore binding; all fail on the previous code.
+
+### 2026-11-20 — SQL Agent review round 3 (redaction, SSMS start step, folders, parser)
+
+Each finding was reproduced on `c0fbad4` first (probe scripts, now tests); every test was
+compared against the pushed engine with bytecode disabled and caches removed.
+
+- **High — redaction gaps** (`redact.py`): `PASSWORD = N'…'` (the normal T-SQL form: `CREATE LOGIN`, `ENCRYPTION BY
+  PASSWORD`) redacted only the `N` and left the secret visible while counting a redaction; `@rmtpassword = N'…'`,
+  `sqlcmd -PSecret`, `dtexec /DECRYPT …` and PowerShell `ConvertTo-SecureString '…' -AsPlainText` were not redacted at
+  all. All are now covered; counts are exact (one per secret actually replaced), a second pass changes nothing, and
+  `@variables`, `passwordHint`, `PasswordPolicy`, `-E` and the like are untouched (`test_redaction.py`, 25 cases).
+- **High — `sp_update_job`** applied only `@enabled`, `@new_name` and `@owner_login_name`. SSMS scripts the start step
+  that way, so a job starting at step 2 showed `startStepId: None` and a graph starting at step 1. It now applies every
+  setting `sp_add_job` takes, through one shared helper.
+- **High — files named by bare name**: `dev/jobs.sql` and `prod/jobs.sql` were one file, so prod's preamble "deleted"
+  dev's job and the prod definition replaced it silently. Files are now named by their path below the selection
+  (`LoadResult.relative`); a duplicate's identity carries it (`name:nightly@prod/jobs.sql`). A single selected file keeps
+  its bare name, so existing identities do not change. `coverage.skippedFiles` held full paths too; now relative.
+- **Medium**: a `SET` or `DECLARE` under `IF` / `ELSE` was treated as certain (the command and its lineage came out as
+  static); the variable is now unknown. A job created and then deleted by the script was documented as existing; it is
+  now a `job-deleted` finding. A script cut off after `SELECT @j = job_id FROM` or `WHERE name =` crashed the whole run
+  (`IndexError`); the reads are bounded, and any unexpected parser error in one file is now a coverage warning while the
+  other files are still documented. Load-error warnings carried full paths and OS errors into the payload (and so into
+  every output and published documents); the payload now carries the public form, and the command line prints the
+  detail to stderr (`test_full_mode_keeps_error_detail` became `…_prints_error_detail_to_the_console_only`).
+- **Low**: attaching a schedule twice listed the job twice (the check compared a schedule key with job keys);
+  `CASE … ELSE … END` was read as control flow (an `EXEC` after it was conditional, and its `END` closed an enclosing
+  `BEGIN`); `GO n` made a job a duplicate of itself (a repeated batch is now consumed once); `sp_delete_jobstep` now
+  renumbers the later steps, their jumps and the start step. Microsoft documents that the other steps' references are
+  updated but not what a jump to the deleted step becomes, so that case is shown as a quit with a coverage warning.
+- Tests: `test_redaction.py`, `test_review_round3.py` (14); 26 of 39 fail on the previous engine, the rest are the
+  intended invariants. Corpus unchanged (DarlingData `unparsedSteps = 1`); every suite green.
