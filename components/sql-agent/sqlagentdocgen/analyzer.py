@@ -337,7 +337,8 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         if s.shared
     ]
 
-    found_issues = issues_mod.evaluate(registry, step_analyses)
+    processing = build_processing(jobs_payload)
+    found_issues = issues_mod.evaluate(registry, step_analyses) + issues_mod.coincidence_issues(processing)
 
     return {
         "schema": details.NATIVE_SCHEMA,
@@ -348,7 +349,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
         "sharedSchedules": shared_schedules,
         "entities": _build_entities(jobs_payload),
         "executionGraphs": build_graphs(jobs_payload),
-        "processing": build_processing(jobs_payload),
+        "processing": processing,
         "issues": [i.as_dict() for i in found_issues],
         "warnings": registry.warnings + [e.detail for e in load.errors],
         "coverage": coverage.as_dict(),

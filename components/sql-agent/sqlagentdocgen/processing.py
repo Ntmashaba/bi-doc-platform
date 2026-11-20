@@ -56,8 +56,10 @@ def is_full_at_wide_scope(op: dict) -> bool:
 
 
 def _schedule_signature(sched: dict) -> tuple:
-    # Mirrors issues._schedule_signature, computed on the payload's decoded
-    # schedule dicts so this module never reaches back into the registry.
+    # Everything that changes WHEN a schedule fires (first vs last Monday, the
+    # active date/time window), computed on the payload's decoded schedule
+    # dicts so this module never reaches back into the registry. The
+    # `schedules-coincide` finding is built from this module's result.
     return (
         sched.get("enabled") if sched.get("enabled") is not None else 1,
         sched.get("freqType"), sched.get("freqInterval"),

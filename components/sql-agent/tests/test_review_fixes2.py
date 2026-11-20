@@ -58,46 +58,48 @@ def test_same_batch_capture_still_works(tmp_path):
 
 
 # -- schedule coincidence signature ------------------------------------------
+# Coincidence is only between jobs that process the same SSAS database (v4 §6), so every job here processes
+# SeededDW; the schedule signature alone decides.
+
+_PROCESS = ("EXEC sp_add_jobstep @job_id=@{v}, @step_id=1, @step_name=N'p', @subsystem=N'ANALYSISCOMMAND',"
+            " @server=N'SEEDED-SSAS-01', @command=N'<Batch xmlns=\"http://schemas.microsoft.com/analysisservices/"
+            "2003/engine\"><Process><Type>ProcessFull</Type><Object><DatabaseID>SeededDW</DatabaseID></Object>"
+            "</Process></Batch>'\n")
+
+
+def _two_processing_jobs(tmp_path, sched1: str, sched2: str):
+    (tmp_path / "j.sql").write_text(
+        "EXEC sp_add_job @job_name=N'J1', @job_id=@j1 OUTPUT\n" + _PROCESS.format(v="j1")
+        + f"EXEC sp_add_jobschedule @job_id=@j1, {sched1}\n"
+        + "EXEC sp_add_job @job_name=N'J2', @job_id=@j2 OUTPUT\n" + _PROCESS.format(v="j2")
+        + f"EXEC sp_add_jobschedule @job_id=@j2, {sched2}\n",
+        encoding="utf-8")
+    return {i["code"] for i in analyse(load_path(tmp_path))["issues"]}
 
 
 def test_monthly_relative_schedules_do_not_coincide(tmp_path):
     # first Monday vs last Monday of the month at the same start time
-    (tmp_path / "j.sql").write_text(
-        "EXEC sp_add_job @job_name=N'J1', @job_id=@j1 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j1, @name=N'First Monday', @freq_type=32,"
-        " @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000\n"
-        "EXEC sp_add_job @job_name=N'J2', @job_id=@j2 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j2, @name=N'Last Monday', @freq_type=32,"
-        " @freq_interval=2, @freq_relative_interval=16, @active_start_time=20000\n",
-        encoding="utf-8")
-    p = analyse(load_path(tmp_path))
-    assert "schedules-coincide" not in {i["code"] for i in p["issues"]}
+    codes = _two_processing_jobs(
+        tmp_path,
+        "@name=N'First Monday', @freq_type=32, @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000",
+        "@name=N'Last Monday', @freq_type=32, @freq_interval=2, @freq_relative_interval=16, @active_start_time=20000")
+    assert "schedules-coincide" not in codes
 
 
 def test_identical_monthly_relative_schedules_still_coincide(tmp_path):
-    (tmp_path / "j.sql").write_text(
-        "EXEC sp_add_job @job_name=N'J1', @job_id=@j1 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j1, @name=N'One', @freq_type=32,"
-        " @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000\n"
-        "EXEC sp_add_job @job_name=N'J2', @job_id=@j2 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j2, @name=N'Two', @freq_type=32,"
-        " @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000\n",
-        encoding="utf-8")
-    p = analyse(load_path(tmp_path))
-    assert "schedules-coincide" in {i["code"] for i in p["issues"]}
+    codes = _two_processing_jobs(
+        tmp_path,
+        "@name=N'One', @freq_type=32, @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000",
+        "@name=N'Two', @freq_type=32, @freq_interval=2, @freq_relative_interval=1, @active_start_time=20000")
+    assert "schedules-coincide" in codes
 
 
 def test_active_window_separates_identical_frequencies(tmp_path):
-    (tmp_path / "j.sql").write_text(
-        "EXEC sp_add_job @job_name=N'J1', @job_id=@j1 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j1, @name=N'One', @freq_type=4,"
-        " @active_start_time=20000, @active_end_time=21000\n"
-        "EXEC sp_add_job @job_name=N'J2', @job_id=@j2 OUTPUT\n"
-        "EXEC sp_add_jobschedule @job_id=@j2, @name=N'Two', @freq_type=4,"
-        " @active_start_time=20000, @active_end_time=22000\n",
-        encoding="utf-8")
-    p = analyse(load_path(tmp_path))
-    assert "schedules-coincide" not in {i["code"] for i in p["issues"]}
+    codes = _two_processing_jobs(
+        tmp_path,
+        "@name=N'One', @freq_type=4, @active_start_time=20000, @active_end_time=21000",
+        "@name=N'Two', @freq_type=4, @active_start_time=20000, @active_end_time=22000")
+    assert "schedules-coincide" not in codes
 
 
 # -- case-insensitive discovery -----------------------------------------------

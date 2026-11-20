@@ -5,7 +5,8 @@ Wording contract (v4 §6):
   * "Job owner is 'sa'" and "non-T-SQL step uses a configured proxy" are
     separate claims;
   * ProcessFull findings talk about the script, never the server's intent;
-  * schedules "coincide" — never "overlap" or "contention";
+  * schedules "coincide" (start times only; scripts carry no durations),
+    and only between jobs that process the same SSAS database;
   * a missing owner is "likely a partial script" (info);
   * disabled state is the final state after in-order sp_update_job;
   * a missing retry on an SSAS processing step is stated with the scripted
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from .processing import is_full_at_wide_scope, is_partition_granular, is_process_op
-from .registry import JobDraft, Registry, ScheduleDraft
+from .registry import Registry
 
 # severities: info | warning | alert
 
@@ -89,6 +90,18 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
                 f"Job '{label}' has no schedule in the scripted input.",
                 job=label,
             ))
+        else:
+            # v4 §6 "disabled-schedule job": scheduled, but no attached schedule is enabled. An unscripted
+            # @enabled is msdb's default (enabled); only an explicit 0 counts as disabled.
+            attached = [registry.schedules[k] for k in job.schedule_keys if k in registry.schedules]
+            if attached and all(s.enabled == 0 for s in attached):
+                names = ", ".join(f"'{s.name or s.key}'" for s in attached)
+                issues.append(Issue(
+                    "info", "job-schedules-disabled",
+                    f"Job '{label}' has schedules in the scripted input, but all of "
+                    f"them are disabled: {names}.",
+                    job=label,
+                ))
 
         owner = (job.owner_login_name or "").strip()
         if not owner:
@@ -187,38 +200,24 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
                 f"{j} / {s}: {o}" for j, s, o in nonlocal_wide_full[:3]),
         ))
 
-    _schedule_coincidence(registry, issues)
     return issues
 
 
-def _schedule_signature(sched: ScheduleDraft) -> tuple:
-    # Everything that changes WHEN the schedule fires must be in here:
-    # monthly-relative runs differ by freq_relative_interval (first vs last
-    # Monday), and active date/time windows separate otherwise-identical
-    # schedules that never actually coincide.
-    return (
-        sched.enabled if sched.enabled is not None else 1,
-        sched.freq_type, sched.freq_interval, sched.freq_subday_type,
-        sched.freq_subday_interval, sched.freq_relative_interval,
-        sched.freq_recurrence_factor,
-        sched.active_start_date, sched.active_end_date,
-        sched.active_start_time, sched.active_end_time,
-    )
+def coincidence_issues(processing: Dict[str, Any]) -> List[Issue]:
+    """`schedules-coincide`, one per coincidence the processing view found (v4 §6).
 
-
-def _schedule_coincidence(registry: Registry, issues: List[Issue]) -> None:
-    by_sig: Dict[tuple, List[ScheduleDraft]] = {}
-    for sched in registry.schedules.values():
-        if not sched.attached_jobs:
-            continue
-        by_sig.setdefault(_schedule_signature(sched), []).append(sched)
-    for sig, group in by_sig.items():
-        if len(group) < 2 or group[0].freq_type in (64, 128):
-            continue
-        names = ", ".join(sorted(s.name or s.key for s in group))
-        issues.append(Issue(
+    Only jobs that process the same SSAS database are compared, so two unrelated jobs that both start at 23:00 are
+    not a finding (the Schedules view still lists both). Scripts carry no durations: this is about start times.
+    """
+    found: List[Issue] = []
+    for c in processing.get("coincidence", []):
+        jobs = ", ".join(f"'{j}'" for j in c["jobs"])
+        target = "/".join(p for p in (c.get("server"), c.get("database")) if p) or "the same model"
+        when = f" ({c['schedule']})" if c.get("schedule") else ""
+        found.append(Issue(
             "info", "schedules-coincide",
-            f"Schedules coincide: {names} share the same frequency and start "
-            f"time.",
-            evidence=names,
+            f"Schedules coincide: {jobs} process {target} and their scheduled "
+            f"start times coincide{when}.",
+            evidence=target,
         ))
+    return found
