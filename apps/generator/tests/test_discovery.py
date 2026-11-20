@@ -13,7 +13,7 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "packages" / "engines" / "tests"))
-from fixtures import adf_factory, pbi_model  # noqa: E402
+from fixtures import adf_factory, pbi_model, sql_agent_jobs  # noqa: E402
 
 from starlette.testclient import TestClient  # noqa: E402
 
@@ -153,6 +153,48 @@ class Discovering(Base):
         runner.wait()
         item = runner.history.batch(batch_id)["items"][0]
         self.assertEqual((item["kind"], item["state"]), ("adf_resources", "completed"), item["errors"])
+
+    def test_a_selected_folder_of_job_scripts_is_one_input(self):
+        jobs = self.tmp / "Nightly Jobs"
+        jobs.mkdir()
+        sql_agent_jobs(jobs / "nightly.sql")
+        (jobs / "query.sql").write_text("SELECT 1;\n", encoding="utf-8")     # not a job script: the engine skips it
+        (jobs / "Nightly Jobs.bidoc-details.json").write_text('{"owner": "x"}')   # never read to decide
+        scan = self.discover(jobs)
+        self.assertEqual([(i["label"], i.get("engine"), i.get("kind")) for i in scan.items],
+                         [("Nightly Jobs", "sql_agent", "agent_folder")])
+        # the same files inside a folder that is searched are not judged: only a selected folder is
+        outer = self.tmp / "Container"
+        shutil.copytree(jobs, outer / "inner")
+        self.assertEqual(self.discover(outer).items[0]["errors"][0]["code"], "INVALID_INPUT")
+        # .sql files that are not job scripts do not make a folder an input
+        other = self.tmp / "Queries"
+        other.mkdir()
+        (other / "report.sql").write_text("SELECT 1;\n", encoding="utf-8")
+        message = self.discover(other).items[0]["errors"][0]["message"]
+        self.assertIn("SQL Agent job scripts in its own .sql files", message)
+
+    def test_a_job_scripts_folder_documents_through_batch(self):
+        jobs = self.tmp / "jobs"
+        jobs.mkdir()
+        sql_agent_jobs(jobs / "nightly.sql")
+        runner = self.runner()
+        batch_id = runner.submit([str(jobs)], Options(output_dir=str(self.out)))
+        runner.wait()
+        item = runner.history.batch(batch_id)["items"][0]
+        self.assertEqual((item["kind"], item["state"]), ("agent_folder", "completed"), item["errors"])
+
+    def test_recursive_search_ignores_sql_even_job_scripts(self):
+        pbix(self.h3 / "Real.pbix")
+        sql_agent_jobs(self.h3 / "nightly.sql")                # a job script, but a folder search never reads .sql
+        sql_agent_jobs(self.h3 / "Sub" / "deeper.sql")
+        scan = self.discover(self.h3)
+        self.assertEqual(self.labels(scan), ["h3 Reports/Real.pbix"])
+        # found while searching, a folder of job scripts is nothing; only a selected folder is judged
+        inner = self.h4 / "jobs"
+        inner.mkdir(parents=True)
+        sql_agent_jobs(inner / "nightly.sql")
+        self.assertEqual(self.discover(self.h4).items[0]["errors"][0]["code"], "INVALID_INPUT")
 
     def test_explicit_files_behave_as_before(self):
         a = pbix(self.tmp / "Alone.pbix")
