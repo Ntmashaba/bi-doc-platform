@@ -192,10 +192,23 @@ def _collect_rhs(toks: List[Tok], i: int, n: int) -> (List[Tok], int):
     return out, i
 
 
+def _folded_strings(parts: List[Tok]) -> Optional[str]:
+    """N'a' + N'b' + 'c' -> 'abc': a concatenation of string literals only, which T-SQL evaluates to one known
+    string. Anything else (a variable, a function, a number) returns None: it is not statically known."""
+    if len(parts) < 3 or len(parts) % 2 == 0:
+        return None
+    for k, tok in enumerate(parts):
+        if k % 2 == 0 and tok.kind != "string":
+            return None
+        if k % 2 == 1 and not (tok.kind == "sym" and tok.text == "+"):
+            return None
+    return "".join(tok.text for tok in parts[0::2])
+
+
 def _literal_of(parts: List[Tok]) -> Optional[str]:
     if len(parts) == 1 and parts[0].kind in ("string", "num"):
         return parts[0].text
-    return None
+    return _folded_strings(parts)
 
 
 class _VarTracker:
@@ -415,6 +428,10 @@ def _parse_value(toks: List[Tok], i: int, n: int) -> (Arg, int):
         if t.kind == "word":
             return Arg("word", t.text, t.pos), i
 
+    folded = _folded_strings(collected)
+    if folded is not None:
+        return Arg("string", folded, collected[0].pos), i
+
     raw = " ".join(t.text for t in collected)
     return Arg("expr", raw, collected[0].pos), i
 
@@ -438,14 +455,15 @@ def _parse_exec(toks: List[Tok], i: int, n: int, conditional: bool) -> (Call, in
     if i < n and toks[i].kind in ("word", "ident"):
         name_parts.append(toks[i].text)
         i += 1
-        while (
-            i + 1 < n
-            and toks[i].kind == "sym"
-            and toks[i].text == "."
-            and toks[i + 1].kind in ("word", "ident")
-        ):
-            name_parts.append(toks[i + 1].text)
-            i += 2
+        while i + 1 < n and toks[i].kind == "sym" and toks[i].text == ".":
+            if toks[i + 1].kind in ("word", "ident"):
+                name_parts.append(toks[i + 1].text)
+                i += 2
+            elif toks[i + 1].kind == "sym" and toks[i + 1].text == ".":
+                name_parts.append("")              # msdb..sp_add_job: the default schema left out
+                i += 1
+            else:
+                break
     full_proc = ".".join(name_parts)
     proc = norm_ident(dotted_last(full_proc))
 
