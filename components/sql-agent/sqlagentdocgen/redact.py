@@ -4,8 +4,8 @@ One pass, applied to the final payload before any renderer sees it (HTML,
 JSON, Word, CSV and agent output all render from the same payload):
 
 * scrub_payload() re-checks every string — command text can carry connection
-  strings in XMLA out-of-line bindings, sqlcmd ``-P`` arguments, or SAS
-  tokens in URLs.
+  strings in XMLA out-of-line bindings, sqlcmd ``-P`` arguments, SAS tokens in
+  URLs, and backup passwords (XMLA ``<Password>``, TMSL ``"password"``).
 
 Job owner and proxy *names* are configuration facts, not secrets: they stay
 visible so findings like "Job owner is 'sa'" remain meaningful.  Only secret
@@ -31,6 +31,14 @@ _CONN_SECRET = re.compile(
 _BEARER = re.compile(r"(?i)\b(bearer\s+)[a-z0-9._~+/=-]{8,}")
 # sqlcmd / bcp style: an uppercase -P switch carries the password literally
 _SQLCMD_PASSWORD = re.compile(r"(\s-P\s+)(\"[^\"]*\"|\S+)")
+# XMLA Backup / Restore / Attach: <Password>…</Password> (any namespace prefix, any case)
+_XML_SECRET = re.compile(
+    r"(?is)(<(?:[\w.-]+:)?(?:password|pwd|accountkey|clientsecret|secret)\b[^>/]*>)(?!\[redacted\])([^<]*\S[^<]*)"
+    r"(</(?:[\w.-]+:)?(?:password|pwd|accountkey|clientsecret|secret)\s*>)")
+# TMSL backup / restore / attach, and any JSON in a command: "password": "…"
+_JSON_SECRET = re.compile(
+    r'(?i)("(?:password|pwd|accountkey|clientsecret|client_secret|secret|token|sharedaccesskey)"\s*:\s*)'
+    r'"(?!\[redacted\]")(?:[^"\\]|\\.)*"')
 
 
 def scrub_text(text: str) -> Tuple[str, int]:
@@ -48,6 +56,8 @@ def scrub_text(text: str) -> Tuple[str, int]:
     text = sub(_CONN_SECRET, r"\1" + REDACTED, text)
     text = sub(_BEARER, r"\1" + REDACTED, text)
     text = sub(_SQLCMD_PASSWORD, r"\1" + REDACTED, text)
+    text = sub(_XML_SECRET, r"\1" + REDACTED + r"\3", text)
+    text = sub(_JSON_SECRET, r'\1"' + REDACTED + '"', text)
     return text, count
 
 

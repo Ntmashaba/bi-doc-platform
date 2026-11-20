@@ -97,6 +97,14 @@ class RealAdapterLineage(_Engines):
         self.assertEqual(self.found([job, self.live_report("SeededModel")]), [])
         self.assertEqual(self.found([job, self.live_report("SeededModel", server="SEEDED-SRC\\TABULAR")]), [])
 
+    def test_restore_targets_its_database_and_relates_to_nothing(self):
+        job = self.job("Restore", f"<Restore {NS}><File>x.abf</File><DatabaseName>SeededModel</DatabaseName>"
+                                  f"<AllowOverwrite>true</AllowOverwrite></Restore>")
+        bindings = [(b["operation"], b["endpoint"]["database"], b["invocation_context"]["operation_kind"])
+                    for o in job.objects for b in o["bindings"]]
+        self.assertEqual(bindings, [("execute", "SeededModel", "restore")])
+        self.assertEqual(self.found([job, self.live_report("SeededModel")]), [])
+
     def test_processing_still_relates_and_its_relational_read_is_a_reader(self):
         process_add = (f"<Batch {NS}><Process><Type>ProcessAdd</Type><Object><DatabaseID>SeededModel</DatabaseID>"
                        f"<CubeID>Sales</CubeID></Object><Bindings><Binding><DataSourceID>Staging</DataSourceID>"

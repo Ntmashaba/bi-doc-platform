@@ -128,6 +128,9 @@ def _parse_generic(elem: ET.Element) -> XmlaOperation:
             if server:
                 op.detail["sourceServer"] = server         # the server only: the string may carry credentials
     op.object_path = _object_path(obj)
+    if op.object_path is None and op.kind == "restore":
+        # Restore names its target database directly, not under <Object>: by ID where given, else by name
+        op.object_path = _child_text(elem, "DatabaseID") or op.detail.get("database") or None
     if op.object_path is None and op.kind == "synchronize" and op.reads:
         # the destination is the server the step runs on, holding the database under the same ID
         op.object_path = op.reads[0]
