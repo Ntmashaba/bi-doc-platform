@@ -97,9 +97,8 @@ class BatchTest(unittest.TestCase):
     def test_classify_sql_agent_scripts_by_content(self):
         script = sql_agent_jobs(self.tmp / "nightly.sql")
         self.assertEqual((classify(script)["engine"], classify(script)["kind"]), ("sql_agent", "agent_script"))
-        upper = self.tmp / "Nightly.SQL"                                        # the suffix is case-insensitive
-        shutil.copy(script, upper)
-        self.assertEqual(classify(upper)["kind"], "agent_script")
+        upper = sql_agent_jobs(self.tmp / "upper" / "Nightly.SQL")   # the suffix is case-insensitive; a sibling
+        self.assertEqual(classify(upper)["kind"], "agent_script")    # Nightly.SQL would BE nightly.sql on Windows
         wide = self.tmp / "wide.sql"                                            # UTF-16 with a BOM sniffs the same
         wide.write_bytes(codecs.BOM_UTF16_LE + SQL_AGENT_SCRIPT.encode("utf-16-le"))
         self.assertEqual(classify(wide)["kind"], "agent_script")
