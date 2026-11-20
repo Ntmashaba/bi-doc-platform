@@ -101,6 +101,14 @@ class JobDraft:
     created: bool = True  # False when only referenced (stub from a step call)
     pos: int = -1
     source_file: str = ""
+    deleted: bool = False  # sp_delete_job after creation, in the file that created it
+    created_conditionally: bool = False  # its sp_add_job sits under IF / ELSE
+    identity_suffix: str = ""  # "@<file>" (and "#n") for a job created again: keeps identities distinct
+
+    @property
+    def identity(self) -> str:
+        base = ("guid:" + self.guid) if self.guid else ("name:" + (self.name or "").strip().lower())
+        return base + self.identity_suffix
 
 
 # --------------------------------------------------------------------------
@@ -191,6 +199,10 @@ class Registry:
         self.warnings: List[str] = []
         self.unrecognised: List[Call] = []
         self.unparsed_steps: int = 0
+        # (job name, file of the earlier creation, file of the later one): the same job created again without
+        # being deleted first, e.g. dev and prod script-outs in one folder. Each is documented as its own job.
+        self.duplicates: List[Tuple[str, str, str]] = []
+        self._pending_preamble: set = set()  # (file, norm name): a preamble in this file for a job created elsewhere
 
     # -- key helpers ------------------------------------------------------
 
@@ -318,33 +330,65 @@ class Registry:
         guid = None
         if guid_arg is not None and guid_arg.kind in ("string", "ident") and is_guid(guid_arg.value):
             guid = guid_arg.value.strip("{}").lower()
+        norm = norm_ident(name or "")
 
         key = self._job_key_for(name, guid)
         job = self.jobs.get(key)
-        if job is None:
-            # a stub may already exist under the name key
-            name_key = "name:" + norm_ident(name or "")
-            job = self.jobs.pop(name_key, None)
-            if job is not None and guid:
-                # stub created by name, now scripted with a guid: re-key
-                job.key = key
-                job.guid = guid
-                job.created = True
+        same_name = self.jobs.get(self.job_by_name.get(norm, "")) if name else None
+        earlier = job if job is not None and job.created else (
+            same_name if same_name is not None and same_name.created else None)
+
+        if (earlier is not None and earlier.source_file == source_file
+                and (call.conditional or earlier.created_conditionally)):
+            # IF ... sp_add_job ... ELSE sp_add_job: alternatives in one script, of which one runs. That is one
+            # job, as before; its settings are the last ones scripted (the parser cannot evaluate the condition).
+            earlier = None
+        if earlier is not None and earlier.deleted and earlier.key == key and earlier.source_file == source_file:
+            # deleted in script order, then created again in the same file: the new definition replaces it
+            self._detach_schedules(earlier)
+            job = JobDraft(key=key, pos=call.pos, source_file=source_file, recreate_preamble=True)
+            self.jobs[key] = job
+        elif earlier is not None:
+            # created again without being deleted in its own file: two definitions of one job (dev and prod
+            # script-outs, or two versions). Merging them would mix their steps; document each separately.
+            self.duplicates.append((name or earlier.name or key, earlier.source_file, source_file))
+            if job is not None and job.created:                    # same identity: the later one needs its own
+                suffix = f"@{source_file}"
+                n = 2
+                while any(j.identity_suffix == suffix for j in self.jobs.values() if j.key.startswith(key)):
+                    suffix = f"@{source_file}#{n}"
+                    n += 1
+                key = key + suffix
+                job = JobDraft(key=key, pos=call.pos, source_file=source_file, identity_suffix=suffix)
                 self.jobs[key] = job
-                self.job_by_guid[guid] = key
-            elif job is not None:
-                job.key = key
-                job.created = True
+            elif job is None:
+                job = JobDraft(key=key, pos=call.pos, source_file=source_file)
                 self.jobs[key] = job
+        elif job is None:
+            # a stub (referenced, not yet created) may already exist under the name key
+            name_key = "name:" + norm
+            stub = self.jobs.get(name_key)
+            if stub is not None and not stub.created:
+                del self.jobs[name_key]
+                job = stub
+                job.key = key
+                self.jobs[key] = job
+                if guid:
+                    job.guid = guid
+                    self.job_by_guid[guid] = key
             else:
                 job = JobDraft(key=key, pos=call.pos, source_file=source_file)
                 self.jobs[key] = job
         job.created = True
+        job.created_conditionally = job.created_conditionally or call.conditional
         job.source_file = source_file or job.source_file
         job.pos = call.pos if job.pos < 0 else job.pos
+        if (source_file, norm) in self._pending_preamble:
+            self._pending_preamble.discard((source_file, norm))
+            job.recreate_preamble = True
         if name:
             job.name = name
-            self.job_by_name[norm_ident(name)] = key
+            self.job_by_name[norm] = key
         if guid:
             job.guid = guid
             self.job_by_guid[guid] = key
@@ -581,8 +625,14 @@ class Registry:
             # "job not created" note.
             return
         job = self._resolve_job(ref, source_file, call.pos)
-        if job is not None:
+        if job is not None and job.created and job.source_file != source_file:
+            # a preamble in another file, for a job that file is about to create again: it belongs to that
+            # creation, and it does not delete the earlier file's job (each script is its own run)
+            self._pending_preamble.add((source_file, norm_ident(job.name or "")))
+        elif job is not None:
             job.recreate_preamble = True
+            if job.created:
+                job.deleted = True
         elif ref.kind == "name":
             # deletion of a job that is only created later in the script
             key = "name:" + norm_ident(ref.value)
@@ -593,6 +643,12 @@ class Registry:
                 self.jobs[key] = job
                 self.job_by_name[norm_ident(ref.value)] = key
             job.recreate_preamble = True
+
+    def _detach_schedules(self, job: JobDraft) -> None:
+        for key in job.schedule_keys:
+            sched = self.schedules.get(key)
+            if sched is not None and job.key in sched.attached_jobs:
+                sched.attached_jobs.remove(job.key)
 
     def _on_sp_delete_jobstep(self, call: Call, source_file: str) -> None:
         # Alter-style scripts remove steps before re-adding them;

@@ -64,6 +64,15 @@ def evaluate(registry: Registry, analyses: Dict[str, Any]) -> List[Issue]:
     nonlocal_wide_full: List[tuple] = []
     nonlocal_partition_seen = False
 
+    for name, first, later in registry.duplicates:
+        where = f"'{first}' and '{later}'" if first != later else f"'{first}' twice"
+        issues.append(Issue(
+            "warning", "job-duplicate",
+            f"Job '{name}' is created in {where}. Each definition is documented as its own job; "
+            f"their steps and schedules are not merged.",
+            job=name, evidence=f"{first} | {later}",
+        ))
+
     for job in registry.jobs.values():
         if not job.created:
             issues.append(Issue(

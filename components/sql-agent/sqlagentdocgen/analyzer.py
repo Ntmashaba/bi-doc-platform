@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from adfdocgen.sql_harvest import harvest_sql
 
 from . import __version__, details, issues as issues_mod, tmsl, xmla
+from .common import split_sql_name
 from .execution_graph import build_graphs
 from .loader import LoadResult
 from .processing import build_processing
@@ -129,11 +130,7 @@ def _analyse_command(step: StepDraft, coverage: Coverage) -> Dict[str, Any]:
 
 def scope_key(jobs: List[JobDraft]) -> str:
     """Selection-only scope: hash of canonical sorted job identities."""
-    identities = sorted(
-        (f"guid:{j.guid}" if j.guid else f"name:{j.name.strip().lower()}")
-        for j in jobs
-        if j.created
-    )
+    identities = sorted(j.identity for j in jobs if j.created)
     digest = hashlib.sha256("|".join(identities).encode("utf-8")).hexdigest()
     return "selection-" + digest[:16]
 
@@ -149,14 +146,6 @@ def scope_key(jobs: List[JobDraft]) -> str:
 
 _SSIS_CATALOG = re.compile(r'(?is)/ISSERVER\s+["\\]*([^";]+?\.dtsx)\s*"{0,3}')
 _DTSX_PATH = re.compile(r"(?i)(?:^|[\s\"'])((?:[a-z]:[\\/]|\\\\)[\w .\-\\\[\]()/]*?\.dtsx)")
-
-
-def _split_dotted(name: str) -> Tuple[Optional[str], str]:
-    from .common import strip_brackets
-    parts = [strip_brackets(p) for p in name.split(".") if p]
-    if len(parts) >= 2:
-        return ".".join(parts[:-1]), parts[-1]
-    return None, name
 
 
 def _build_entities(jobs_payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -205,25 +194,18 @@ def _build_entities(jobs_payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                             jname, sname, "read")
             elif sub == "TSQL":
                 sql = step.get("sql") or {}
-                db = step.get("database")
-                for table in sql.get("reads", []):
-                    schema, obj = _split_dotted(table)
-                    use(f"sql/{db or ''}/{table}".lower(), "table",
-                        {"system": "sql", "database": db, "schema": schema,
-                         "object": obj},
-                        jname, sname, "read")
-                for table in sql.get("writes", []):
-                    schema, obj = _split_dotted(table)
-                    use(f"sql/{db or ''}/{table}".lower(), "table",
-                        {"system": "sql", "database": db, "schema": schema,
-                         "object": obj},
-                        jname, sname, "write")
-                for proc in sql.get("procs", []):
-                    schema, obj = _split_dotted(proc)
-                    use(f"sql/{db or ''}/{proc}".lower(), "stored_procedure",
-                        {"system": "sql", "database": db, "schema": schema,
-                         "object": obj},
-                        jname, sname, "execute")
+                for names, kind, operation in ((sql.get("reads", []), "table", "read"),
+                                               (sql.get("writes", []), "table", "write"),
+                                               (sql.get("procs", []), "stored_procedure", "execute")):
+                    for name in names:
+                        # a three-part name names its own database; four parts add a linked server
+                        server, db, schema, obj = split_sql_name(name, step.get("database"))
+                        qualified = ".".join(p for p in (schema, obj) if p)
+                        key = f"sql/{db or ''}/{qualified}" if server is None else f"sql/{server}/{db or ''}/{qualified}"
+                        endpoint = {"system": "sql", "database": db, "schema": schema, "object": obj}
+                        if server is not None:
+                            endpoint["server"] = server
+                        use(key.lower(), kind, endpoint, jname, sname, operation)
             elif sub == "SSIS":
                 cmd = step.get("command") or ""
                 m = _SSIS_CATALOG.search(cmd)
@@ -307,7 +289,7 @@ def analyse(load: LoadResult) -> Dict[str, Any]:
             if key in registry.schedules
         ]
         jobs_payload.append({
-            "identity": ("guid:" + job.guid) if job.guid else ("name:" + (job.name or "").strip().lower()),
+            "identity": job.identity,
             "name": job.name,
             "guid": job.guid,
             "enabled": job.enabled,
