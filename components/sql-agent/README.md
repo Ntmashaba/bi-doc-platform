@@ -28,7 +28,9 @@ Review issues · Coverage · Job details). `--also` adds the extra renderings
 next to it: the JSON payload, a Word document, CSV inventories (jobs, steps,
 operations, schedules, issues, entities) and an agent context markdown.
 Every rendered output passes through the redaction safety net (`redact.py`)
-before it is written.
+before it is written: connection-string passwords and keys, URL credentials and
+SAS tokens, bearer tokens, `sqlcmd -P`, and backup passwords (XMLA
+`<Password>`, TMSL `"password"`) are replaced with `[redacted]`.
 
 ## What it understands
 
@@ -44,6 +46,8 @@ before it is written.
   Attach, ClearCache. A Synchronize targets its database on the step's server
   and reads it from the server its source connection string names (only the
   server is kept from that string, never credentials or other settings).
+  A Restore targets the database it names (`DatabaseID`, else `DatabaseName`)
+  on the step's server.
 - TMSL JSON: refresh (type + database/table/partition objects),
   createOrReplace, alter, delete, backup, restore, sequence envelopes.
 - T-SQL step bodies via `adf-doc-gen`'s token-based harvester (tables read /

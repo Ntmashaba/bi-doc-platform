@@ -706,3 +706,21 @@ Each defect was reproduced on `626deac` first; each fix has tests that fail on t
   db.." now *possible*), 2 SQL Agent harvester-path tests (entity and a real-adapter link, *possible* with "schema not
   known on both sides"), 5 Synchronize tests and a real-adapter one; each fix's tests fail on the previous code.
 - Not changed: a `Restore` still yields no bindings (its target is a `DatabaseName`, not an object path).
+
+### 2026-11-20 — XMLA Restore target; backup passwords redacted (security)
+
+- **Security:** a Backup or Restore encryption password in a step command (XMLA `<Password>…</Password>`, TMSL
+  `"password": "…"`) reached **local** documents verbatim: the standalone HTML and JSON, and a `bidoc generate` local
+  profile document. Shared documents and the library were not affected: shared projection withholds every step
+  command. `redact.py`, the safety net every SQL Agent output passes through, matched connection-string `Password=`
+  but not a password as an XML element or a JSON key; it now does (any namespace prefix, any case; empty elements and
+  look-alikes such as `PasswordPolicy` are left alone, and the redaction count stays exact). Checked: the Power BI
+  engine does not have this gap (a `model.bim` credential password reaches none of its outputs). **Local documents
+  generated earlier from scripts with backup passwords may contain them**: regenerate them, and any offline catalogue
+  built from them.
+- **Restore:** an XMLA Restore names its target database directly (`DatabaseID`, else `DatabaseName`), not under
+  `<Object>`, so it had no target, no entity and no binding. It now targets that database on the step's server. TMSL
+  Restore already did. Relationship rules are unchanged: a restore relates to nothing.
+- Tests: `test_backup_restore.py` (Restore target by name and by ID, the entity, every standalone output for XMLA and
+  TMSL backup and restore, the redaction patterns) and `test_sql_agent_secrets.py` (every `bidoc generate` output, local
+  and shared, with every extra), plus a real-adapter Restore binding; all fail on the previous code.
