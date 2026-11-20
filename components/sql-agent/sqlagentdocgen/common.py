@@ -18,6 +18,51 @@ def is_guid(text: str) -> bool:
     return bool(_GUID_RE.match(text.strip()))
 
 
+def split_sql_name(name: str, database: Optional[str] = None):
+    """A harvested object name -> (server, database, schema, object).
+
+    'T' and 'dbo.T' take the step's database; 'Sales.dbo.T' names its own database (a cross-database
+    reference); 'SRV.Sales.dbo.T' adds a linked server. Parts the name leaves out are None.
+    """
+    parts = [strip_brackets(p) for p in _dotted_parts(name or "")]
+    parts = [p for p in parts if p] if len(parts) <= 2 else parts
+    if len(parts) >= 4:
+        server, db, schema, obj = ".".join(parts[:-3]) or None, parts[-3] or None, parts[-2] or None, parts[-1]
+        return server, db, schema, obj
+    if len(parts) == 3:
+        return None, parts[0] or None, parts[1] or None, parts[2]
+    if len(parts) == 2:
+        return None, database, parts[0], parts[1]
+    return None, database, None, parts[0] if parts else name
+
+
+def _dotted_parts(name: str):
+    """Split on dots outside [brackets] and "quotes"; an empty part (Sales..T) is kept as ''."""
+    parts, cur, close = [], [], None
+    i = 0
+    while i < len(name):
+        c = name[i]
+        if close:
+            cur.append(c)
+            if c == close:
+                if i + 1 < len(name) and name[i + 1] == close:     # ]] or "" inside a delimited part
+                    cur.append(close)
+                    i += 1
+                else:
+                    close = None
+        elif c in "[\"":
+            close = "]" if c == "[" else '"'
+            cur.append(c)
+        elif c == ".":
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    parts.append("".join(cur))
+    return parts
+
+
 def strip_brackets(name: str) -> str:
     """Remove bracket/quote delimiters from a T-SQL identifier part."""
     n = name.strip()

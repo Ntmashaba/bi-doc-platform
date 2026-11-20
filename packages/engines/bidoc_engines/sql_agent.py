@@ -22,7 +22,7 @@ from pathlib import Path
 import sqlagentdocgen
 from sqlagentdocgen import details as sqlagent_details
 from sqlagentdocgen.analyzer import analyse
-from sqlagentdocgen.common import strip_brackets
+from sqlagentdocgen.common import split_sql_name
 from sqlagentdocgen.execution_graph import node_ids as graph_node_ids
 from sqlagentdocgen.loader import load_path
 from sqlagentdocgen.renderer import build_payload, render_html
@@ -150,14 +150,6 @@ def render(payload) -> str:
         return out.read_text(encoding="utf-8")
 
 
-def _split_dotted(name: str):
-    """'[dbo].[Table]' -> ('dbo', 'Table'); 'Table' -> (None, 'Table')."""
-    parts = [strip_brackets(p) for p in (name or "").split(".") if p]
-    if len(parts) >= 2:
-        return ".".join(parts[:-1]), parts[-1]
-    return None, (parts[0] if parts else name)
-
-
 def job_object_id(identity: str) -> str:
     return f"sqlagent:job:{identity}"
 
@@ -236,15 +228,14 @@ def _step_bindings(job: dict, step: dict, ref: str, coverage: str, sid: str) -> 
         sql = step.get("sql") or {}
         # read / write / execute only — never delete: the harvester does not classify
         # statement kinds beyond that, and a binding must not claim knowledge it lacks.
-        for table in sql.get("reads", []):
-            sch, obj = _split_dotted(table)
-            add("read", endpoints.endpoint(system="sql", database=db, schema=sch, object=obj), context)
-        for table in sql.get("writes", []):
-            sch, obj = _split_dotted(table)
-            add("write", endpoints.endpoint(system="sql", database=db, schema=sch, object=obj), context)
-        for proc in sql.get("procs", []):
-            sch, obj = _split_dotted(proc)
-            add("execute", endpoints.endpoint(system="sql", database=db, schema=sch, object=obj), context)
+        for names, operation in ((sql.get("reads", []), "read"), (sql.get("writes", []), "write"),
+                                 (sql.get("procs", []), "execute")):
+            for name in names:
+                # 'Sales.dbo.T' names its own database; 'SRV.Sales.dbo.T' goes through a linked server, whose
+                # name is an alias rather than the remote host, so it is context, never the endpoint's server
+                linked, database, sch, obj = split_sql_name(name, db)
+                ctx = dict(context, database=database, linked_server=linked) if linked else dict(context, database=database)
+                add(operation, endpoints.endpoint(system="sql", database=database, schema=sch, object=obj), ctx)
     return out
 
 
