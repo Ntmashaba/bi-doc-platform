@@ -66,6 +66,8 @@ function notice(kind, text, ...extra) {
     return h("p", { class: `notice ${kind}`, role: kind === "error" ? "alert" : "status" }, text, ...extra);
 }
 const TYPE_LABEL = { power_bi: "Power BI", adf: "Data Factory", sql_agent: "SQL Agent" };
+// A type this build does not know (a newer engine) reads as its own name, never "undefined".
+const typeLabel = (t) => TYPE_LABEL[t] ?? t;
 function typeBadge(t) { return h("span", { class: `badge type-${t}` }, TYPE_LABEL[t] || t); }
 function date(s) {
     if (!s)
@@ -169,9 +171,12 @@ async function homeView(type, params) {
             timer = window.setTimeout(() => setParam("q", v, true), 250);
         } });
     const header = h("section", { class: "toolbar" }, h("nav", { class: "types", "aria-label": "Document types" }, ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"], ["sql_agent", "SQL Agent"]].map(([t, label]) => h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))), searchBox, h("div", { class: "filters" }, filterSelect("business_area", "Business area", values((d) => [d.classification.business_area])), filterSelect("environment", "Environment", values((d) => [d.classification.environment])), filterSelect("owner", "Owner", values((d) => [d.classification.owner])), filterSelect("tag", "Tag", values((d) => d.tags)), caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
-        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/processing" }, "Process PBIX") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null, h("a", { class: "button secondary", href: "#/downloads" }, "Download generator"), h("a", { class: "button secondary", href: "#/settings" }, "Settings")));
+        onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null));
+    // Primary content first: the documents follow search and filters directly. Import is the one main action,
+    // beside the heading; the other management pages are quiet links.
+    const pageHead = h("div", { class: "page-head" }, h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), h("div", { class: "page-actions" }, h("nav", { class: "manage", "aria-label": "Manage the library" }, caps?.can_publish ? h("a", { href: "#/processing" }, "Process PBIX") : null, caps?.can_publish ? h("a", { href: "#/tokens" }, "Publishing tokens") : null, h("a", { href: "#/downloads" }, "Download generator"), h("a", { href: "#/settings" }, "Settings")), caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null));
     const results = h("section", { id: "results", "aria-live": "polite" });
-    mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
+    mount(pageHead, header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
     if (q && !archived) {
         let hits, total;
         if (serverSearch()) {
@@ -595,7 +600,8 @@ async function detailsView(id) {
             status.replaceChildren(notice("error", errorText(e)));
         }
     };
-    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, d.title, " ", typeBadge(d.document_type), d.archived ? h("span", { class: "badge archived" }, "Archived") : null), d.description ? h("p", {}, d.description) : null, h("dl", { class: "kv" }, h("dt", {}, "Business area"), h("dd", {}, d.classification.business_area || "—"), h("dt", {}, "Environment"), h("dd", {}, d.classification.environment || "—"), h("dt", {}, "Owner"), h("dd", {}, d.classification.owner || "—"), h("dt", {}, "Tags"), h("dd", {}, d.tags.join(", ") || "—"), h("dt", {}, "Generated"), h("dd", {}, date(revs[0]?.generated_at)), h("dt", {}, "Published to the library"), h("dd", {}, date(revs[0]?.published_at))), h("p", { class: "actions" }, h("a", { class: "button", href: href(["view", d.document_id, d.current_revision_id]) }, "Open current version"), caps?.can_publish ? h("button", { type: "button", class: "secondary", onclick: toggle }, d.archived ? "Restore" : "Archive") : null), status, h("h2", {}, "Versions"), h("table", { class: "table" }, h("thead", {}, h("tr", {}, ...["Published", "Generated", "Publisher", "Size", ""].map((c) => h("th", { scope: "col" }, c)))), h("tbody", {}, ...revs.map((r) => h("tr", {}, h("td", {}, date(r.published_at), r.revision_id === d.current_revision_id ? h("span", { class: "badge" }, "Current") : null), h("td", {}, date(r.generated_at)), h("td", {}, r.publisher_subject || "—"), h("td", {}, `${Math.round(r.size_bytes / 1024)} KB`), h("td", {}, h("a", { href: href(["view", id, r.revision_id]) }, "Open"), " · ", h("a", { href: `${API}/documents/${encodeURIComponent(id)}/revisions/${encodeURIComponent(r.revision_id)}/download` }, "Download")))))));
+    // The same trail as the viewer; the actions come before the metadata.
+    mount(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" }, h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, typeLabel(d.document_type)), " › ", h("span", { "aria-current": "page" }, d.title)), h("h1", {}, d.title, " ", typeBadge(d.document_type), d.archived ? h("span", { class: "badge archived" }, "Archived") : null), d.description ? h("p", {}, d.description) : null, h("p", { class: "actions" }, h("a", { class: "button", href: href(["view", d.document_id, d.current_revision_id]) }, "Open current version"), caps?.can_publish ? h("button", { type: "button", class: "secondary", onclick: toggle }, d.archived ? "Restore" : "Archive") : null), status, h("dl", { class: "kv" }, h("dt", {}, "Business area"), h("dd", {}, d.classification.business_area || "—"), h("dt", {}, "Environment"), h("dd", {}, d.classification.environment || "—"), h("dt", {}, "Owner"), h("dd", {}, d.classification.owner || "—"), h("dt", {}, "Tags"), h("dd", {}, d.tags.join(", ") || "—"), h("dt", {}, "Generated"), h("dd", {}, date(revs[0]?.generated_at)), h("dt", {}, "Published to the library"), h("dd", {}, date(revs[0]?.published_at))), h("h2", {}, "Versions"), h("table", { class: "table" }, h("thead", {}, h("tr", {}, ...["Published", "Generated", "Publisher", "Size", ""].map((c) => h("th", { scope: "col" }, c)))), h("tbody", {}, ...revs.map((r) => h("tr", {}, h("td", {}, date(r.published_at), r.revision_id === d.current_revision_id ? h("span", { class: "badge" }, "Current") : null), h("td", {}, date(r.generated_at)), h("td", {}, r.publisher_subject || "—"), h("td", {}, `${Math.round(r.size_bytes / 1024)} KB`), h("td", {}, h("a", { href: href(["view", id, r.revision_id]) }, "Open"), " · ", h("a", { href: `${API}/documents/${encodeURIComponent(id)}/revisions/${encodeURIComponent(r.revision_id)}/download` }, "Download")))))));
 }
 const CONFIDENCE = { exact_static: "Exact (static evidence)", possible: "Possible",
     user_asserted: "Manual — user asserted" };
@@ -615,7 +621,7 @@ async function viewerView(id, rev, params) {
             location.hash = href(["view", id, rev], { object: v || null, generation });
         } }, h("option", { value: "" }, "Whole document"), ...objects.map((o) => h("option", { value: o.object_id, selected: o.object_id === objectId }, `${o.kind}: ${o.label}`)));
     const isCurrent = rev === d.current_revision_id;
-    mount(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" }, h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, TYPE_LABEL[d.document_type]), " › ", h("a", { href: href(["documents", id]) }, d.title), " › ", isCurrent ? "Current version" : "Earlier version"), h("div", { class: "viewer-bar" }, select, h("a", { href: `${API}/documents/${encodeURIComponent(id)}/revisions/${encodeURIComponent(rev)}/download` }, "Download"), !isCurrent ? h("a", { href: href(["view", id, d.current_revision_id]) }, "Open current version") : null), status, h("div", { class: "viewer-layout" }, h("div", { class: "frame-wrap" }, frame), panel));
+    mount(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" }, h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, typeLabel(d.document_type)), " › ", h("a", { href: href(["documents", id]) }, d.title), " › ", isCurrent ? "Current version" : "Earlier version"), h("div", { class: "viewer-bar" }, select, h("a", { href: `${API}/documents/${encodeURIComponent(id)}/revisions/${encodeURIComponent(rev)}/download` }, "Download"), !isCurrent ? h("a", { href: href(["view", id, d.current_revision_id]) }, "Open current version") : null), status, h("div", { class: "viewer-layout" }, h("div", { class: "frame-wrap" }, frame), panel));
     const target = () => {
         const o = objectId ? objects.find((x) => x.object_id === objectId) : null;
         if (o?.view)
@@ -694,7 +700,7 @@ function linkRow(l, generation) {
 }
 function manualForm(id, rev, objectId, sequence, objects) {
     const out = h("div", { "aria-live": "polite" });
-    const targetDoc = h("select", { required: true, "aria-label": "Target document" }, h("option", { value: "" }, "Choose a document…"), ...(index?.documents || []).filter((d) => d.document_id !== id).map((d) => h("option", { value: `${d.document_id}|${d.revision_id}` }, `${TYPE_LABEL[d.document_type]}: ${d.title}`)));
+    const targetDoc = h("select", { required: true, "aria-label": "Target document" }, h("option", { value: "" }, "Choose a document…"), ...(index?.documents || []).filter((d) => d.document_id !== id).map((d) => h("option", { value: `${d.document_id}|${d.revision_id}` }, `${typeLabel(d.document_type)}: ${d.title}`)));
     const targetObj = h("select", { "aria-label": "Target object" }, h("option", { value: "" }, "Whole document"));
     targetDoc.addEventListener("change", async () => {
         const [doc, r] = targetDoc.value.split("|");

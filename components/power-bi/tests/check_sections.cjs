@@ -65,11 +65,23 @@ assert.match(nav,/<button class="nav-btn disabled" id="sec-report" aria-disabled
 const overview=show('overview');
 const counts=[...overview.matchAll(/<button type="button" class="card stat stat-link" id="count-([a-z-]+)" onclick="openCount\('[a-z-]+'\)"[^>]*><span class="big">([\d,]+)<\/span><span class="lbl">([^<]+)<\/span>/g)].map(m=>[m[1],Number(m[2]),m[3]]);
 same(counts,[['source-tables',3,'Source tables'],['calc-tables',1,'Calculated tables'],['columns',6,'Columns'],['calc-columns',1,'Calculated columns'],
-  ['measures',1,'Measures'],['relationships',1,'Relationships'],['queries',2,'Power Query queries'],['sources',3,'Data sources'],
-  ['warnings',(show('warnings').match(/<tr/g)||[]).length-1,'Warnings']]);
-// (the coverage ratios under "Documentation and quality" are shares of the visible objects, and say so)
-const contains=overview.slice(overview.indexOf('id="contents"'),overview.indexOf('<h2',overview.indexOf('id="contents"')+1));
-assert.equal((contains.match(/class="big"/g)||[]).length,counts.length,'no number under "What this file contains" is plain text');
+  ['measures',1,'Measures'],['relationships',1,'Relationships'],['queries',2,'Power Query queries'],['sources',3,'Data sources']]);
+// The warnings count leads Review first, and is the number of rows on Warnings.
+const warned=/<section class="review-first"[\s\S]*?<button type="button" class="stat-link ri-count" id="count-warnings" onclick="openCount\('warnings'\)"[^>]*><span class="big">([\d,]+)<\/span><span class="lbl">Warnings<\/span>/.exec(overview);
+assert.ok(warned,'the warnings count is in Review first');
+// With no report, the reading's limit is the first thing Review first says.
+const review=text(overview.slice(overview.indexOf('<section class="review-first"'),overview.indexOf('</section>')));
+assert.match(review,/^Review first No report was supplied Nothing here can be called unused\./);
+// An incomplete extraction limits everything else, so it comes first, even before the missing report.
+run("DATA.extraction={inputKind:'abf',backend:'pbixray',version:'1',complete:false,warnings:['Partitions could not be read'],limitations:[]}");
+const partial=show('overview');
+const reviewPartial=text(partial.slice(partial.indexOf('<section class="review-first"'),partial.indexOf('</section>')));
+assert.match(reviewPartial,/^Review first Partial metadata: review required Partitions could not be read No report was supplied/);
+run("delete DATA.extraction");
+assert.equal(Number(warned[1]),(show('warnings').match(/<tr/g)||[]).length-1);
+// (the coverage ratios under "Documentation and quality", in Full inventory, are shares of the visible objects, and say so)
+const contains=overview.slice(overview.indexOf('id="contents"'),overview.indexOf('<details',overview.indexOf('id="contents"')));
+assert.equal((contains.match(/class="big"/g)||[]).length,counts.length,'no number under "Contents" is plain text');
 assert.equal(run('M.tables.length'),5);assert.equal(run('M.relationships.length'),2);
 assert.match(text(overview),/1 automatic date table that Power BI adds for date columns is in none of these numbers; it is listed at the end of Table view/);
 // each number is the size of the group it opens

@@ -50,7 +50,13 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
    for(const tab of tabs)await page.evaluate(t=>switchTab(t),tab);
    await page.evaluate(()=>switchTab('overview'));
    if(['abf','pbix'].some(ext=>r.sample.endsWith('.'+ext))&&!r.sample.startsWith('live-connection')){
-    if(!(await page.locator('body').innerText()).includes('Extraction coverage'))throw Error('Missing extraction coverage: '+r.file);
+    // Extraction coverage sits in the collapsed documentation details; their summary shows its status.
+    if(!(await page.locator('#doc-details').textContent()).includes('Extraction coverage'))throw Error('Missing extraction coverage: '+r.file);
+    const extraction=(await page.locator('#doc-details > summary').innerText()).match(/(PBIX|ABF) · (supported metadata extracted|partial metadata)/);
+    if(!extraction)throw Error('Extraction status not in the details summary: '+r.file);
+    // A partial extraction must also be the always-visible first thing in Review first, not only in the details.
+    const firstReview=(await page.locator('.review-first .ri').first().innerText().catch(()=>''));
+    if(extraction[2]==='partial metadata'&&!/^Partial metadata: review required/.test(firstReview))throw Error('Partial extraction not leading Review first: '+r.file);
    }
    // Every object in the search index opens its view and is shown there, in every sample.
    const lost=await page.evaluate(()=>OBJECTS.filter(o=>{
@@ -104,7 +110,8 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
     expect(await page.locator('#tbl-group-auto details[data-table]').count()===auto,r.file+': automatic date table group is incomplete');
     await page.evaluate(()=>switchTab('overview'));
    }
-   const generated=await page.locator('#generated-line').innerText();
+   // In the collapsed documentation details: read its text, not its rendering.
+   const generated=(await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim();
    // acceptance.py calls the engine library directly, not bidoc, so the bidoc version is honestly "not recorded" here;
    // the bidoc paths (generate, batch, worker) are covered by apps/generator/tests.
    expect(/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · /.test(generated),r.file+': versions missing beside the generation time: '+generated);

@@ -24,9 +24,10 @@ const step=name=>console.log('  ok '+name);
    M.relationships.push({fromTable:'Sales',fromColumn:'Key',toTable:'LocalDateTable_1f',toColumn:'Date',fromCardinality:'many',toCardinality:'one',isActive:true,crossFilteringBehavior:'oneDirection'},{fromTable:'Budget',fromColumn:'Budgeted',toTable:'Dim',toColumn:'ID',fromCardinality:'many',toCardinality:'one',isActive:true,crossFilteringBehavior:'bothDirections'},
     {fromTable:'Lake',fromColumn:'Qty',toTable:'Dim',toColumn:'ID',fromCardinality:'many',toCardinality:'many',isActive:true,crossFilteringBehavior:'automatic'});
    switchTab('rels',true,true);});
-  // ---- one surface: diagram and panel side by side in one card; the list is another tab
+  // ---- one surface: diagram and panel side by side in one card; the list is the same tab, shown as a list
   assert.equal(await page.locator('#sec-model').getAttribute('aria-current'),'true');
-  assert.deepEqual((await page.locator('.subtabs .subtab').allInnerTexts()).slice(0,2).map(t=>t.replace(/\s*\d+$/,'')),['Relationships','Relationships list']);
+  assert.deepEqual((await page.locator('.subtabs .subtab').allInnerTexts()).slice(0,2).map(t=>t.replace(/\s*\d+$/,'')),['Relationships','Security']);
+  assert.equal(await page.locator('#rel-view-diagram').getAttribute('aria-pressed'),'true');
   const frame=async id=>page.locator(id).boundingBox();
   let diagram=await frame('#rel-viewport'),side=await frame('#rel-panel'),card=await frame('#rel-surface');
   assert.ok(side.x>=diagram.x+diagram.width-1,'the panel is beside the diagram');
@@ -133,10 +134,12 @@ const step=name=>console.log('  ok '+name);
   await page.getByRole('button',{name:'Fit',exact:true}).click();
   assert.ok(await width()<=(await frame('#rel-viewport')).width,'Fit shows the whole diagram');
   step('a line selects its relationship; zoom and Fit scale the picture');
-  // ---- the relationships list is its own tab, complete, and leads back to the diagram
-  await page.locator('#nav-rel-list').click();
+  // ---- the list: the same Relationships tab shown as a list, complete, and leading back to the diagram
+  await page.locator('#rel-view-list').click();
   await page.waitForFunction(()=>activeTab==='rel-list');
-  assert.match(await page.locator('#main h1').innerText(),/^Relationships list$/);
+  assert.match(await page.locator('#main h1').innerText(),/^Relationships$/);
+  assert.equal(await page.locator('#nav-rels').getAttribute('aria-current'),'page','the Relationships tab stays current');
+  assert.equal(await page.locator('#rel-view-list').getAttribute('aria-pressed'),'true');
   assert.equal(await page.locator('#rel-surface').count(),0);
   assert.equal(await page.locator('#rel-list-rows tr').count(),4);
   assert.equal(await page.locator('#rel-list-count').innerText(),'4 relationships');

@@ -80,6 +80,16 @@ class PbixBatchTests(unittest.TestCase):
         self.assertIn('pbi-documentation-hub', (self.output / 'pbi-home.html').read_text())
         self.assertEqual(json.loads((self.output / 'pbix-batch-results.json').read_text())['generated'], 2)
 
+    def test_batch_documents_link_back_to_the_catalogue_written_beside_them(self):
+        a = self.pbix('Sales.pbix')
+        self.batch()
+        html = (self.output / output_name(a, self.inputs)).read_text()
+        self.assertIn('const RENDER_CONTEXT = {"catalogHref": "pbi-home.html#reports"}', html)
+        self.assertNotIn('catalogHref', json.dumps(read_metadata(html)))
+        # The context is UI-only: the payload (what the library, exports and comparisons read) never carries it.
+        data = html.split('const DATA = ', 1)[1].split(';\n', 1)[0]
+        self.assertNotIn('catalogHref', data)
+
     def test_recursive_duplicate_names_and_uppercase_extension(self):
         a = self.pbix('A/Sales.pbix')
         b = self.pbix('B/Sales.PBIX')

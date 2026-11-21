@@ -289,9 +289,20 @@ function showRelationship(index){ relSel = {table: '', rel: index}; switchTab('r
 function relSurfaceKey(e){ if(e.key === 'Escape' && (relSel.table || relSel.rel >= 0)){ e.preventDefault(); clearRelSelection(); document.getElementById('rel-viewport')?.focus?.(); } }
 function relCanvasClick(e){ if(!e.target.closest || !e.target.closest('.rel-box,.rel-edge')) { if(relSel.table || relSel.rel >= 0) clearRelSelection(); } }
 
+// One Relationships destination shown two ways. Each way keeps its own view id ("rels", "rel-list"), so
+// addresses, Back and "Show" from the list work as before; the switch keeps focus on the way chosen.
+function relViewSwitch(current){
+  const b = (id, label) => `<button type="button" id="rel-view-${id==='rels'?'diagram':'list'}" aria-pressed="${current===id}" onclick="switchRelView('${id}')">${label}</button>`;
+  return `<div class="view-switch" role="group" aria-label="Show relationships as">${b('rels','Diagram')}${b('rel-list','List')}</div>`;
+}
+function switchRelView(id){
+  if(activeTab === id) return;
+  switchTab(id);
+  document.getElementById(id==='rels'?'rel-view-diagram':'rel-view-list')?.focus?.();
+}
 function rRels(){
   const tables = countedTables();
-  return `${coupler()}<h1>Relationships</h1>
+  return `${coupler()}<div class="view-head"><h1>Relationships</h1>${relViewSwitch('rels')}</div>
   <p class="sub" style="margin-bottom:16px">Tables are boxes, relationships are the lines between them. A line shows the cardinality at each end and, at its middle, which way filters flow. Select a table to keep its relationships and fade the rest; its detail opens in the panel.</p>
   <div class="card rel-surface" id="rel-surface" onkeydown="relSurfaceKey(event)">
     <div class="rel-main">
@@ -329,8 +340,8 @@ function relationshipRows(query = ''){
     .map(([r, i]) => relationshipRow(r, i)).join('');
 }
 function rRelList(){
-  return `${coupler()}<h1>Relationships list</h1>
-  <p class="sub">Every relationship in the model, one row each. <b>Show</b> opens the same relationship on the <button class="xl" onclick="switchTab('rels')">diagram</button>.</p>
+  return `${coupler()}<div class="view-head"><h1>Relationships</h1>${relViewSwitch('rel-list')}</div>
+  <p class="sub">Every relationship in the model, one row each. <b>Show</b> opens the same relationship on the diagram.</p>
   <input id="rel-list-search" class="search" placeholder="Search relationships…" aria-label="Search relationships" oninput="filterRelList()">
   <p id="rel-list-count" class="mut" aria-live="polite" style="margin-bottom:.5rem"></p>
   <div class="column-scroll"><table class="t" id="rel-list"><thead><tr>${REL_LIST_HEAD}<th>Diagram</th></tr></thead><tbody id="rel-list-rows"></tbody></table></div>

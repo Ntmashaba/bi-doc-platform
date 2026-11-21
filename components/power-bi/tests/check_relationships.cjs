@@ -124,9 +124,9 @@ run('selectRelationship(5)');
 run('selectRelationship(4)');assert.match(panel(),/Status Inactive: used only when a measure asks for it \(USERELATIONSHIP\)/);
 run('selectRelationship(4)');assert.match(panel(),/^This model/);
 
-// ---- the list is its own tab: every relationship, one row each, and a way back to the diagram
+// ---- the list: its own view (rel-list) under the one Relationships tab, every relationship, a way back
 run("switchTab('rel-list')");run('filterRelList()');
-assert.match(node('main').innerHTML,/<h1>Relationships list<\/h1>/);assert.ok(!node('main').innerHTML.includes('rel-surface'));
+assert.match(node('main').innerHTML,/<h1>Relationships<\/h1><div class="view-switch" role="group" aria-label="Show relationships as"><button type="button" id="rel-view-diagram" aria-pressed="false"[^>]*>Diagram<\/button><button type="button" id="rel-view-list" aria-pressed="true"/);assert.ok(!node('main').innerHTML.includes('rel-surface'));
 const rows=()=>node('rel-list-rows').innerHTML.split('</tr>').filter(r=>r.includes('<tr>')).map(text);
 assert.equal(rows().length,8);assert.equal(node('rel-list-count').textContent,'8 relationships');
 assert.match(rows()[4],/^Sales \[ShipDate\] fx many → one Date \[Date\] inactive single Show$/);

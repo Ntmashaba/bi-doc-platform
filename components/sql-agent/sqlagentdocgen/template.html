@@ -53,6 +53,7 @@ h3{font-size:.92rem;font-weight:650;margin:1rem 0 .4rem}
 .card.stat.link:hover{border-color:var(--accent)}
 .card.stat.link .big{color:var(--accent)}
 .nav-toggle{display:none}
+main:focus{outline:none}  /* focused only as the landing point after choosing a section from the menu */
 table.t{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:.82rem}
 table.t th{font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);background:var(--panel2)}
 table.t td{padding:.44rem .7rem;border-bottom:1px solid var(--line2);vertical-align:top}
@@ -83,6 +84,14 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:"▸";color:var(--ink3);font-size:.8rem;transition:transform .12s}
 details[open]>summary::before{transform:rotate(90deg)}
 details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
+/* A table wider than its box scrolls inside a wrapper (as in ADF), so the page never scrolls sideways and the
+   table keeps its table semantics (display:block on the table itself loses them in some screen readers). */
+.table-wrap{max-width:100%;overflow-x:auto}
+.reading-guide{margin-top:.8rem}
+.reading-guide>summary{font-weight:500;flex-wrap:nowrap;align-items:baseline}
+.reading-guide>.body{padding-top:.6rem;color:var(--ink2)}
+.count-group h3{font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:.9rem 0 .45rem}
+.coverage-line{margin-top:1rem;color:var(--ink2)}
 .mut{color:var(--ink2);font-size:.8rem}
 .kv{display:grid;grid-template-columns:170px 1fr;gap:.15rem .8rem;margin:.3rem 0}
 .kv .k{color:var(--ink3);font-size:.74rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;padding-top:.1rem}
@@ -106,15 +115,23 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
 .sw{width:16px;height:0;border-top:2.4px solid;display:inline-block}
 @media (max-width:860px){
   .layout{grid-template-columns:1fr}
-  nav{position:static;height:auto}
-  .nav-btn{display:none}
-  nav.open .nav-btn{display:flex;margin-top:.2rem}
-  .nav-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;
-    border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.5rem .55rem;
-    border-radius:6px;cursor:pointer;margin-top:.5rem}
+  /* Title and menu button share the top row, as in the Power BI and ADF documents. */
+  nav{position:sticky;top:0;z-index:40;height:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:.6rem;padding:.7rem 1rem}
+  nav .brand{display:none}
+  nav .doc-title{margin:0;font-size:.95rem}
+  #nav-sections{display:none;grid-column:1/-1;padding-top:.5rem}
+  nav.open #nav-sections{display:block}
+  #nav-sections .nav-btn{margin-top:.2rem}
+  .nav-toggle{display:inline-flex;align-items:center;gap:.4rem;max-width:55vw;
+    border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.45rem .7rem;
+    border-radius:6px;cursor:pointer}
+  .nav-toggle .nt-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   main{padding:1rem}
 }
 @media print{nav{display:none}.layout{grid-template-columns:1fr}}
+/* Framed by a host (the library or an offline export), which names the document in its own trail: the
+   sidebar drops its brand and title on wide screens. On narrow screens the title shares the menu row. */
+@media (min-width:861px){html.framed nav .brand,html.framed nav .doc-title{display:none}}
 </style>
 </head>
 <body>
@@ -123,6 +140,8 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
   <main id="main"></main>
 </div>
 <script>
+// A host that frames this document names it in its own trail; see html.framed in the styles.
+if(window.parent!==window && document.documentElement && document.documentElement.classList) document.documentElement.classList.add("framed");
 const DATA = /*__DATA__*/null;
 /* ============================================================ helpers */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -185,17 +204,52 @@ const SECTIONS = [
 
 function buildNav(){
   let html = `<div class="brand">SQL Agent Doc Gen</div><div class="doc-title">${esc(DATA.title)}</div>`;
-  html += `<button class="nav-toggle" id="navtoggle" aria-expanded="false"><span class="nt-label">Overview</span><span aria-hidden="true">▾</span></button>`;
+  html += `<button class="nav-toggle" id="navtoggle" aria-expanded="false" aria-controls="nav-sections"><span class="nt-label">Overview</span><span aria-hidden="true">▾</span></button><div id="nav-sections">`;
   for(const sec of SECTIONS){
     const n = sec.count ? sec.count() : null;
     html += `<button class="nav-btn" id="sec-${sec.id}" data-go="section" data-arg="${sec.id}">${sec.label}${n?`<span class="n">${n}</span>`:""}</button>`;
   }
   const nav = document.getElementById("nav");
-  nav.innerHTML = html;
-  document.getElementById("navtoggle").addEventListener("click", () => {
-    const open = nav.classList.toggle("open");
-    document.getElementById("navtoggle").setAttribute("aria-expanded", String(open));
+  nav.innerHTML = html + "</div>";
+  document.getElementById("navtoggle").addEventListener("click", () => toggleNav());
+}
+function toggleNav(open){
+  const nav = document.getElementById("nav"), btn = document.getElementById("navtoggle");
+  const next = open ?? !nav.classList.contains("open");
+  nav.classList.toggle("open", next);
+  if(btn) btn.setAttribute("aria-expanded", String(next));
+}
+// The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
+// the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
+// a click outside, or crossing the breakpoint, closes it. On wide screens the button is hidden.
+const navNarrow = () => { const b = document.getElementById("navtoggle"); return !!b && b.offsetParent !== null; };
+function focusMain(){
+  const main = document.getElementById("main");
+  main.setAttribute("tabindex","-1"); main.focus({preventScroll:true});
+}
+function navKeys(){
+  const nav = document.getElementById("nav");
+  let chosenFromMenu = false;
+  nav.addEventListener("click", e => {          // capture: before the section handler closes the menu
+    chosenFromMenu = nav.classList.contains("open") && navNarrow() && !!e.target.closest("#nav-sections button");
+  }, true);
+  nav.addEventListener("click", () => { if(chosenFromMenu){ chosenFromMenu = false; focusMain(); } });
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape" || !nav.classList.contains("open") || !navNarrow()) return;
+    const inside = nav.contains(document.activeElement);
+    toggleNav(false);
+    if(inside) document.getElementById("navtoggle").focus();
   });
+  document.addEventListener("click", e => {
+    if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
+  });
+  // Crossing the breakpoint (rotating a phone, resizing a split screen) closes the menu, so it never comes back
+  // open over the content.
+  if(window.matchMedia){
+    const wide = window.matchMedia("(min-width: 861px)");
+    const close = () => { if(nav.classList.contains("open")) toggleNav(false); };
+    if(wide.addEventListener) wide.addEventListener("change", close); else if(wide.addListener) wide.addListener(close);
+  }
 }
 let CURRENT = null;
 function openSection(id){
@@ -208,9 +262,9 @@ function openSection(id){
   });
   const toggle = document.getElementById("navtoggle");
   if(toggle){
-    toggle.querySelector(".nt-label").textContent = sec.label;
-    toggle.setAttribute("aria-expanded", "false");
-    document.getElementById("nav").classList.remove("open");
+    // Section labels are HTML (e.g. "&amp;"): name the section as its own nav button reads.
+    toggle.querySelector(".nt-label").textContent = document.getElementById("sec-"+id).childNodes[0].textContent;
+    toggleNav(false);
   }
   document.getElementById("main").innerHTML = RENDER[id]();
   CURRENT = id;
@@ -233,31 +287,32 @@ function secOverview(){
   <h1>${esc(DATA.title)}</h1>
   <p class="sub">Static analysis of scripted SQL Server Agent jobs. No server was contacted;
      everything here is derived from the scripts. Generation details are in Coverage.</p>
-  <div class="card note">
-    <b>How to read this document.</b>
-    Findings are <i>evidence, not instructions</i>: each review issue states what the scripts say,
-    never what to change. Schedules are reported as <i>coinciding</i> — the scripts contain start
-    times but no durations, so a coincidence does not show the jobs running at the same time. Where a script could not be
-    parsed completely, the Coverage section says so; nothing is silently dropped.
-  </div>
-  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+  <details class="reading-guide" id="reading-guide"><summary>How to read this document: findings are evidence, not instructions</summary><div class="body">
+    Each review issue states what the scripts say, never what to change. Schedules are reported as <i>coinciding</i> — the
+    scripts contain start times but no durations, so a coincidence does not show the jobs running at the same time. Where a
+    script could not be parsed completely, the Coverage section says so; nothing is silently dropped.
+  </div></details>
+  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card note"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
   ${top.length ? `<h2>Review first — most severe findings</h2><div class="card">
-    <table class="t"><thead><tr><th>severity</th><th>finding</th><th>job</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="t"><thead><tr><th>severity</th><th>finding</th><th>job</th></tr></thead><tbody>
     ${top.map(i=>`<tr><td><span class="badge ${sevBadge(i.severity)}">${esc(i.severity)}</span></td>
       <td>${esc(i.message)}</td><td>${i.job?jobLink(jobIdByName(i.job)):""}</td></tr>`).join("")}
-    </tbody></table>
+    </tbody></table></div>
     <p style="margin-top:.5rem">${go("section","issues","Open all review issues →")}</p></div>` : ""}
   <h2>Document summary</h2>
-  <div class="grid c4">
+  <div class="count-group"><h3>Jobs</h3><div class="grid c4">
     ${stat("jobs", num(JOBS.length), "jobs scripted")}
     ${stat("jobs", num(steps), "steps")}
     ${stat("schedules", num(schedNames.size), `schedules (${num((DATA.sharedSchedules||[]).length)} shared)`)}
     ${stat("processing", num(ssasOps), "SSAS operations")}
-    ${stat("jobmeta", num((DATA.entities||[]).length), "referenced objects")}
+  </div></div>
+  <div class="count-group"><h3>Review</h3><div class="grid c4">
     ${stat("issues", num(ISSUES.length), `review issues <span class="mut">${bySev.alert||0} alert · ${bySev.warning||0} warning · ${bySev.info||0} info</span>`)}
-    ${stat("coverage", num(cov.unrecognisedStatements||0), "unrecognised statements")}
-    ${stat("coverage", num(DATA.redactions||0), "secret values withheld")}
-  </div>`;
+    ${stat("jobmeta", num((DATA.entities||[]).length), "referenced objects")}
+  </div></div>
+  <p class="coverage-line${cov.unrecognisedStatements?" note card":""}" id="coverage-line"><b>Coverage:</b>
+    ${num(cov.unrecognisedStatements||0)} unrecognised statement(s) · ${num(DATA.redactions||0)} secret value(s) withheld ·
+    ${go("section","coverage","Open Coverage")}</p>`;
 }
 function jobIdByName(n){ const j = JOBS.find(j=>j.name===n); return j?j.identity:""; }
 
@@ -267,7 +322,7 @@ function secJobs(){
   <h1>Jobs</h1>
   <p class="sub">${num(JOBS.length)} job(s) in the scripted input. Click a row for the job detail view.</p>
   <input class="search" id="jobsearch" placeholder="Filter jobs…" aria-label="Filter jobs">
-  <table class="t" id="jobtable"><thead><tr>
+  <div class="table-wrap"><table class="t" id="jobtable"><thead><tr>
     <th>job</th><th>state</th><th>steps</th><th>schedules</th><th>owner</th><th>subsystems</th></tr></thead>
   <tbody>${JOBS.map(j=>{
     const subs = [...new Set((j.steps||[]).map(s=>(s.subsystem||"TSQL").toUpperCase()))];
@@ -279,7 +334,7 @@ function secJobs(){
       <td>${(j.schedules||[]).map(s=>esc(s.name||"(unnamed)")).join(", ")||'<span class="mut">—</span>'}</td>
       <td>${esc(j.owner||"")||'<span class="mut">—</span>'}</td>
       <td>${subs.map(s=>subBadge(s)).join(" ")}</td></tr>`;
-  }).join("")}</tbody></table>`;
+  }).join("")}</tbody></table></div>`;
 }
 /* Delegated listeners: innerHTML-injected script tags would never run. */
 document.addEventListener("input", ev => {
@@ -417,12 +472,12 @@ function secJob(){
     let body = kv;
     if(s.parseError) body += `<p class="badge b-warn">command not parsed: ${esc(s.parseError)}</p>`;
     if(ops.length){
-      body += `<table class="t"><thead><tr><th>source</th><th>operation</th><th>type</th><th>object</th><th>reads</th></tr></thead><tbody>
+      body += `<div class="table-wrap"><table class="t"><thead><tr><th>source</th><th>operation</th><th>type</th><th>object</th><th>reads</th></tr></thead><tbody>
         ${ops.map(o=>`<tr><td>${esc(o.source||"")}</td><td><b>${esc(o.kind||"")}</b></td>
           <td>${esc(o.verb||"")||'<span class="mut">—</span>'}</td>
           <td>${o.object?`<span class="ref">${esc(o.object)}</span>`:'<span class="mut">—</span>'}</td>
           <td>${(o.reads||[]).map(r=>esc(r)).join(", ")||'<span class="mut">—</span>'}</td></tr>`).join("")}
-      </tbody></table>`;
+      </tbody></table></div>`;
     }
     if(sql){
       body += `<div class="kv">
@@ -457,11 +512,11 @@ function secProcessing(){
     out += `<h2>Coincident start times</h2><div class="card note">
       <p>These jobs process the same database and their schedules <b>coincide</b>. The scripts
       contain start times but no durations — a coincidence does not show the jobs running at the same time.</p>
-      <table class="t"><thead><tr><th>database</th><th>server</th><th>jobs</th><th>schedule</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="t"><thead><tr><th>database</th><th>server</th><th>jobs</th><th>schedule</th></tr></thead><tbody>
       ${coinc.map(c=>`<tr><td><span class="ref">${esc(c.database)}</span></td><td>${esc(c.server)}</td>
         <td>${c.jobs.map(n=>jobLink(jobIdByName(n))).join(", ")}</td>
         <td>${esc(c.schedule||"")||'<span class="mut">—</span>'}</td></tr>`).join("")}
-      </tbody></table></div>`;
+      </tbody></table></div></div>`;
   }
   if(!tgts.length){
     out += `<div class="empty"><b>No SSAS operations found.</b><br>No ANALYSISCOMMAND or ANALYSISQUERY steps carried a parseable command.</div>`;
@@ -471,7 +526,7 @@ function secProcessing(){
     <div class="card">
       <h2 style="margin-top:0"><span class="ref">${esc(t.server)}</span> / <span class="ref">${esc(t.database)}</span></h2>
       <p class="mut">processed by ${t.jobs.map(n=>jobLink(jobIdByName(n))).join(", ")}</p>
-      <table class="t"><thead><tr><th>job</th><th>step</th><th>operation</th><th>type</th><th>object</th><th>flags</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="t"><thead><tr><th>job</th><th>step</th><th>operation</th><th>type</th><th>object</th><th>flags</th></tr></thead><tbody>
       ${t.operations.map(o=>`<tr>
         <td>${jobLink(o.jobIdentity)}</td><td>${esc(o.step||"")}</td>
         <td><b>${esc(o.kind||"")}</b></td><td>${esc(o.verb||"")||'<span class="mut">—</span>'}</td>
@@ -479,7 +534,7 @@ function secProcessing(){
         <td>${[o.parallel?'<span class="badge b-ssas">parallel</span>':"",
                o.transaction===true?'<span class="badge b-ssas">transaction</span>':"",
                o.partitionGranular?'<span class="badge b-src">partition scope</span>':""].filter(Boolean).join(" ")}</td>
-      </tr>`).join("")}</tbody></table>
+      </tr>`).join("")}</tbody></table></div>
     </div>`).join("");
   return out;
 }
@@ -494,20 +549,20 @@ function secSchedules(){
   return `<h1>Schedules</h1>
   <p class="sub">Decoded from the msdb frequency model. Where start times coincide it is labelled
   as such — scripts carry no durations, so a coincidence does not show the jobs running at the same time.</p>
-  ${rows.length ? `<div class="card"><table class="t"><thead><tr>
+  ${rows.length ? `<div class="card"><div class="table-wrap"><table class="t"><thead><tr>
     <th>job</th><th>schedule</th><th>state</th><th>frequency</th><th>when</th><th>active window</th></tr></thead><tbody>
     ${rows.map(r=>`<tr>
       <td>${jobLink(r.job.identity)}</td><td>${esc(r.s.name||"(unnamed)")}</td>
       <td>${enabledBadge(r.s.enabled)}</td>
       <td>${esc(r.s.frequency||"")}</td><td>${esc(r.s.subday||"")||'<span class="mut">—</span>'}</td>
       <td class="mut">${esc(r.s.activeStartDate||"")} → ${r.s.activeEndDate && r.s.activeEndDate!=="9999-12-31" ? esc(r.s.activeEndDate) : "open"}</td>
-    </tr>`).join("")}</tbody></table></div>`
+    </tr>`).join("")}</tbody></table></div></div>`
   : `<div class="empty"><b>No schedules scripted.</b></div>`}
-  ${shared.length ? `<h2>Shared schedules</h2><div class="card"><table class="t"><thead><tr>
+  ${shared.length ? `<h2>Shared schedules</h2><div class="card"><div class="table-wrap"><table class="t"><thead><tr>
     <th>schedule</th><th>summary</th><th>used by</th></tr></thead><tbody>
     ${shared.map(s=>`<tr><td>${esc(s.name||"(unnamed)")}</td><td>${esc(s.summary||"")}</td>
       <td>${(s.attachedJobs||[]).map(n=>jobLink(jobIdByName(n))).join(", ")||'<span class="mut">—</span>'}</td></tr>`).join("")}
-    </tbody></table></div>` : ""}
+    </tbody></table></div></div>` : ""}
   ${coincIssues.length || coinc.length ? `<h2>Coincidence view <span class="badge b-info">labelled</span></h2>
     <div class="card note">
     ${coincIssues.map(i=>`<p>${esc(i.message)}</p>`).join("")}
@@ -524,14 +579,14 @@ function secIssues(){
   <p class="sub">Findings are evidence, not instructions. Each states what the scripts say;
   what to change — if anything — is a decision for the owner of the jobs.</p>
   <div class="filter-row">${sevs.map(s=>`<button class="chip${ISSUE_FILTER===s?" on":""}" data-go="issuefilter" data-arg="${s}">${s}${s==="all"?` (${ISSUES.length})`:` (${ISSUES.filter(i=>i.severity===s).length})`}</button>`).join("")}</div>
-  ${shown.length ? `<table class="t" id="issuetable"><thead><tr>
+  ${shown.length ? `<div class="table-wrap"><table class="t" id="issuetable"><thead><tr>
     <th>severity</th><th>code</th><th>finding</th><th>job</th><th>step</th><th>evidence</th></tr></thead><tbody>
     ${shown.map(i=>`<tr data-s="${esc((i.message+" "+(i.job||"")+" "+(i.step||"")+" "+i.code).toLowerCase())}">
       <td><span class="badge ${sevBadge(i.severity)}">${esc(i.severity)}</span></td>
       <td><span class="ref">${esc(i.code)}</span></td>
       <td>${esc(i.message)}</td>
       <td>${i.job?jobLink(jobIdByName(i.job)):""}</td><td>${esc(i.step||"")}</td>
-      <td class="mut">${esc(i.evidence||"")}</td></tr>`).join("")}</tbody></table>`
+      <td class="mut">${esc(i.evidence||"")}</td></tr>`).join("")}</tbody></table></div>`
   : `<div class="empty"><b>Nothing flagged${ISSUE_FILTER!=="all"?" at this severity":""}.</b></div>`}
   ${WARNINGS.length ? `<h2>Parse warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}`;
 }
@@ -550,9 +605,9 @@ function secCoverage(){
   return `<h1>Coverage</h1>
   <p class="sub">How completely the scripts were understood. Anything unrecognised is counted
   here and surfaced as a warning — never silently dropped.</p>
-  <div class="card"><table class="t"><tbody>
+  <div class="card"><div class="table-wrap"><table class="t"><tbody>
     ${rows.map(r=>`<tr><td>${esc(r[0])}</td><td style="text-align:right"><b>${num(r[1]||0)}</b></td></tr>`).join("")}
-  </tbody></table></div>
+  </tbody></table></div></div>
   ${(cov.skippedFiles||[]).length ? `<h2>Skipped files</h2><div class="card"><ul>${cov.skippedFiles.map(f=>`<li><span class="ref">${esc(f)}</span></li>`).join("")}</ul></div>` : ""}
   ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
   <h2>Document details</h2>
@@ -581,7 +636,7 @@ function secJobMeta(){
       <div class="k">source file</div><div><span class="ref">${esc(j.sourceFile||"")}</span></div>
     </div></div>`).join("")}
   <h2>Referenced objects <span class="mut">(normalized model)</span></h2>
-  ${ents.length ? `<div class="card"><table class="t"><thead><tr>
+  ${ents.length ? `<div class="card"><div class="table-wrap"><table class="t"><thead><tr>
     <th>kind</th><th>endpoint</th><th>used by</th></tr></thead><tbody>
     ${ents.map(e=>{
       const ep = e.endpoint||{};
@@ -590,7 +645,7 @@ function secJobMeta(){
       return `<tr><td><span class="badge b-info">${esc(e.kind)}</span></td>
         <td><span class="ref">${esc(where)}</span></td>
         <td>${use}${(e.usage||[]).length>4?`<br><span class="mut">+${e.usage.length-4} more</span>`:""}</td></tr>`;
-    }).join("")}</tbody></table></div>`
+    }).join("")}</tbody></table></div></div>`
   : `<div class="empty"><b>No objects referenced.</b></div>`}`;
 }
 
@@ -598,6 +653,7 @@ function secJobMeta(){
 const RENDER = {overview:secOverview, jobs:secJobs, job:secJob, processing:secProcessing,
                 schedules:secSchedules, issues:secIssues, coverage:secCoverage, jobmeta:secJobMeta};
 buildNav();
+navKeys();
 openSection("overview");
 </script>
 </body>

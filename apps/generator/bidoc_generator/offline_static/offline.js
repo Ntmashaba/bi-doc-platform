@@ -87,7 +87,8 @@ function view(id, params) {
     const frame = h("iframe", { src: doc.file, sandbox: "allow-scripts", title: doc.title, class: "viewer" });
     const picker = h("select", { id: "object", "aria-label": "Go to object" }, h("option", { value: "" }, "Whole document"), ...doc.objects.filter((o) => o.view).map((o) => h("option", { value: o.object_id, selected: o.object_id === objectId }, `${o.kind}: ${o.label}`)));
     picker.addEventListener("change", () => { location.hash = docHref(id, picker.value ? { object: picker.value } : {}); });
-    main().replaceChildren(h("p", {}, h("a", { href: "#/" }, "← All documentation")), h("h1", {}, doc.title), h("div", { class: "toolbar" }, picker, status), h("div", { class: "split" }, frame, related(doc, objectId)));
+    // The hosted viewer's hierarchy: a trail to the type, then a compact title (the document names itself inside).
+    main().replaceChildren(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" }, h("a", { href: "#/" }, "All documentation"), " › ", h("a", { href: "#/?type=" + encodeURIComponent(doc.document_type) }, TYPE_LABEL[doc.document_type] || doc.document_type)), h("h1", { class: "doc-heading" }, doc.title), h("div", { class: "toolbar" }, picker, status), h("div", { class: "split" }, frame, related(doc, objectId)));
     channel?.close();
     channel = new ViewerChannel(frame, doc.revision_id, () => {
         const obj = objectId ? doc.objects.find((o) => o.object_id === objectId) : null;

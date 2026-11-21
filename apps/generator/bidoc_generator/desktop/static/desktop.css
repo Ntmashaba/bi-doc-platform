@@ -27,3 +27,12 @@ table { width: 100%; border-collapse: collapse; } th, td { text-align: left; pad
 .notice.error { border-color: var(--bad); } .notice.warn { border-color: var(--warn); }
 .actions button { margin-right: 6px; } code { font-size: .88em; overflow-wrap: anywhere; }
 .preview-frame { width: 100%; height: 75vh; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+
+/* New batch: the main task first; input-format detail and less common options are disclosures. */
+details.help { margin: .15rem 0 .5rem; }
+details.help > summary, details.more > summary { cursor: pointer; color: var(--accent); width: fit-content; }
+details.help > p { margin: .35rem 0 0; }
+details.more { margin: .9rem 0 .4rem; border-top: 1px solid var(--line); padding-top: .7rem; }
+details.more > summary { font-weight: 600; }
+details.more[open] > summary { margin-bottom: .5rem; }
+fieldset.details-fields { border: 0; padding: 0; margin: .8rem 0 0; min-width: 0; } fieldset.details-fields legend { font-weight: 600; padding: 0; margin: 0 0 4px; }

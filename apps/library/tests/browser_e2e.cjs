@@ -34,6 +34,27 @@ const step = (name) => console.log("  ok " + name);
   await page.getByText("No matching results").waitFor();
   step("browse, filter and search");
 
+  // Primary content first: the documents follow the search and filters; Import beside the heading, the other
+  // management pages as quiet links in the heading row.
+  await page.goto(URL + "/#/");
+  await page.getByRole("heading", { name: "All documentation" }).waitFor();
+  const blocks = await page.locator("#main > * > *").evaluateAll((els) => els.map((e) => e.id || e.className || e.tagName));
+  assert.ok(blocks.indexOf("page-head") < blocks.indexOf("toolbar") && blocks.indexOf("toolbar") < blocks.indexOf("results"), blocks.join());
+  assert.deepStrictEqual(await page.getByRole("navigation", { name: "Manage the library" }).getByRole("link").allInnerTexts(),
+    ["Process PBIX", "Publishing tokens", "Download generator", "Settings"]);
+  assert.strictEqual(await page.locator(".toolbar a.button, .toolbar .actions").count(), 0, "no action buttons between the filters and the documents");
+  // the document page: the viewer's trail, and its actions before the metadata
+  await page.goto(`${URL}/#/documents/${process.env.PBI_DOC}`);
+  const trail = page.getByRole("navigation", { name: "Breadcrumbs" });
+  await trail.waitFor();
+  assert.deepStrictEqual(await trail.getByRole("link").allInnerTexts(), ["Library", "Power BI"]);
+  const actionsFirst = await page.evaluate(() => {
+    const a = document.querySelector("#main p.actions"), dl = document.querySelector("#main dl.kv");
+    return !!a && !!dl && !!(a.compareDocumentPosition(dl) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  assert.ok(actionsFirst, "Open current version comes before the metadata");
+  step("home and document pages lead with their content and main action");
+
   // Server search mode (A41): a library whose index is too large for the browser.
   const serverCalls = [];
   const ctx2 = await browser.newContext();
@@ -58,6 +79,13 @@ const step = (name) => console.log("  ok " + name);
   await related.getByText("Upstream: pipelines and jobs that write or refresh this").waitFor();
   assert.match(await related.innerText(), /Exact \(static evidence\)/);
   step("Power BI source shows its exact upstream pipeline");
+  // The breadcrumbs name the document, so the framed document drops its own sidebar title (wide screens).
+  const viewed = page.frameLocator("iframe");
+  await viewed.locator("nav .nav-btn").first().waitFor();
+  assert.strictEqual(await viewed.locator("html.framed").count(), 1);
+  assert.strictEqual(await viewed.locator("nav .doc-title").isVisible(), false);
+  assert.ok(await viewed.locator("#nav-sections").isVisible(), "the document keeps its own navigation");
+  step("framed in the viewer, the document leaves its title to the breadcrumbs and keeps its navigation");
 
   // Follow the link to the ADF activity: the viewer opens the exact activity (A20)
   await related.getByRole("link", { name: /Test factory|factory/i }).first().click();

@@ -153,7 +153,7 @@ def table_kinds_view(payload: dict) -> dict:
 # Every place the template is filled. One pass: text that has been inserted is never searched again, so a
 # name in the payload that spells a slot is inert.
 _SLOTS = re.compile(r"<!--__DOCUMENTATION_METADATA__-->|/\*__DOCUMENTATION_JS__\*/|__TITLE__|/\*__EXPLORER_CSS__\*/"
-                    r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null")
+                    r"|/\*__EXPLORER_JS__\*/|/\*__DERIVED__\*/null|/\*__DATA__\*/null|/\*__RENDER_CONTEXT__\*/null")
 SCRIPTS = ("explorer.js", "model_kinds.js", "power_query.js", "relationships.js", "report_view.js", "navigation.js")
 STYLES = ("explorer.css", "navigation.css", "power_query.css", "model_kinds.css", "relationships.css", "report_view.css")
 
@@ -162,8 +162,18 @@ def _part(name: str) -> str:
     return TEMPLATE.with_name(name).read_text(encoding="utf-8")
 
 
-def render_html(payload: dict, out_path: str | Path) -> Path:
+# A catalogue link is a file name beside the document (and an optional view), never a URL: it can only point
+# at a catalogue written into the same folder.
+_CATALOG_HREF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.html(#[A-Za-z0-9_-]{1,40})?")
+
+
+def render_html(payload: dict, out_path: str | Path, *, catalog_href: str | None = None) -> Path:
+    """Write the document. ``catalog_href`` is UI-only render context, never part of the payload: only a caller
+    that writes a catalogue beside the document (the PBIX batch) passes it, and then the navigation links back
+    to it. Single documents, library copies and portable exports are rendered without it and show no link."""
     from .catalog import read_metadata, validate_metadata, json_script
+    if catalog_href is not None and not _CATALOG_HREF.fullmatch(catalog_href):
+        raise ValueError(f"catalog_href must be a file name in the same folder, got {catalog_href!r}")
     out_path = Path(out_path)
     metadata = payload.get("documentation")
     if metadata is None and out_path.exists():
@@ -179,6 +189,7 @@ def render_html(payload: dict, out_path: str | Path) -> Path:
         "/*__EXPLORER_JS__*/": "\n".join(_part(name) for name in SCRIPTS),
         "/*__DERIVED__*/null": json_script(build_derived(payload)),
         "/*__DATA__*/null": json_script(payload),
+        "/*__RENDER_CONTEXT__*/null": json_script({"catalogHref": catalog_href} if catalog_href else None),
     }
     html = _SLOTS.sub(lambda match: slots[match.group(0)], TEMPLATE.read_text(encoding="utf-8"))
     out_path.parent.mkdir(parents=True, exist_ok=True)

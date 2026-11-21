@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {checkOverviewCounts,OPENS}=require('./overview_counts.cjs');
 const step=name=>console.log('  ok '+name);
-const SECTIONS=[['overview','Overview',/^Overview\. A summary of this file/],
+const SECTIONS=[['overview','Overview',/^Overview\. Start here: what to review first/],
  ['sources','Data Sources',/^Data Sources\. Data source settings in Power BI Desktop/],
  ['power-query','Power Query',/^Power Query\. The Power Query Editor in Power BI Desktop/],
  ['table','Table view',/^Table view\. Table view in Power BI Desktop: each table of the model with its columns\. No data rows/],
@@ -36,7 +36,8 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
    assert.equal(await page.locator('#sec-'+id).getAttribute('aria-current'),'true',label+' is marked in the sidebar');
    assert.equal(await page.locator('nav .nav-btn[aria-current]').count(),1);
    assert.match(await page.locator('#view-line').innerText(),line);
-   assert.equal(await page.locator('#main > *').nth(1).getAttribute('id'),'view-line',label+' opens with the line, right under the breadcrumb');
+   assert.equal(await page.locator('#main > *').nth(0).getAttribute('id'),'view-line',label+' opens with the line, first in the view');
+   assert.equal(await page.locator('#main .breadcrumb').count(),0,'a standalone document draws no breadcrumb');
    // every tab of the section opens with the same line
    for(const tab of await page.evaluate(id=>sectionTabs(SECTIONS.find(s=>s.id===id)).filter(t=>t.avail).map(t=>t.id),id)){
     await page.evaluate(t=>switchTab(t),tab);
@@ -53,6 +54,8 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
    await page.evaluate(()=>switchTab('overview'));
    if(section==='utility') await page.locator('#util-'+tab).click();
    else{ await page.locator('#sec-'+section).click(); if(await page.locator('#nav-'+tab).count()) await page.locator('#nav-'+tab).click(); }
+   // the relationships list is the Relationships tab shown as a list
+   if(tab==='rel-list'){ await page.locator('#nav-rels').click(); await page.locator('#rel-view-list').click(); }
    assert.equal(await page.evaluate(()=>activeTab),tab,tab+' is reachable by clicking');
    assert.ok((await page.locator('#main h1').first().innerText()).length>0);
    await page.goto(url+'#'+tab);
@@ -80,8 +83,12 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   // ---- Overview: each number is a link, and equals the number of items in the list it opens
   await page.evaluate(()=>switchTab('overview'));
   const shown=await page.locator('.stat-link').evaluateAll(els=>els.map(el=>el.id.replace('count-','')));
-  assert.deepEqual(shown,Object.keys(OPENS),'the Overview shows these counts, in this order');
-  assert.match(await page.locator('.stat-link').first().innerText(),/^\d+\s*Source tables$/,'"Source tables" is the headline');
+  // Warnings lead Review first; Contents groups the rest as Model, Data sources and Report.
+  assert.deepEqual(shown,['warnings','source-tables','calc-tables','calc-groups','other-tables','columns','calc-columns','measures',
+   'relationships','roles','queries','sources','pages','visuals','filters','bookmarks'],'the Overview shows these counts, in this order');
+  assert.deepEqual(new Set(shown),new Set(Object.keys(OPENS)),'every count the Overview can show is checked');
+  assert.deepEqual(await page.locator('.count-group h3').allInnerTexts(),['MODEL','DATA SOURCES','REPORT']);
+  assert.match(await page.locator('.count-group .stat-link').first().innerText(),/^\d+\s*Source tables$/,'"Source tables" leads Contents');
   // a selected report page must not change what the numbers count
   await page.evaluate(()=>setPageScope('p2'));
   const ids=await checkOverviewCounts(page,{before:()=>page.evaluate(()=>{pageScope='p2';})});
@@ -166,11 +173,11 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   step('a source shows its authentication type only when the file supplies it, else "Not available from this file"');
   // ---- versions beside the generation time
   await page.evaluate(()=>switchTab('overview'));
-  assert.match(await page.locator('#generated-line').innerText(),/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · mode: combined$/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · mode: combined$/);
   await page.evaluate(()=>{DATA.producer={engine:'pbi-doc-gen',engineVersion:'9.9.9',bidoc:'1.2.3'};switchTab('overview');});
-  assert.match(await page.locator('#generated-line').innerText(),/· bidoc 1\.2\.3 · pbi-doc-gen 9\.9\.9 ·/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/· bidoc 1\.2\.3 · pbi-doc-gen 9\.9\.9 ·/);
   await page.evaluate(()=>{delete DATA.producer;switchTab('overview');});
-  assert.match(await page.locator('#generated-line').innerText(),/· bidoc not recorded · pbi-doc-gen not recorded ·/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/· bidoc not recorded · pbi-doc-gen not recorded ·/);
   step('bidoc and engine versions sit beside the generation time, "not recorded" when the document does not say');
   // ---- DAX query view: a measure's short "used by" line, and the way to the full analysis in Model view
   await page.evaluate(()=>{pageScope='*';switchTab('measures',true,true);});
