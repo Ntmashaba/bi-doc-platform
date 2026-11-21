@@ -106,7 +106,8 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
     expect(await page.locator('#tbl-group-auto details[data-table]').count()===auto,r.file+': automatic date table group is incomplete');
     await page.evaluate(()=>switchTab('overview'));
    }
-   const generated=await page.locator('#generated-line').innerText();
+   // In the collapsed documentation details: read its text, not its rendering.
+   const generated=(await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim();
    // acceptance.py calls the engine library directly, not bidoc, so the bidoc version is honestly "not recorded" here;
    // the bidoc paths (generate, batch, worker) are covered by apps/generator/tests.
    expect(/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · /.test(generated),r.file+': versions missing beside the generation time: '+generated);

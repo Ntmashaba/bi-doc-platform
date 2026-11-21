@@ -171,11 +171,11 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   step('a source shows its authentication type only when the file supplies it, else "Not available from this file"');
   // ---- versions beside the generation time
   await page.evaluate(()=>switchTab('overview'));
-  assert.match(await page.locator('#generated-line').innerText(),/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · mode: combined$/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/^Generated \d{4}-\d\d-\d\d \d\d:\d\d UTC · bidoc not recorded · pbi-doc-gen \d+\.\d+\.\d+ · mode: combined$/);
   await page.evaluate(()=>{DATA.producer={engine:'pbi-doc-gen',engineVersion:'9.9.9',bidoc:'1.2.3'};switchTab('overview');});
-  assert.match(await page.locator('#generated-line').innerText(),/· bidoc 1\.2\.3 · pbi-doc-gen 9\.9\.9 ·/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/· bidoc 1\.2\.3 · pbi-doc-gen 9\.9\.9 ·/);
   await page.evaluate(()=>{delete DATA.producer;switchTab('overview');});
-  assert.match(await page.locator('#generated-line').innerText(),/· bidoc not recorded · pbi-doc-gen not recorded ·/);
+  assert.match((await page.locator('#generated-line').textContent()).replace(/\s+/g,' ').trim(),/· bidoc not recorded · pbi-doc-gen not recorded ·/);
   step('bidoc and engine versions sit beside the generation time, "not recorded" when the document does not say');
   // ---- DAX query view: a measure's short "used by" line, and the way to the full analysis in Model view
   await page.evaluate(()=>{pageScope='*';switchTab('measures',true,true);});
