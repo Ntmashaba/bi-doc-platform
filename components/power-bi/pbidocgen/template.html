@@ -387,13 +387,18 @@ function focusMain(){
     if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
   });
 })();
+// Views that are another presentation of a tab share its sub-tab; the view offers the switch between them
+// (Relationships: Diagram / List). Both keep their own id, address, Back step and count.
+const SUBTAB_OF = {"rel-list":"rels"};
 function subTabs(id){
-  const section = sectionOf(id), tabs = sectionTabs(section);
+  const section = sectionOf(id), tabs = sectionTabs(section).filter(t=>!SUBTAB_OF[t.id]);
   if(section.utility || tabs.length<2) return "";
+  const here = SUBTAB_OF[id] || id;
   return `<div class="subtabs" aria-label="${esc(section.label)} tabs">${tabs.map(t=>{
     const c = t.avail && t.count ? t.count() : null;
+    const on = t.id===here;
     return t.avail
-      ? `<button class="subtab${t.id===id?" active":""}" id="nav-${t.id}"${t.id===id?' aria-current="page"':""} onclick="switchTab('${t.id}')">${esc(t.label)}${c!==null&&c!==undefined?` <span class="n">${esc(c)}</span>`:""}</button>`
+      ? `<button class="subtab${on?" active":""}" id="nav-${t.id}"${on?' aria-current="page"':""} onclick="switchTab('${t.id}')">${esc(t.label)}${c!==null&&c!==undefined?` <span class="n">${esc(c)}</span>`:""}</button>`
       : `<button class="subtab disabled" aria-disabled="true" title="Not available in ${MODE} mode" tabindex="-1">${esc(t.label)}</button>`;
   }).join("")}</div>`;
 }

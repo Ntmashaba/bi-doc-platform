@@ -17,6 +17,9 @@ const {execFileSync}=require('node:child_process');
    if(await page.locator('#nav-toggle').isVisible()) await page.locator('#nav-toggle').click();
    await page.locator(sec.utility?'#util-'+id:'#sec-'+sec.id).click();
    if(!sec.utility&&await page.locator('#nav-'+id).count()) await page.locator('#nav-'+id).click();
+   // A view shown as another presentation of a tab is reached through that tab's switch (Relationships: List).
+   const viaSwitch={'rel-list':['#nav-rels','#rel-view-list']}[id];
+   if(viaSwitch) for(const b of viaSwitch) await page.locator(b).click();
    assert.equal(await page.evaluate(()=>activeTab),id);};
   assert.equal(await page.evaluate(()=>activeTab),'overview');
   assert.deepEqual(await page.locator('nav .nav-btn').allInnerTexts(),

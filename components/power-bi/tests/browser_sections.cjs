@@ -54,6 +54,8 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
    await page.evaluate(()=>switchTab('overview'));
    if(section==='utility') await page.locator('#util-'+tab).click();
    else{ await page.locator('#sec-'+section).click(); if(await page.locator('#nav-'+tab).count()) await page.locator('#nav-'+tab).click(); }
+   // the relationships list is the Relationships tab shown as a list
+   if(tab==='rel-list'){ await page.locator('#nav-rels').click(); await page.locator('#rel-view-list').click(); }
    assert.equal(await page.evaluate(()=>activeTab),tab,tab+' is reachable by clicking');
    assert.ok((await page.locator('#main h1').first().innerText()).length>0);
    await page.goto(url+'#'+tab);

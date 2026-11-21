@@ -62,6 +62,31 @@ const {checkMobileNav}=require('../../../packages/engines/tests/ux_mobile_nav.cj
   assert.ok(await page.evaluate(()=>relSel.rel>=0),'the chosen relationship is selected on the diagram');
   step('choosing a relationship in the list opens it on the diagram');
 
+  // ---- step 5: one Relationships destination, Diagram / List
+  for(const [id,pressed] of [['rels','diagram'],['rel-list','list']]){
+   await page.goto(url+'#'+id);
+   const subtabs=await page.locator('.subtabs .subtab').allInnerTexts();
+   assert.equal(subtabs.filter(t=>/^Relationships/.test(t)).length,1,'#'+id+': one Relationships tab');
+   assert.equal(await page.locator('#nav-rels').getAttribute('aria-current'),'page','#'+id+': it is current');
+   assert.equal(await page.locator('#nav-rel-list').count(),0);
+   assert.equal(await page.locator('#main h1').innerText(),'Relationships');
+   assert.deepEqual(await page.locator('.view-switch button').evaluateAll(bs=>bs.map(b=>b.textContent+':'+b.getAttribute('aria-pressed'))),
+    pressed==='diagram'?['Diagram:true','List:false']:['Diagram:false','List:true']);
+  }
+  // by keyboard: the switch keeps focus on the way chosen, and Back returns to the other
+  await page.goto(url+'#rels');
+  await page.locator('#rel-view-list').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>activeTab==='rel-list');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'rel-view-list','focus stays on List');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>activeTab==='rels');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'rel-view-diagram','focus stays on Diagram');
+  await page.goBack();
+  await page.waitForFunction(()=>activeTab==='rel-list');
+  step('Relationships is one tab with a Diagram / List switch; both keep their address, Back and keyboard focus');
+
   // ---- page scope: the selection changes the rows shown and the CSV export
   await page.goto(url+'#columns');
   const pages=await page.evaluate(()=>(R?.pages||[]).map(p=>p.id));
