@@ -103,6 +103,15 @@ const {checkMobileNav}=require('../../../packages/engines/tests/ux_mobile_nav.cj
   assert.equal(await page.locator('#doc-details #generated-line').count(),1,'generation and producer details are in documentation details');
   assert.equal(await page.locator('#doc-details .coupler').count(),1,'so is the input coupling');
   step('the overview reads: title and summary, Review first, Start reviewing, Contents, then collapsed inventory and details');
+  // Extraction: complete shows its status on the closed details; partial is also the first thing to review.
+  await page.evaluate(()=>{DATA.extraction={inputKind:'pbix',backend:'pbixray',version:'1.0',complete:true,warnings:[],limitations:[]};switchTab('overview');});
+  assert.equal((await page.locator('#doc-details > summary').innerText()).replace(/\s+/g,' '),'Documentation and extraction details PBIX · supported metadata extracted');
+  assert.equal(await page.locator('.review-first').getByText('Partial metadata').count(),0);
+  await page.evaluate(()=>{DATA.extraction={inputKind:'abf',backend:'pbixray',version:'1.0',complete:false,warnings:['Visual layout could not be read'],limitations:[]};switchTab('overview');});
+  assert.match(await page.locator('#doc-details > summary').textContent(),/ABF · partial metadata/);
+  assert.match(await page.locator('.review-first .ri').first().innerText(),/^Partial metadata: review required\s+Visual layout could not be read/);
+  await page.evaluate(()=>{delete DATA.extraction;switchTab('overview');});
+  step('extraction status shows on the closed details, and partial extraction leads Review first');
   // Review first: the deletion candidates are the ones Cleanup review lists with that assessment
   const del=await page.evaluate(()=>deletionCandidates());
   assert.ok(del.total>0,'the fixture has deletion candidates');

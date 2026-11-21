@@ -50,7 +50,9 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
    for(const tab of tabs)await page.evaluate(t=>switchTab(t),tab);
    await page.evaluate(()=>switchTab('overview'));
    if(['abf','pbix'].some(ext=>r.sample.endsWith('.'+ext))&&!r.sample.startsWith('live-connection')){
-    if(!(await page.locator('body').innerText()).includes('Extraction coverage'))throw Error('Missing extraction coverage: '+r.file);
+    // Extraction coverage sits in the collapsed documentation details; their summary shows its status.
+    if(!(await page.locator('#doc-details').textContent()).includes('Extraction coverage'))throw Error('Missing extraction coverage: '+r.file);
+    if(!/(PBIX|ABF) · (supported metadata extracted|partial metadata)/.test(await page.locator('#doc-details > summary').innerText()))throw Error('Extraction status not in the details summary: '+r.file);
    }
    // Every object in the search index opens its view and is shown there, in every sample.
    const lost=await page.evaluate(()=>OBJECTS.filter(o=>{

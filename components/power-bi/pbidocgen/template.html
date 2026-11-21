@@ -679,7 +679,7 @@ function rOverview(){
   ${rQualityOverview()}
   ${M ? `<h3>Storage modes by table</h3><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${countedTables().map(t=>`<tr><td>${tblLink(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table>` : ""}
   </div></details>
-  <details class="card-details" id="doc-details"><summary>Documentation and extraction details</summary><div class="body">
+  <details class="card-details" id="doc-details"><summary>Documentation and extraction details${x?` <span class="${x.complete?"mut":"badge b-warn"}">${esc(x.inputKind.toUpperCase())} · ${x.complete?"supported metadata extracted":"partial metadata"}</span>`:""}</summary><div class="body">
   <p class="sub" id="generated-line">Generated ${esc(DATA.generated)} · ${producerLine()} · mode: <b>${MODE}</b></p>
   ${coupler()}
   ${x ? `<h3>Extraction coverage</h3><p>${esc(x.inputKind.toUpperCase())} · ${esc(x.backend)} ${esc(x.version)} · ${x.complete ? "Supported metadata extracted" : "Partial metadata — review required"}</p>${[...(x.warnings||[]),...(x.limitations||[])].map(w=>`<p>${esc(w)}</p>`).join("")}` : ""}
