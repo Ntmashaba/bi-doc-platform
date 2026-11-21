@@ -65,7 +65,7 @@ function mount(...nodes) { main().replaceChildren(...kids(...nodes)); }
 function notice(kind, text, ...extra) {
     return h("p", { class: `notice ${kind}`, role: kind === "error" ? "alert" : "status" }, text, ...extra);
 }
-const TYPE_LABEL = { power_bi: "Power BI", adf: "Data Factory" };
+const TYPE_LABEL = { power_bi: "Power BI", adf: "Data Factory", sql_agent: "SQL Agent" };
 function typeBadge(t) { return h("span", { class: `badge type-${t}` }, TYPE_LABEL[t] || t); }
 function date(s) {
     if (!s)
@@ -119,7 +119,7 @@ async function render() {
         else if (r.path[0] === "view" && r.path[1] && r.path[2])
             await viewerView(r.path[1], r.path[2], r.params);
         else
-            await homeView(r.path[0] === "power_bi" || r.path[0] === "adf" ? r.path[0] : null, r.params);
+            await homeView(r.path[0] === "power_bi" || r.path[0] === "adf" || r.path[0] === "sql_agent" ? r.path[0] : null, r.params);
     }
     catch (e) {
         container.replaceChildren(...kids(h("h1", {}, "Something went wrong"), notice("error", errorText(e)), h("p", {}, h("a", { href: "#/" }, "Back to the library"))));
@@ -168,7 +168,7 @@ async function homeView(type, params) {
             const v = e.target.value;
             timer = window.setTimeout(() => setParam("q", v, true), 250);
         } });
-    const header = h("section", { class: "toolbar" }, h("nav", { class: "types", "aria-label": "Document types" }, ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"]].map(([t, label]) => h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))), searchBox, h("div", { class: "filters" }, filterSelect("business_area", "Business area", values((d) => [d.classification.business_area])), filterSelect("environment", "Environment", values((d) => [d.classification.environment])), filterSelect("owner", "Owner", values((d) => [d.classification.owner])), filterSelect("tag", "Tag", values((d) => d.tags)), caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
+    const header = h("section", { class: "toolbar" }, h("nav", { class: "types", "aria-label": "Document types" }, ...[["", "All documentation"], ["power_bi", "Power BI"], ["adf", "Data Factory"], ["sql_agent", "SQL Agent"]].map(([t, label]) => h("a", { href: href(t ? [t] : [], { q }), "aria-current": (type || "") === t ? "page" : undefined }, label))), searchBox, h("div", { class: "filters" }, filterSelect("business_area", "Business area", values((d) => [d.classification.business_area])), filterSelect("environment", "Environment", values((d) => [d.classification.environment])), filterSelect("owner", "Owner", values((d) => [d.classification.owner])), filterSelect("tag", "Tag", values((d) => d.tags)), caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
         onchange: (e) => setParam("archived", e.target.checked ? "1" : null) }), "Archived") : null), h("div", { class: "actions" }, caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/processing" }, "Process PBIX") : null, caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null, h("a", { class: "button secondary", href: "#/downloads" }, "Download generator"), h("a", { class: "button secondary", href: "#/settings" }, "Settings")));
     const results = h("section", { id: "results", "aria-live": "polite" });
     mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header, idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null, results);
@@ -272,7 +272,7 @@ async function downloadsView() {
                 }
             } }, h("h2", {}, "Add a release (administrators)"), h("p", { class: "muted small" }, "Upload the installer from the CI build. It is only offered for download after approval."), h("p", {}, h("label", { for: "release-file" }, "Installer (.exe)"), file), h("p", {}, h("label", { for: "release-version" }, "Version"), version), h("p", {}, h("label", { for: "release-prereq" }, "Also needed (separate with ;)"), prereq), h("p", {}, h("label", { for: "release-notes" }, "Release notes"), notes), h("button", { type: "submit" }, "Upload"), out);
     })() : null;
-    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Download the generator"), h("p", { class: "muted" }, "The generator documents Power BI and Data Factory on your computer and can publish to this library."), list.length ? h("div", {}, ...list.map(releaseCard))
+    mount(h("p", {}, h("a", { href: "#/" }, "← Library")), h("h1", {}, "Download the generator"), h("p", { class: "muted" }, "The generator documents Power BI, Data Factory and SQL Agent jobs on your computer and can publish to this library."), list.length ? h("div", {}, ...list.map(releaseCard))
         : notice("info", "No generator installer is available from this library yet. Ask your administrator for the generator."), upload);
 }
 async function tokensView() {
@@ -670,7 +670,7 @@ async function relatedPanel(panel, id, rev, objectId, generation, objects) {
         evidence_unavailable: "No relationship evidence is available for this version."
     };
     const groups = [
-        ["Upstream: pipelines that write this", rel.incoming.filter((l) => l.kind === "produces")],
+        ["Upstream: pipelines and jobs that write or refresh this", rel.incoming.filter((l) => l.kind === "produces")],
         ["Downstream: reports that read this", rel.outgoing.filter((l) => l.kind === "produces")],
         ["Other readers", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "reads")],
         ["Deletions", [...rel.incoming, ...rel.outgoing].filter((l) => l.kind === "deletes")],

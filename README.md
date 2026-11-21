@@ -1,9 +1,9 @@
 # bi-doc-platform
 
-**Turn Power BI and Azure Data Factory files into searchable, offline documentation.** Generate one HTML document per
-report, model or factory; browse many documents together in an offline catalogue; or publish them to a shared library.
+**Turn Power BI, Azure Data Factory and SQL Server Agent job files into searchable, offline documentation.** Generate one
+HTML document per report, model, factory or set of job scripts; browse many documents together in an offline catalogue; or publish them to a shared library.
 
-The platform **analyses files you provide**. It does not connect to Power BI, Analysis Services, Azure Data Factory or
+The platform **analyses files you provide**. It does not connect to Power BI, Analysis Services, Azure Data Factory, SQL Server or
 source databases, and it does not refresh data.
 
 > **New here?** Start with [Generate your first document](#generate-your-first-document). **Looking for something
@@ -28,10 +28,12 @@ source databases, and it does not refresh data.
 |---|---|---|
 | **Power BI** | `.pbix`, Tabular backups (`.abf`), PBIP projects, TMDL, `model.bim`, an SSMS CREATE script of a tabular database (`.xmla`), PBIR, pbi-tools extracted folders | Where does the data come from? Which measures and columns are used, and on which pages? What depends on this field? What could be removed? |
 | **Azure Data Factory** | a Git folder, an ARM template export, resource JSON (one file, or a folder of files saved from ADF Studio's "view code") | What starts a pipeline? Which datasets and linked services does it use? What reads or writes a source? What breaks downstream? |
+| **SQL Server Agent** | scripted jobs: a `.sql` file from SSMS *Script Job as → CREATE To* (or the same `msdb` procedure calls), or a folder of them | Which jobs process which Analysis Services databases, cubes, tables and partitions, and in what order? What does each step run, and on which server? When do jobs run, and which schedules coincide? Which failures are potentially unnotified? |
 
 A `.pbix` or `.abf` is extracted first; see [PBIX extraction](#pbix-extraction-and-troubleshooting). A `.xmla` file must be a
 CREATE script of a tabular database (JSON at compatibility level 1200 and later, XML at 1100 and 1103), not any XMLA command.
-Exact input rules: [generator guide](docs/generator.md).
+A SQL Agent `.sql` file must be a job script (the first 64 KB name `sp_add_job`, `sp_add_schedule` or
+`sp_attach_schedule`); ordinary SQL files are not inputs. Exact input rules: [generator guide](docs/generator.md).
 
 ## Generate your first document
 
@@ -67,6 +69,9 @@ bidoc generate --engine power_bi --kind pbix --source "C:\Reports\Sales.pbix" --
 
 # Azure Data Factory Git folder
 bidoc generate --engine adf --kind adf_git --source "C:\Repos\factory" --output-dir ".\Documentation"
+
+# SQL Server Agent job script (or --kind agent_folder with a folder of them)
+bidoc generate --engine sql_agent --kind agent_script --source "C:\Scripts\NightlyJobs.sql" --output-dir ".\Documentation"
 ```
 
 The command prints the path of the HTML it wrote.
@@ -95,14 +100,14 @@ Retry a failed item with `bidoc retry ITEM_ID` (`bidoc history` lists them). [Ba
 bidoc export-library ".\Documentation-Hub" ".\Documentation"
 ```
 
-Open `Documentation-Hub\index.html`: a catalogue with search, a viewer and links between related Power BI and Data Factory
+Open `Documentation-Hub\index.html`: a catalogue with search, a viewer and links between related Power BI, Data Factory and SQL Agent
 objects. It is a snapshot; run the command again after regenerating. [Offline export](docs/portable-export.md).
 
 ## Find a feature
 
 | I want to… | Start here |
 |---|---|
-| Generate one Power BI or Data Factory document | [First document](#generate-your-first-document) · [Generator options](docs/generator.md) |
+| Generate one Power BI, Data Factory or SQL Agent document | [First document](#generate-your-first-document) · [Generator options](docs/generator.md) |
 | Document a folder, and retry what failed | [Batches and history](docs/generator.md#batches-and-history) |
 | See where Power BI data comes from | [Power BI sources](components/power-bi/README.md#sources) · [Power Query](components/power-bi/README.md#power-query) |
 | See which measures and columns each report page uses | [What is in a report page](components/power-bi/README.md#what-is-in-a-report-page) |
@@ -123,7 +128,8 @@ objects. It is a snapshot; run the command again after regenerating. [Offline ex
 
 **Which command?** `bidoc` is the platform command: it generates, batches, exports and publishes, and its documents carry the
 integrity check the library relies on. Each engine also has its own `python generate_docs.py`, described in the
-[Power BI engine](components/power-bi/README.md) and [Data Factory engine](components/adf/README.md) guides, with its own
+[Power BI engine](components/power-bi/README.md), [Data Factory engine](components/adf/README.md) and
+[SQL Agent engine](components/sql-agent/README.md) guides, with its own
 options and outputs. Do not assume a flag from one works on the other.
 
 ## Command cheat sheet
@@ -172,6 +178,10 @@ documents:
   extracts** and **Documentation details**. [Power BI engine guide](components/power-bi/README.md).
 - **Data Factory:** Overview, Data & sources, Pipelines & orchestration, Impact & dependencies, Review issues and **Factory
   details**. [Data Factory engine guide](components/adf/README.md#the-views).
+- **SQL Agent:** Overview, Jobs, Selected job (the execution flow graph; per step, the SSAS operations or harvested
+  tables), Processing (the SSAS processing sequence across jobs), Schedules, Review issues, Coverage and **Properties &
+  objects**.
+  [SQL Agent engine guide](components/sql-agent/README.md#review-findings).
 
 Which views have content depends on the input: a report without a model, for example, has nothing in Table view.
 
@@ -230,6 +240,7 @@ it is were not checked. A report that has its own model is never given another.
 - [Generator: commands, batches, desktop app](docs/generator.md)
 - [Power BI features, and its standalone engine](components/power-bi/README.md)
 - [Data Factory features, and its standalone engine](components/adf/README.md)
+- [SQL Agent features, and its standalone engine](components/sql-agent/README.md)
 - [Offline catalogue](docs/portable-export.md)
 - [Publishing and tokens](docs/publishing.md)
 - [Shared library interface](docs/library-ui.md) · [Library API](docs/library-api.md)
@@ -245,17 +256,18 @@ it is were not checked. A report that has its own model is never given another.
 
 | Location | What it is |
 |---|---|
-| [`components/power-bi`](components/power-bi) · [`components/adf`](components/adf) | The documentation engines (`pbidocgen`, `adfdocgen`) |
+| [`components/power-bi`](components/power-bi) · [`components/adf`](components/adf) · [`components/sql-agent`](components/sql-agent) | The documentation engines (`pbidocgen`, `adfdocgen`, `sqlagentdocgen`) |
 | [`packages/contracts`](packages/contracts) | Manifest (envelope) and validation contracts |
-| [`packages/engines`](packages/engines) · [`packages/relationships`](packages/relationships) | Engine adapters, projection and identity; links between Data Factory activities and Power BI sources |
+| [`packages/engines`](packages/engines) · [`packages/relationships`](packages/relationships) | Engine adapters, projection and identity; links from Data Factory activities and SQL Agent job steps to Power BI sources |
 | [`apps/generator`](apps/generator) | `bidoc`: command line, batches, history, desktop app |
 | [`apps/library`](apps/library) | Shared library: API, web interface, local or Azure storage |
 | [`packaging/windows`](packaging/windows) · [`deploy/azure`](deploy/azure) · [`Dockerfile`](Dockerfile) | Windows installer (unsigned development build), Azure template, Docker image |
 | [`samples/manifest.json`](samples/manifest.json) | Checksum-pinned public sample files, downloaded on demand |
+| [`samples/sql-agent-corpus.json`](samples/sql-agent-corpus.json) | Public SQL Agent job scripts pinned by commit and checksum, with the coverage the engine must report (`python scripts/sql_agent_corpus.py`; not vendored, not run in CI) |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | Implementation history and open engineering work (not a user guide) |
 
 ```powershell
-python scripts/test.py              # every unit suite
+python scripts/test.py              # every unit suite (SQL Agent's with pytest)
 python scripts/test.py --samples    # also the public sample acceptance run (downloads checksum-pinned files)
 python scripts/check_links.py       # links and anchors between the Markdown files, offline
 ```
@@ -266,7 +278,8 @@ CI also runs browser, Windows, Docker, Azurite and sample-document checks;
 ## Current limitations
 
 - This is **static analysis**: no server, workspace, factory or database is queried, and Analysis Services is not scanned. A
-  remote model is documented only from a model file you supply.
+  remote model is documented only from a model file you supply. SQL Agent documents cover only the job scripts you
+  select, not every job on a server, and job history and run durations are not available.
 - The extractors differ in coverage; read a document's warnings and coverage before acting on its findings.
 - Shared projection cleans on a best-effort basis; it does not replace reading a document before publishing it.
 - **Verified:** real pbi-tools extraction on one Windows machine, on five public files, compared with the portable reader.
@@ -276,9 +289,11 @@ CI also runs browser, Windows, Docker, Azurite and sample-document checks;
 
 ## Project provenance
 
-The engines began as [pbi-doc-gen](https://github.com/Ntmashaba/pbi-doc-gen) and
+The Power BI and Data Factory engines began as [pbi-doc-gen](https://github.com/Ntmashaba/pbi-doc-gen) and
 [adf-doc-gen](https://github.com/Ntmashaba/adf-doc-gen), were imported here at fixed commits
-([`components/README.md`](components/README.md)) and are maintained here. The standalone repositories stay public; four
+([`components/README.md`](components/README.md)) and are maintained here. The SQL Agent engine was written here. The standalone repositories stay public; four
 public sample `.pbix` files used by the tests are still served from pbi-doc-gen.
 
-No licence file has been added to this repository yet; review third-party licence obligations before redistributing.
+The platform and its engines are released under the [MIT License](LICENSE). Third-party components keep their own
+licences: the Python packages in `requirements-lock.txt` (some are bundled into the Windows installer), and pbi-tools
+(AGPL-3.0), which is never bundled and is installed separately. Review those obligations before redistributing a build.

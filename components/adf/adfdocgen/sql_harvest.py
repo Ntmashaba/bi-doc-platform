@@ -134,10 +134,14 @@ class _Scanner:
                 i += 1
                 continue
             break
-        parts = [p for p in parts if p]
+        while parts and not parts[0]:
+            parts.pop(0)
+        while parts and not parts[-1]:
+            parts.pop()
         if not parts:
             return "", i, False
-        return ".".join(_quote(p) for p in parts), i, self.is_sym(i, "(")
+        # an empty interior part is kept: Sales..FactSales is database Sales, default schema, not schema Sales
+        return ".".join(_quote(p) if p else "" for p in parts), i, self.is_sym(i, "(")
 
     def keep(self, nm: str, is_call: bool) -> bool:
         if not nm or is_call:

@@ -59,7 +59,8 @@ const STATE_LABEL: Record<string, string> = { queued: "Queued", validating: "Val
   failed: "Failed", cancelled: "Cancelled", interrupted: "Interrupted" };
 const KIND_LABEL: Record<string, string> = { abf: "Analysis Services Tabular backup", pbix: "Power BI PBIX", pbip: "Power BI project", tmdl: "Power BI model (TMDL)",
   bim: "Power BI model (.bim)", pbir: "Power BI report (PBIR)", extracted: "pbi-tools extract",
-  adf_git: "Data Factory Git folder", adf_arm: "Data Factory ARM export", adf_resources: "Data Factory resource JSON" };
+  adf_git: "Data Factory Git folder", adf_arm: "Data Factory ARM export", adf_resources: "Data Factory resource JSON",
+  agent_script: "SQL Agent job script", agent_folder: "SQL Agent job scripts (folder)" };
 const ACTIVE = new Set(["queued", "validating", "extracting", "analysing", "rendering"]);
 const RETRYABLE = new Set(["failed", "cancelled", "interrupted"]);
 
@@ -159,7 +160,9 @@ async function startView(): Promise<void> {
       h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
         ".pbix and .abf files, .bim models and project folders; a folder you add that holds only Data Factory resource JSON " +
-        "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. A .pbip file alone is only a pointer: choose its project folder."),
+        "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. " +
+        "A SQL Server Agent job script (.sql from \u201cScript Job as \u2192 CREATE To\u201d) is read when you add the file itself, and a folder you add " +
+        "that holds job scripts is one SQL Agent input; other .sql files are not inputs. A .pbip file alone is only a pointer: choose its project folder."),
       inputs,
       bridge ? h("p", { class: "actions" },
         h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"),
@@ -317,7 +320,7 @@ async function prerequisitesView(): Promise<void> {
     h("div", { class: "card" }, h("table", {}, h("tbody", {}, ...Object.entries(d.inputs).map(([k, r]) => h("tr", {},
       h("td", {}, KIND_LABEL[k] || k), h("td", { class: r.available ? "s-completed" : "s-failed" }, r.available ? "Ready" : "Unavailable"),
       h("td", { class: "muted small" }, r.reason || "")))))),
-    h("p", { class: "muted small" }, "PBIP, model and Data Factory inputs never need Power BI Desktop or pbi-tools."));
+    h("p", { class: "muted small" }, "PBIP, model, Data Factory and SQL Agent inputs never need Power BI Desktop or pbi-tools."));
 }
 
 async function route(): Promise<void> {

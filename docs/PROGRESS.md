@@ -557,3 +557,243 @@ Living record of work against `docs/Power-BI-Platform-Agent-Handoff.md`. Newest 
 Steps 1–8 of the UI rework spec, one commit each, plus fixes from an independent review. Gate evidence and what
 is still open: `docs/ui-rework/GATES.md`. The final gate (walking the reporting user through their own file) is
 owner-run.
+
+### 2026-11-20 — SQL Server Agent engine (branch `feature/sql-agent-engine`), Phases 1–7
+
+A third engine, `components/sql-agent` (`sqlagent-doc-gen`), documents scripted SQL Server Agent jobs (SSMS *Script Job
+as → CREATE To*), with SSAS processing (XMLA and TMSL) as its focus. Design: *SQL Agent Job Analysis — Design Document
+v4.1* (v4 plus the conformance update below), kept with the owner's project documents, not in this repository. Static analysis only; it never connects to a server.
+
+- Phases 1–3 (engine): string- and comment-aware tokenizer; `sp_add_job*` / `sp_add_schedule` / `sp_attach_schedule` /
+  `sp_add_jobserver` / `sp_update_job` parser with job and schedule identity through `OUTPUT` variables, GUIDs and ids;
+  XMLA and TMSL analysis; T-SQL footprints through `adfdocgen.sql_harvest` (reused, not copied); the full msdb schedule
+  model; execution-flow and processing-sequence graphs; review findings under the §6 wording contract; HTML, JSON, Word,
+  CSV and agent outputs; `--coverage-only`. Phase 2 checked one real script locally, reporting counts only.
+- Phases 4–6 (platform): envelope `document_type` `sql_agent` with source kinds `agent_script` and `agent_folder`,
+  selection-only scope; the `bidoc_engines.sql_agent` adapter (SSAS targets as `execute` bindings with flat scalar
+  `invocation_context`; T-SQL as read/write/execute only); `bidoc generate`, `batch`, discovery and `doctor`; shared
+  projection withholds every step `command` (`SQLAGENT_CODE_KEYS`); library admission (migration 6) and the library and
+  offline frontends.
+- Phase 7 (this entry): packaging, CI coverage, docs, corpus manifest, LICENSE, and the conformance review:
+  - Packaging: the root requirements, `packages/engines`, the `Dockerfile` and the PyInstaller spec already carried the
+    engine. `requirements-lock.txt` gains nothing (standard library plus `adf-doc-gen`). The Windows installer check
+    (`packaging/windows/verify-install.ps1`) now generates SQL Agent documentation from the frozen `bidoc.exe` with no
+    Python on `PATH`: `doctor` readiness, a shared document whose step command is withheld while the SSAS server stays, and
+    a folder of job scripts, from a synthetic input in `verify-inputs/jobs`. `build.ps1` records the `sqlagent-doc-gen`
+    version in `release.json` and the release notes.
+  - Tests: `scripts/test.py` runs the SQL Agent pytest suite, as CI's separate "SQL Agent engine tests (pytest)" step does
+    (the suite uses pytest fixtures, which `unittest discover` cannot run).
+  - Conformance review of Phases 1–6: a **disabled-schedule** finding (`job-schedules-disabled`, info: every attached
+    schedule scripted `@enabled = 0`); **schedule coincidence** restricted to jobs that process the same SSAS database, as
+    §6 says (the finding is now built from the processing view; two unrelated jobs at 23:00 are no longer a finding);
+    §4.2 of the design rewritten to the payload as implemented. 9 tests added (and 3 signature tests rewritten to use
+    jobs that share a model); 5 of the new ones fail on the previous code.
+  - Corpus: `samples/sql-agent-corpus.json` and `scripts/sql_agent_corpus.py`. Six public scripts, pinned by commit and
+    SHA-256 of the published bytes, with licence (all MIT) and expected coverage. Four DarlingData job scripts parse with
+    no warnings; `sp_WhoIsActive Logging` keeps the expected `unparsedSteps = 1` (its command is a concatenated variable).
+    Ola Hallengren's `MaintenanceSolution.sql` (jobs built inside procedure logic) is counted as a skipped file, and the
+    First Responder Kit's `sp_AllNightLog_Setup.sql` (jobs built from procedure parameters) reports 6 unrecognised
+    statements and 12 warnings: nothing unreadable is dropped silently. Counters are identical with LF and CRLF line
+    endings. Not vendored and not run in CI.
+  - Docs: README (feature table, examples, sidebar, guides, contributors, limitations), `docs/generator.md` (a SQL Server
+    Agent section: kinds, sniffing, discovery, shared profile, `--also`, `doctor`), `components/README.md` (provenance and
+    the `sql_harvest` coupling) and the engine README (findings with codes and severities, shared documents, corpus).
+  - LICENSE: MIT, at the root, declared in every `pyproject.toml` and installed with the Windows build as `LICENSE.txt`.
+- Verified locally (Linux, Python 3.13): `components/sql-agent` 179 passed; `packages/engines` 159, `packages/contracts`
+  45, `packages/relationships` 10, `apps/generator` 171, `apps/library` 186 of 187. The library failure is
+  `test_committed_openapi_is_current` and is environmental: Python 3.13 names HTTP 413 "Content Too Large" (RFC 9110),
+  3.11 (CI) "Request Entity Too Large"; the committed `docs/openapi-v1.json` is correct for CI. All eight wheels build and
+  carry `License: MIT`. Links check clean.
+- CI on `e11e220`: all 11 jobs green. `windows-installer` ran the new checks against the frozen, installed `bidoc.exe`
+  (44 checks, none failed: SQL Agent readiness, shared generation with the command withheld, folder generation,
+  `LICENSE.txt` installed); the SQL Agent pytest step ran 179 tests with none skipped.
+- Not verified: no public repository-pinned SSAS (XMLA/TMSL) job script was found, so the corpus has no SSAS-processing file; the
+  earlier sessions' 9-file corpus was not named in the repository and could not be reconstructed exactly.
+- Next: Phase 8 (relationship rules with SQL Agent as a lineage source; friendly labels for `agent_script` /
+  `agent_folder` in the desktop review and prerequisites tables). Then the Power BI / Data Factory UX rework on its own
+  branch.
+
+### 2026-11-20 — SQL Agent Phase 8: lineage to Power BI (`rel-rules/2`) and desktop labels
+
+- **Relationship rules `rel-rules/2`** (`packages/relationships`): sources are Data Factory activities **and SQL Agent job
+  steps**; targets stay Power BI sources; the kinds are unchanged (`produces`, `reads`, `deletes`), so the library, the API
+  and the offline export needed no new kind. A step that **processes or refreshes** an Analysis Services model `produces`
+  the Power BI sources that read it: exact when server, instance and a database named by name (TMSL) match and both sides
+  are statically resolved (a live-connected report); *possible* when the job names the database by its XMLA `DatabaseID`,
+  when its server is unscripted (the local instance), on a letter-case difference, or when Power BI resolved the source
+  only partly (an `AnalysisServices.Database` import query names no table). The evidence says what the job runs ("the
+  job's process (ProcessFull) targets Sales in this model"). T-SQL writes and reads link as for Data Factory, *possible*
+  at most (a T-SQL step has no server of its own in the script). Backups, restores, other model commands and stored
+  procedure calls are not links. Analysis Services endpoints are compared only with each other: before, an `ssas`
+  target would have reached the SQL comparison, which matches on the object name, so a cube named like a table could
+  have linked to it. ADF results are unchanged except that an ADF binding is no longer compared with an Analysis
+  Services endpoint.
+- **Adapter:** SSAS bindings' `invocation_context` gains two scalars, `operation_kind` and `command_language`, so the rules
+  can tell processing from a backup and an XMLA ID from a TMSL name. Golden fixtures unchanged.
+- **Library:** `GET /capabilities` reports `relationship_schema_version` from the rules package instead of a literal. The
+  Related panel's upstream group reads "Upstream: pipelines and jobs that write or refresh this" (library frontend
+  recompiled; `browser_e2e.cjs` and `docs/library-ui.md` follow). Known limitation, documented in
+  `docs/relationships.md`: derived state is keyed to the catalogue sequence, so an upgraded library recomputes with
+  `rel-rules/2` at its next catalogue change, not at upgrade; for ADF and Power BI documents the results only differ in the
+  Analysis Services case above. A forced rebuild at an unchanged sequence was not added: it would need either a sequence
+  change in both stores or a tie-break between two generations at one sequence.
+- **Desktop app:** `agent_script` / `agent_folder` read "SQL Agent job script" / "SQL Agent job scripts (folder)" in the
+  review and prerequisites tables; the input hint and the prerequisites note mention SQL Agent inputs. Desktop UI
+  recompiled.
+- **Tests:** 11 rule tests (TMSL exact, live connection with a composite server, XMLA possible, contradictions, local
+  instance and letter case, non-processing operations, model-is-never-a-table both ways, T-SQL write and read, procedures,
+  ADF never compared with Analysis Services, determinism with mixed sources); the 10 ADF rule tests are unchanged. 3
+  library tests drive the real engines end to end (`SqlAgentLineage`, local and Azure-store variants): a TMSL refresh job
+  and a live-connected PBIR report link `exact_static`; an import query links `possible` with "resolution is partial"; a
+  different model does not link. `desktop_e2e.cjs` checks both labels in prerequisites and review, and fails on the
+  previous build. Locally: relationships 21, engines 159, library and generator suites green; desktop and library
+  browser checks pass in Chromium.
+
+### 2026-11-20 — SQL Agent review fixes (Phase 8 review; four engine defects)
+
+Each defect was reproduced on `626deac` first; each fix has tests that fail on the previous code.
+
+- **Relationship rules** (Phase 8 review): (1) an Analysis Services port known on one side only made a match
+  `exact_static`; it is now `possible`, "port known on one side only". A composite `host\instance` server with a separate
+  port is now split too (it was a false non-match). (2) From SQL Agent, an Analysis Services binding relates only when the
+  job processes or refreshes the model: a `Synchronize` or `Restore` source, reaching the rules as a `read`, created a
+  `reads` link. Relational out-of-line reads of processing operations still relate. New: 3 rule tests, a real-adapter
+  suite (`packages/engines/tests/test_sql_agent_lineage.py`: Synchronize relates to neither model, ProcessAdd and its
+  relational read still relate, the port matrix), and a library test locking the documented upgrade behaviour (an
+  unchanged catalogue keeps its `rel-rules/1` generation; the next change rebuilds with `rel-rules/2`; the old generation
+  stays pinnable).
+- **Duplicate jobs were merged silently** (high): the same job created in two files (dev and prod script-outs) became one
+  job with both files' steps. Each definition is now its own job and a `job-duplicate` warning names both files; a later
+  copy's identity carries its file (`name:nightly@prod.sql`), and every other job keeps its identity and scope key. A drop
+  and create preamble in another file belongs to that file's job and does not "replace" the first; a job deleted and
+  created again in the same file is replaced; `IF` / `ELSE` alternatives in one file stay one job (the corpus caught a
+  first version of this fix that split First Responder Kit's `sp_AllNightLog_Setup.sql` jobs into four). Steps added from
+  another file without re-creating the job still extend it.
+- **Three-part names** (medium-high): `Sales.dbo.FactSales` bound as database `master` (the step's), schema `Sales.dbo`,
+  in both the engine's entities and the adapter's bindings, so a cross-database load never linked to the Power BI report
+  reading that table (confirmed through the real engines). One bracket- and quote-aware splitter
+  (`sqlagentdocgen.common.split_sql_name`) now serves both; it links `produces / possible` (a T-SQL step has no server in
+  the script). A four-part name's linked server is binding context, not the endpoint's server, since it is an alias.
+- **`msdb..sp_add_job`** (medium): the default-schema form was not recognised, so the document was empty (counted in
+  coverage). Every qualification now parses.
+- **`@command = N'a' + N'b'`** (low-medium): a concatenation of string literals only is one known command and is parsed,
+  in a call and in a `DECLARE`; anything with a variable, a function or a number stays unparsed. DarlingData's
+  `sp_WhoIsActive Logging` (a concatenation with a variable) keeps `unparsedSteps = 1`.
+- Verified locally: SQL Agent 194, engines 165, relationships 24, library 195 (the one failure is the Python 3.13 HTTP 413
+  phrase; passes on 3.11), generator 171; desktop, library and offline browser checks pass; the corpus matches its manifest.
+- Not changed, found on the way: the shared T-SQL harvester reports `Sales..FactSales` as `Sales.FactSales` (it reads as
+  schema `Sales`); a fix there changes Data Factory output too. The real XMLA `Synchronize` shape (source under
+  `Source/Object`) yields no bindings at all.
+
+### 2026-11-20 — `db..table` in the shared T-SQL harvester; XMLA Synchronize as SSMS scripts it
+
+- **Harvester** (`adfdocgen.sql_harvest`, shared by Data Factory and SQL Agent): `Sales..FactSales` (default schema)
+  came out as `Sales.FactSales`, which every consumer read as schema `Sales`. The empty part is now kept
+  (`Sales..FactSales`), and the consumers read names positionally: `adfdocgen.common.split_table` (schema `None`),
+  Data Factory's query endpoints (database `Sales`, from a new `name_parts`), the Power BI bridge's native-query
+  matching (object only, so *possible* at most; it was no match), and SQL Agent's `split_sql_name`. Measured on the
+  95 pinned Microsoft templates (`check_adf_templates.py`): all 190 Data Factory documents are identical before and
+  after (manifests compared by title, per-run fields removed); none of them uses `db..table`, so the change reaches only
+  scripts that do, where the previous output was wrong.
+- **Synchronize**: the layout SSMS scripts (source under `Source/Object`, source server in `Source/ConnectionString`)
+  gave no bindings and no entities. The target is now the database on the step's server and the source the same
+  database ID on the connection string's `Data Source`; nothing else is taken from that string (a test plants a password
+  and checks every output: HTML, JSON, Word, CSV, agent). The adapter's read uses the source server (unknown when only
+  a `DatabaseID` is given), no longer the destination's. Found on the way: the known-operation list said `sync`, but the
+  element is `Synchronize`, so every Synchronize had been counted in `unknownOperations`. Relationship rules are
+  unchanged: Synchronize still relates to nothing.
+- Tests: 4 Data Factory (harvester forms, positional `split_table`, a query endpoint, the bridge row "Archive native
+  db.." now *possible*), 2 SQL Agent harvester-path tests (entity and a real-adapter link, *possible* with "schema not
+  known on both sides"), 5 Synchronize tests and a real-adapter one; each fix's tests fail on the previous code.
+- Not changed: a `Restore` still yields no bindings (its target is a `DatabaseName`, not an object path).
+
+### 2026-11-20 — XMLA Restore target; backup passwords redacted (security)
+
+- **Security:** a Backup or Restore encryption password in a step command (XMLA `<Password>…</Password>`, TMSL
+  `"password": "…"`) reached **local** documents verbatim: the standalone HTML and JSON, and a `bidoc generate` local
+  profile document. Shared documents and the library were not affected: shared projection withholds every step
+  command. `redact.py`, the safety net every SQL Agent output passes through, matched connection-string `Password=`
+  but not a password as an XML element or a JSON key; it now does (any namespace prefix, any case; empty elements and
+  look-alikes such as `PasswordPolicy` are left alone, and the redaction count stays exact). Checked: the Power BI
+  engine does not have this gap (a `model.bim` credential password reaches none of its outputs). **Local documents
+  generated earlier from scripts with backup passwords may contain them**: regenerate them, and any offline catalogue
+  built from them.
+- **Restore:** an XMLA Restore names its target database directly (`DatabaseID`, else `DatabaseName`), not under
+  `<Object>`, so it had no target, no entity and no binding. It now targets that database on the step's server. TMSL
+  Restore already did. Relationship rules are unchanged: a restore relates to nothing.
+- Tests: `test_backup_restore.py` (Restore target by name and by ID, the entity, every standalone output for XMLA and
+  TMSL backup and restore, the redaction patterns) and `test_sql_agent_secrets.py` (every `bidoc generate` output, local
+  and shared, with every extra), plus a real-adapter Restore binding; all fail on the previous code.
+
+### 2026-11-20 — SQL Agent review round 3 (redaction, SSMS start step, folders, parser)
+
+Each finding was reproduced on `c0fbad4` first (probe scripts, now tests); every test was
+compared against the pushed engine with bytecode disabled and caches removed.
+
+- **High — redaction gaps** (`redact.py`): `PASSWORD = N'…'` (the normal T-SQL form: `CREATE LOGIN`, `ENCRYPTION BY
+  PASSWORD`) redacted only the `N` and left the secret visible while counting a redaction; `@rmtpassword = N'…'`,
+  `sqlcmd -PSecret`, `dtexec /DECRYPT …` and PowerShell `ConvertTo-SecureString '…' -AsPlainText` were not redacted at
+  all. All are now covered; counts are exact (one per secret actually replaced), a second pass changes nothing, and
+  `@variables`, `passwordHint`, `PasswordPolicy`, `-E` and the like are untouched (`test_redaction.py`, 25 cases).
+- **High — `sp_update_job`** applied only `@enabled`, `@new_name` and `@owner_login_name`. SSMS scripts the start step
+  that way, so a job starting at step 2 showed `startStepId: None` and a graph starting at step 1. It now applies every
+  setting `sp_add_job` takes, through one shared helper.
+- **High — files named by bare name**: `dev/jobs.sql` and `prod/jobs.sql` were one file, so prod's preamble "deleted"
+  dev's job and the prod definition replaced it silently. Files are now named by their path below the selection
+  (`LoadResult.relative`); a duplicate's identity carries it (`name:nightly@prod/jobs.sql`). A single selected file keeps
+  its bare name, so existing identities do not change. `coverage.skippedFiles` held full paths too; now relative.
+- **Medium**: a `SET` or `DECLARE` under `IF` / `ELSE` was treated as certain (the command and its lineage came out as
+  static); the variable is now unknown. A job created and then deleted by the script was documented as existing; it is
+  now a `job-deleted` finding. A script cut off after `SELECT @j = job_id FROM` or `WHERE name =` crashed the whole run
+  (`IndexError`); the reads are bounded, and any unexpected parser error in one file is now a coverage warning while the
+  other files are still documented. Load-error warnings carried full paths and OS errors into the payload (and so into
+  every output and published documents); the payload now carries the public form, and the command line prints the
+  detail to stderr (`test_full_mode_keeps_error_detail` became `…_prints_error_detail_to_the_console_only`).
+- **Low**: attaching a schedule twice listed the job twice (the check compared a schedule key with job keys);
+  `CASE … ELSE … END` was read as control flow (an `EXEC` after it was conditional, and its `END` closed an enclosing
+  `BEGIN`); `GO n` made a job a duplicate of itself (a repeated batch is now consumed once); `sp_delete_jobstep` now
+  renumbers the later steps, their jumps and the start step. Microsoft documents that the other steps' references are
+  updated but not what a jump to the deleted step becomes, so that case is shown as a quit with a coverage warning.
+- Tests: `test_redaction.py`, `test_review_round3.py` (14); 26 of 39 fail on the previous engine, the rest are the
+  intended invariants. Corpus unchanged (DarlingData `unparsedSteps = 1`); every suite green.
+
+### 2026-11-21 — SQL Agent review round 4 (redaction precision, CASE in assignments, deleted jobs' schedules)
+
+Each finding reproduced on `0b1b325` first; compared against the pushed engine with bytecode disabled.
+
+- **`-P` hid PowerShell parameters** (introduced in round 3 to catch `-PSecret`): `-Path`, `-Port`, `-PassThru` became
+  `-P[redacted]` and were counted as withheld secrets. The glued form now applies only on a line that runs `sqlcmd`,
+  `bcp` or `osql` (not after a hyphen: `Invoke-Sqlcmd` is a cmdlet with named parameters); `-P <value>` stays global.
+- **Unquoted values ran to the end of the line**: `SET secret = NULL WHERE id = 1` lost its `WHERE`. In a connection
+  string (the key follows `;`, or the value ends at one) the value still runs to `;` and may hold spaces and commas; in
+  T-SQL it ends at the next space; `NULL` is not counted as a secret. Remaining trade-off, documented in the code: a
+  lone `Password=two words` with no `;` on either side reads as T-SQL, so only `two` is redacted.
+- **CASE in `SET` / `DECLARE`** (round 3 fixed the main loop only): the value collector stopped at the `CASE`'s
+  `ELSE` / `END`, which the main loop then read as control flow, marking the next `EXEC` conditional, so two creations
+  of one job read as `IF` / `ELSE` alternatives and were merged. The collector now keeps a `CASE` depth.
+- **A deleted job stayed on shared schedules** (and the platform's "Applies to" named it); deleting a job now detaches
+  it, as re-creating one already did.
+- **Parser failures**: recorded as load errors, so the document gets the public form and the command line prints the
+  exception type and message (`IndexError: …`) for debugging.
+- Tests: `test_review_round4.py` (27; 16 fail on the previous engine, the others are the forms that must keep working).
+  Corpus unchanged; every suite green.
+
+### 2026-11-21 — SQL Agent review round 5 (follow-ups)
+
+- PowerShell `-Password <value>` / `-Password:<value>` (`Invoke-Sqlcmd`, for one) was not redacted; a literal value now
+  is, a `$variable` and a following parameter are not, and `-PasswordFile` / `-PasswordNeverExpires` are untouched.
+- A glued `-PSecret` on a continuation line (a sqlcmd / bcp / osql call split with a PowerShell backtick or a cmd
+  caret) was not redacted: the continued lines now belong to the tool's line.
+- The platform's scope warning said "file(s) could not be read" for scripts that could not be analysed too; it now
+  says "could not be read or analysed".
+- Tests: `test_review_round5.py` (11) and a scope-warning test; 7 fail on the previous code. Corpus unchanged.
+
+### 2026-11-21 — Fix a redaction regression from `d37c76b`
+
+- The new PowerShell `-Password` rule took `(ConvertTo-SecureString` as the password value and ran before the
+  `ConvertTo-SecureString` rule, so `-Password (ConvertTo-SecureString 'secret' -AsPlainText -Force)`, the usual
+  PowerShell form, showed the secret again while counting one redaction (`b9bd329` handled it). `-Password` now leaves
+  a `(subexpression)`, `@(…)`, `[cast]` or `{script block}` alone, like a `$variable`, and the
+  `ConvertTo-SecureString` rule runs first. Reordering alone would not have been enough: the `-Password` rule would then
+  have redacted `(ConvertTo-SecureString` as well, garbling the line and counting two secrets.
+- Tests: 3 regression cases and 5 expression forms added to `test_review_round5.py`; all 8 fail on `83dcdfa`.

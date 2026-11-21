@@ -5,11 +5,11 @@ import uuid
 
 from bidoc_contracts import scope_key
 
-from . import adf, power_bi
+from . import adf, power_bi, sql_agent
 from .envelope import assemble, fit_sections, now_rfc3339
 from .projection import POLICY_VERSION, project
 
-ADAPTERS = {"power_bi": power_bi, "adf": adf}
+ADAPTERS = {"power_bi": power_bi, "adf": adf, "sql_agent": sql_agent}
 
 
 class NotPublishable(ValueError):

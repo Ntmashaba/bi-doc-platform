@@ -5,8 +5,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 HERE = SPECPATH  # noqa: F821 (provided by PyInstaller)
 
 datas, hidden = [], []
-for package in ("pbidocgen", "adfdocgen", "bidoc_contracts", "bidoc_engines", "bidoc_relationships",
-                "bidoc_generator"):
+for package in ("pbidocgen", "adfdocgen", "sqlagentdocgen", "bidoc_contracts", "bidoc_engines",
+                "bidoc_relationships", "bidoc_generator"):
     datas += collect_data_files(package)             # engine templates, schema, desktop static files
     hidden += collect_submodules(package)            # engines import some modules lazily
 # Portable PBIX/ABF extraction: pbixray is imported lazily and pbidocgen.portable checks its installed version

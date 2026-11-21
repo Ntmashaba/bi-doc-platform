@@ -1,4 +1,4 @@
-"""rel-rules/1 (handoff A20, A21, A22)."""
+"""rel-rules/2 (handoff A20, A21, A22; SQL Agent design v4.1 section 8)."""
 import unittest
 
 from bidoc_engines.endpoints import endpoint, normalize
@@ -92,6 +92,117 @@ class Rules(unittest.TestCase):
         first, second = detect(docs), detect(list(reversed(docs)))
         self.assertEqual(first, second)
         self.assertEqual(len({r["relationship_id"] for r in first}), 2)
+
+
+# -- SQL Agent as a source (rel-rules/2) -------------------------------------------------------------------------
+
+AS_SOURCE = dict(system="SQL Server Analysis Services", server="ASSERVER", instance="TABULAR", database="SalesModel")
+TSQL = dict(system="sql", database="DW", schema="dbo", object="Sales")       # no server: the job's own server
+
+
+def ssas(operation_kind="refresh", language="tmsl", process_type="full", **ep):
+    target = dict(dict(system="ssas", server="ASSERVER\\TABULAR", database="SalesModel"), **ep)
+    b = binding("execute", target, bid=f"execute:{sorted(target.items())}:{operation_kind}")
+    b["invocation_context"] = {"subsystem": "ANALYSISCOMMAND", "process_type": process_type,
+                               "process_object": "/".join(p for p in (target.get("database"), target.get("object")) if p),
+                               "operation_kind": operation_kind, "command_language": language}
+    return b
+
+
+def agent(*bindings, env="production", doc="j" * 8):
+    return Document(doc, "r-" + doc, "sql_agent", env, (
+        {"object_id": "sqlagent:job:J", "kind": "pipeline", "parent_object_id": None, "bindings": []},
+        {"object_id": "sqlagent:step:J/1", "kind": "activity", "parent_object_id": "sqlagent:job:J",
+         "bindings": list(bindings)}))
+
+
+class SqlAgentSource(unittest.TestCase):
+    def test_tmsl_refresh_of_the_model_a_report_reads_is_exact(self):
+        found = detect([agent(ssas()), pbi(AS_SOURCE)])
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "exact_static")])
+        r = found[0]
+        self.assertEqual((r["source_object_id"], r["source_parent_object_id"], r["target_object_id"]),
+                         ("sqlagent:step:J/1", "sqlagent:job:J", "pbi:source:x"))
+        self.assertIn("the job's refresh (full) targets this model", r["evidence"]["notes"])
+
+    def test_live_connection_with_a_composite_server(self):
+        live = dict(system="SQL Server Analysis Services", server="asserver\\tabular", database="SalesModel")
+        self.assertEqual(one([agent(ssas()), pbi(live)]), [("produces", "exact_static")])
+
+    def test_xmla_names_the_database_by_id_so_possible_at_most(self):
+        found = detect([agent(ssas("process", "xmla", "ProcessFull", object="Sales")), pbi(AS_SOURCE)])
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
+        notes = found[0]["evidence"]["notes"]
+        self.assertTrue(any("XMLA DatabaseID" in n for n in notes), notes)
+        self.assertIn("the job's process (ProcessFull) targets Sales in this model", notes)
+
+    def test_contradictions_never_join(self):
+        for other in (dict(AS_SOURCE, server="OTHER"), dict(AS_SOURCE, instance=None),
+                      dict(AS_SOURCE, instance="MULTIDIM"), dict(AS_SOURCE, database="FinanceModel")):
+            with self.subTest(other=other):
+                self.assertEqual(one([agent(ssas()), pbi(other)]), [])
+        self.assertEqual(one([agent(ssas(), env="test"), pbi(AS_SOURCE)]), [])
+
+    def test_local_instance_or_letter_case_is_possible(self):
+        self.assertEqual(one([agent(ssas(server=None)), pbi(AS_SOURCE)]), [("produces", "possible")])
+        self.assertEqual(one([agent(ssas(database="salesmodel")), pbi(AS_SOURCE)]), [("produces", "possible")])
+
+    def test_ports(self):
+        found = detect([agent(ssas()), pbi(dict(AS_SOURCE, port=2383))])                        # report only
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
+        self.assertIn("port known on one side only", found[0]["evidence"]["notes"])
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(AS_SOURCE)]), [("produces", "possible")])          # job only
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(dict(AS_SOURCE, port=2383))]), [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(port=2383)), pbi(dict(AS_SOURCE, port=2384))]), [])                  # different
+
+    def test_composite_server_with_a_separate_port(self):
+        # SQL Agent keeps @server as written; a separate, consistent port must not hide the instance
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\TABULAR", port=2383)), pbi(dict(AS_SOURCE, port=2383))]),
+                         [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\TABULAR,2383")), pbi(dict(AS_SOURCE, port=2383))]),
+                         [("produces", "exact_static")])
+        self.assertEqual(one([agent(ssas(server="ASSERVER\\MULTIDIM", port=2383)), pbi(dict(AS_SOURCE, port=2383))]), [])
+
+    def test_non_processing_model_bindings_never_relate(self):
+        # a Synchronize or Restore source arrives as a read on an Analysis Services endpoint
+        source_read = binding("read", dict(system="ssas", server="ASSERVER\\TABULAR", database="SalesModel"))
+        source_read["invocation_context"] = {"subsystem": "ANALYSISCOMMAND", "operation_kind": "synchronize",
+                                             "command_language": "xmla"}
+        self.assertEqual(one([agent(source_read), pbi(AS_SOURCE)]), [])
+        model_write = binding("write", dict(system="ssas", server="ASSERVER\\TABULAR", database="SalesModel"))
+        self.assertEqual(one([agent(model_write), pbi(AS_SOURCE)]), [])
+
+    def test_only_processing_produces(self):
+        for kind in ("backup", "restore", "alter", "delete", "clearcache", "sync"):
+            with self.subTest(kind=kind):
+                self.assertEqual(one([agent(ssas(kind, "xmla", None)), pbi(AS_SOURCE)]), [])
+
+    def test_a_model_is_never_a_sql_table(self):
+        # a cube named like a table: the SSAS target must not match the SQL source, nor the reverse
+        cube = ssas("process", "xmla", "ProcessFull", database="DW", object="Sales")
+        self.assertEqual(one([agent(cube), pbi(dict(SQL, database="DW", object="Sales"))]), [])
+        self.assertEqual(one([agent(binding("write", dict(TSQL, object="SalesModel"))), pbi(AS_SOURCE)]), [])
+
+    def test_tsql_write_without_a_server_is_possible(self):
+        found = detect([agent(binding("write", TSQL)), pbi(dict(SQL, database="DW"))])
+        self.assertEqual([(r["kind"], r["confidence"]) for r in found], [("produces", "possible")])
+        self.assertIn("server known on one side only", found[0]["evidence"]["notes"])
+        self.assertEqual(one([agent(binding("read", TSQL)), pbi(dict(SQL, database="DW"))]), [("reads", "possible")])
+
+    def test_executing_a_procedure_is_not_a_relationship(self):
+        proc = dict(system="sql", database="DW", schema="dbo", object="usp_Load")
+        self.assertEqual(one([agent(binding("execute", proc)), pbi(dict(SQL, database="DW", object="usp_Load"))]), [])
+
+    def test_adf_is_not_compared_with_analysis_services(self):
+        self.assertEqual(one([adf(binding("write", dict(system="Azure SQL Database", server="ASSERVER",
+                                                        database="SalesModel", object="x"))),
+                              pbi(dict(AS_SOURCE, object="x"))]), [])
+
+    def test_mixed_sources_are_deterministic(self):
+        docs = [adf(binding("write", SQL)), agent(ssas()), pbi(SQL), pbi(AS_SOURCE, doc="q" * 8)]
+        first, second = detect(docs), detect(list(reversed(docs)))
+        self.assertEqual(first, second)
+        self.assertEqual(sorted(r["source_document_id"] for r in first), ["a" * 8, "j" * 8])
 
 
 if __name__ == "__main__":

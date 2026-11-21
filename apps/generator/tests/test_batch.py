@@ -1,4 +1,5 @@
 """B08: batch queue, PBIX extraction in a child process, cancellation, history (A07, A08, A17)."""
+import codecs
 import json
 import os
 import shutil
@@ -11,7 +12,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2] / "packages" / "engines" / "tests"))
-from fixtures import adf_factory, pbi_model  # noqa: E402
+from fixtures import SQL_AGENT_SCRIPT, adf_factory, pbi_model, sql_agent_jobs  # noqa: E402
 
 from bidoc_contracts import validate_artifact  # noqa: E402
 from bidoc_generator.batch import Options, Runner, classify  # noqa: E402
@@ -92,6 +93,34 @@ class BatchTest(unittest.TestCase):
         script.write_text('{"create": {"database": {"name": "Sales", "compatibilityLevel": 1500, "model": {"tables": []}}}}')
         self.assertEqual((classify(script)["engine"], classify(script)["kind"]), ("power_bi", "bim"))
         self.assertEqual(classify(adf_factory(self.tmp / "f"))["kind"], "adf_git")
+
+    def test_classify_sql_agent_scripts_by_content(self):
+        script = sql_agent_jobs(self.tmp / "nightly.sql")
+        self.assertEqual((classify(script)["engine"], classify(script)["kind"]), ("sql_agent", "agent_script"))
+        upper = sql_agent_jobs(self.tmp / "upper" / "Nightly.SQL")   # the suffix is case-insensitive; a sibling
+        self.assertEqual(classify(upper)["kind"], "agent_script")    # Nightly.SQL would BE nightly.sql on Windows
+        wide = self.tmp / "wide.sql"                                            # UTF-16 with a BOM sniffs the same
+        wide.write_bytes(codecs.BOM_UTF16_LE + SQL_AGENT_SCRIPT.encode("utf-16-le"))
+        self.assertEqual(classify(wide)["kind"], "agent_script")
+        schedule_only = self.tmp / "schedule.sql"                  # a shared schedule on its own is a job script
+        schedule_only.write_text("EXEC msdb.dbo.sp_add_schedule @schedule_name = N'Nightly', @freq_type = 4\n",
+                                 encoding="utf-8")
+        self.assertEqual(classify(schedule_only)["kind"], "agent_script")
+        plain = self.tmp / "query.sql"                                          # an ordinary .sql file is not an input
+        plain.write_text("SELECT 1;\n", encoding="utf-8")
+        errors = classify(plain)["errors"]
+        self.assertEqual(errors[0]["code"], "INVALID_INPUT")
+        self.assertIn("not a recognised job script", errors[0]["message"])
+
+    def test_classify_sql_agent_script_documents_through_batch(self):
+        r = self.runner()
+        script = sql_agent_jobs(self.tmp / "nightly.sql")
+        batch = r.submit([str(script)], Options(output_dir=str(self.out)))
+        items = self.items(r, batch)
+        self.assertEqual([i["state"] for i in items], ["completed"], items[0]["errors"])
+        self.assertEqual((items[0]["engine"], items[0]["kind"]), ("sql_agent", "agent_script"))
+        m = validate_artifact(Path(items[0]["artifact_path"]).read_bytes())
+        self.assertEqual(m["document_type"], "sql_agent")
 
     def test_pbix_is_extracted_in_its_own_workspace(self):
         r = self.runner()

@@ -14,7 +14,8 @@ from .build import ADAPTERS
 from .envelope import assemble, fit_sections
 from .projection import POLICY_VERSION, project
 
-SUPPORTED_NATIVE_SCHEMAS = {"power_bi": {"pbi-doc-gen/2"}, "adf": {"adf-doc-gen/2"}}
+SUPPORTED_NATIVE_SCHEMAS = {"power_bi": {"pbi-doc-gen/2"}, "adf": {"adf-doc-gen/2"},
+                            "sql_agent": {"sqlagent-doc-gen/1"}}
 
 
 class UnsupportedProjection(ValueError):

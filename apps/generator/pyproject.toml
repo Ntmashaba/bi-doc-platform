@@ -7,6 +7,7 @@ name = "bi-doc-generator"
 dynamic = ["version"]
 description = "BI Documentation Platform generator: command line, batch queue, local history and desktop app."
 requires-python = ">=3.11"
+license = { text = "MIT" }
 # Local packages bi-doc-contracts and bi-doc-engines are installed first (requirements.txt).
 # Exact versions are locked in requirements-lock.txt.
 dependencies = [

@@ -10,7 +10,7 @@ import { ViewerChannel } from "./protocol.js";
 const SNAP = JSON.parse(document.getElementById("snapshot")?.textContent || "{}");
 const DOCS = new Map(SNAP.documents.map((d) => [d.document_id, d]));
 const OUTSIDE = new Map(SNAP.not_included.map((d) => [d.document_id, d]));
-const TYPE_LABEL = { power_bi: "Power BI", adf: "Data Factory" };
+const TYPE_LABEL = { power_bi: "Power BI", adf: "Data Factory", sql_agent: "SQL Agent" };
 let channel = null;
 function h(tag, attrs = {}, ...children) {
     const el = document.createElement(tag);
@@ -49,7 +49,7 @@ function home(params) {
     };
     box.addEventListener("input", show);
     main().replaceChildren(h("h1", {}, SNAP.title), h("p", { class: "muted small" }, `Offline snapshot made ${new Date(SNAP.created_at).toLocaleString()} ` +
-        `(generator ${SNAP.generator_version}, relationship rules ${SNAP.rule_version}). It does not change or update itself.`), h("nav", { class: "types" }, ...[["", "All"], ["power_bi", "Power BI"], ["adf", "Data Factory"]].map(([t, label]) => h("a", { href: `#/?type=${t}`, "aria-current": t === type ? "page" : undefined }, label))), box, results);
+        `(generator ${SNAP.generator_version}, relationship rules ${SNAP.rule_version}). It does not change or update itself.`), h("nav", { class: "types" }, ...[["", "All"], ["power_bi", "Power BI"], ["adf", "Data Factory"], ["sql_agent", "SQL Agent"]].map(([t, label]) => h("a", { href: `#/?type=${t}`, "aria-current": t === type ? "page" : undefined }, label))), box, results);
     show();
     box.focus();
 }

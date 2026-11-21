@@ -18,13 +18,15 @@ from .public import public_errors, public_text
 from .doctor import diagnose, home
 
 EXIT_OK, EXIT_INPUT, EXIT_PREREQ, EXIT_FAILED, EXIT_PARTIAL, EXIT_CANCELLED = 0, 2, 3, 4, 5, 130
-KINDS = ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted", "adf_git", "adf_arm", "adf_resources")
+KINDS = ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted", "adf_git", "adf_arm", "adf_resources",
+         "agent_script", "agent_folder")
 
 
 ALSO_HELP = ("also write the engine's other outputs beside each document, from the same content (for a shared "
              "document, as filtered for sharing): json (the extract, which a Power BI document's Compare extracts "
              "reads), word (.docx), csv (Power BI: column usage per page; Data Factory: objects, usage, edges and "
-             "issues in a <document>-csv folder), agent (.agent.md for LLM agents). Comma-separated or repeated")
+             "issues in a <document>-csv folder; SQL Agent: jobs, steps, operations, schedules, issues and "
+             "entities in a <document>-csv folder), agent (.agent.md for LLM agents). Comma-separated or repeated")
 
 
 def _also_value(text: str) -> tuple:
@@ -46,15 +48,17 @@ def _parser():
     ap.add_argument("--version", action="version", version=f"bidoc {__version__}")
     sub = ap.add_subparsers(dest="command", required=True)
 
-    g = sub.add_parser("generate", help="document one Power BI or Data Factory input",
+    g = sub.add_parser("generate", help="document one Power BI, Data Factory or SQL Agent input",
                        description="Local output keeps everything, query code included. Shared output is "
                                    "projected for the shared library: machine paths removed, credentials and "
                                    "URL tokens cleaned (best effort), and query code withheld unless "
                                    "--include-query-code is given.")
-    g.add_argument("--engine", required=True, choices=("power_bi", "adf"))
+    g.add_argument("--engine", required=True, choices=("power_bi", "adf", "sql_agent"))
     g.add_argument("--source", required=True, help="PBIX or Tabular ABF file, PBIP project/folder, TMDL folder, model.bim, "
                                                    "an SSMS CREATE script of a tabular database (.xmla, with --kind bim), PBIR folder, "
-                                                   "pbi-tools extract folder, or ADF Git folder / ARM export / resource JSON")
+                                                   "pbi-tools extract folder, ADF Git folder / ARM export / resource JSON, "
+                                                   "or a scripted SQL Agent job (.sql, with --kind agent_script) or a folder of "
+                                                   "them (agent_folder). An ordinary .sql file is not an input")
     g.add_argument("--kind", required=True, choices=KINDS, help="input kind")
     g.add_argument("--output-dir", required=True)
     g.add_argument("--profile", choices=("local", "shared"), default="local")
@@ -92,11 +96,13 @@ def _parser():
                        description="Inputs are recognised by their shape: .pbix and .abf files, PBIP project folders, "
                                    "TMDL/PBIR folders, model.bim, an SSMS CREATE script of a tabular database "
                                    "(.xmla, only when named itself), pbi-tools extracts, ADF Git folders and "
-                                   "ARM or resource JSON. A selected folder holding only Data Factory resource JSON (pipelines or data flows, "
-                                   "by content) is one Data Factory input. Each input's details (see 'bidoc generate --details') are read "
+                                   "ARM or resource JSON, and scripted SQL Agent jobs (.sql, by content, only when "
+                                   "named itself). A selected folder holding only Data Factory resource JSON (pipelines or data flows, "
+                                   "by content) is one Data Factory input; a selected folder whose .sql files are job "
+                                   "scripts is one SQL Agent input. Each input's details (see 'bidoc generate --details') are read "
                                    "from <input name>.bidoc-details.json beside it, when present. Any other folder is searched recursively for .pbix and "
                                    ".abf files, .bim models and project folders (a project folder is one input and is "
-                                   "not searched inside; other files, .xmla included, are ignored; links, the output "
+                                   "not searched inside; other files, .xmla and .sql included, are ignored; links, the output "
                                    "folder and .git/.venv are skipped). Items run one at a time. Exit code 5 means some "
                                    "items failed; retry them with 'bidoc retry ITEM_ID'.")
     b.add_argument("inputs", nargs="+", metavar="INPUT", help="files, project folders, or folders to search")
@@ -194,7 +200,7 @@ def _doctor(args) -> int:
             print(f"  [{'ok' if c['ok'] else '--'}] {c['check']}: {c['detail']}" + (f"\n        fix: {c['fix']}" if c["fix"] else ""))
         for kind, r in report["inputs"].items():
             print(f"  {kind:14} {'ready' if r['available'] else 'unavailable: ' + r['reason']}")
-    core = [c for c in report["checks"] if c["check"] in ("python", "pbi-doc-gen", "adf-doc-gen")]
+    core = [c for c in report["checks"] if c["check"] in ("python", "pbi-doc-gen", "adf-doc-gen", "sqlagent-doc-gen")]
     return EXIT_OK if all(c["ok"] for c in core) else EXIT_PREREQ
 
 

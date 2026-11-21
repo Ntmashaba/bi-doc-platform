@@ -6,7 +6,7 @@ runs. Production releases are signed, and signing is a release gate.
 - Installer: `{{INSTALLER}}`
 - SHA-256: `{{SHA256}}`
 - Source commit: `{{COMMIT}}`
-- Bundled: Python {{PYTHON}}, pbi-doc-gen {{PBIDOCGEN}}, adf-doc-gen {{ADFDOCGEN}}
+- Bundled: Python {{PYTHON}}, pbi-doc-gen {{PBIDOCGEN}}, adf-doc-gen {{ADFDOCGEN}}, sqlagent-doc-gen {{SQLAGENTDOCGEN}}
 
 ## Install, upgrade, uninstall
 

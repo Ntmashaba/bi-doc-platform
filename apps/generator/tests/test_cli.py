@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "engines" / "tests"))
-from fixtures import adf_factory  # noqa: E402
+from fixtures import adf_factory, sql_agent_jobs  # noqa: E402
 
 from bidoc_generator.cli import main  # noqa: E402
 
@@ -116,6 +116,36 @@ class Cli(unittest.TestCase):
         self.assertIn("unknown output pdf", err)
         self.assertFalse((self.tmp / "never").exists())
 
+    def test_sql_agent_generate_and_extras(self):
+        script = sql_agent_jobs(self.tmp / "nightly.sql")
+        code, out, err = run(["generate", "--engine", "sql_agent", "--source", str(script),
+                              "--kind", "agent_script", "--output-dir", str(self.tmp / "one"), "--json"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["status"], "completed")
+        # a folder of job scripts, with the CSV inventory beside the document
+        folder = self.tmp / "jobs"
+        folder.mkdir()
+        shutil.copy(script, folder / "nightly.sql")
+        code, out, err = run(["generate", "--engine", "sql_agent", "--source", str(folder),
+                              "--kind", "agent_folder", "--output-dir", str(self.tmp / "folder-out"),
+                              "--also", "csv"])
+        self.assertEqual(code, 0, err)
+        wrote = [line for line in out.splitlines() if line.startswith("Wrote ")]
+        self.assertEqual(len(wrote), 7)                                   # the document and 6 CSVs
+        self.assertEqual(sum("-csv/" in line.replace("\\", "/") for line in wrote), 6)
+        # a SQL Agent input is only ever agent_script or agent_folder
+        code, _, err = run(["generate", "--engine", "sql_agent", "--source", str(folder),
+                            "--kind", "adf_git", "--output-dir", str(self.tmp / "wrong")])
+        self.assertEqual(code, 2)
+        # shared publication goes through the trusted projection: step commands withheld
+        code, out, err = run(["generate", "--engine", "sql_agent", "--source", str(script),
+                              "--kind", "agent_script", "--output-dir", str(self.tmp / "shared"),
+                              "--profile", "shared", "--json"])
+        self.assertEqual(code, 0, err)
+        raw = Path(json.loads(out)["artifact_path"]).read_bytes()
+        self.assertNotIn(b"<Batch Transaction", raw)
+        self.assertIn(b"SEEDED-SSAS-01", raw)
+
     def test_an_unexpected_failure_is_shown_without_its_sensitive_text(self):
         from bidoc_engines.generate import GenerateResult  # noqa: PLC0415
         os.environ["BIDOC_HOME"] = str(self.tmp / "home")
@@ -174,6 +204,9 @@ class Cli(unittest.TestCase):
         report = json.loads(out)
         self.assertTrue(report["inputs"]["pbip"]["available"])
         self.assertTrue(report["inputs"]["adf_git"]["available"])
+        self.assertTrue(report["inputs"]["agent_script"]["available"])
+        self.assertTrue(report["inputs"]["agent_folder"]["available"])
+        self.assertIn("sqlagent-doc-gen", [c["check"] for c in report["checks"]])
         self.assertFalse(report["inputs"]["pbix"]["available"])          # PBIX never blocks PBIP/ADF (A07)
         self.assertIn("was not found at", report["inputs"]["pbix"]["reason"])   # an explicit path is not replaced
 

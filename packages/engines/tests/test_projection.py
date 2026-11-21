@@ -6,9 +6,10 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fixtures import ADF_MARKERS, DAX_TABLE, PBI_MARKERS, adf_factory, pbi_model  # noqa: E402
+from fixtures import (ADF_MARKERS, DAX_TABLE, PBI_MARKERS, SQL_AGENT_MARKERS, adf_factory, pbi_model,  # noqa: E402
+                        sql_agent_mixed)
 
-from bidoc_engines import adf, power_bi  # noqa: E402
+from bidoc_engines import adf, power_bi, sql_agent  # noqa: E402
 from bidoc_engines.projection import (CODE_MARKER, CREDENTIAL_MARKER, clean_string, looks_like_code,  # noqa: E402
                                       project)
 
@@ -297,6 +298,45 @@ class SeededDataFactory(unittest.TestCase):
         self.assertIn("credential", {o["reason"] for o in omissions})
         again, _ = project("adf", data, query_code="included")
         self.assertEqual(again, data)
+
+
+class SeededSqlAgent(unittest.TestCase):
+    """The same policy through the SQL Agent engine's own payload (v4 5.3): every step
+    subsystem's command is withheld by field name — the generic code detector recognises
+    SQL and M only, so XMLA/TMSL/PowerShell/CmdExec cannot lean on it."""
+
+    @classmethod
+    def setUpClass(cls):
+        with tempfile.TemporaryDirectory() as d:
+            cls.payload = sql_agent.load(sql_agent_mixed(Path(d) / "mixed.sql"), "agent_script")
+
+    def test_local_payload_carries_every_command(self):
+        text = json.dumps(self.payload, ensure_ascii=False)
+        for name in ("xmla", "tmsl", "tsql", "powershell", "cmdexec", "ssis_path"):
+            self.assertIn(SQL_AGENT_MARKERS[name], text, name)
+
+    def test_withheld_removes_every_command_and_the_package_path(self):
+        data, omissions = project("sql_agent", self.payload, query_code="withheld")
+        text = json.dumps(data, ensure_ascii=False) + json.dumps(omissions)
+        for name, marker in SQL_AGENT_MARKERS.items():
+            self.assertNotIn(marker, text, name)
+            self.assertNotIn(marker.lower(), text, name)
+        steps = [s for j in data["jobs"] for s in j["steps"]]
+        self.assertEqual([s.get("command") for s in steps], [CODE_MARKER] * 6)
+        # structured fields keep the document complete with the command withheld
+        for kept in ("SeededDW", "SEEDED-SSAS-01", "usp_SeededLoad", "ProcessFull"):
+            self.assertIn(kept, text, kept)
+        self.assertIn("Nightly.dtsx", text)                        # the package name survives
+        self.assertIn("personal location withheld", text)          # its path does not
+        self.assertIn("query_code_withheld", {o["reason"] for o in omissions})
+        again, _ = project("sql_agent", data, query_code="withheld")
+        self.assertEqual(again, data)
+
+    def test_included_keeps_every_command(self):
+        data, _ = project("sql_agent", self.payload, query_code="included")
+        text = json.dumps(data, ensure_ascii=False)
+        for name in ("xmla", "tmsl", "tsql", "powershell", "cmdexec"):
+            self.assertIn(SQL_AGENT_MARKERS[name], text, name)
 
 
 if __name__ == "__main__":

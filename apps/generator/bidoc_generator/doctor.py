@@ -52,7 +52,8 @@ def diagnose(pbi_tools: str | None = None, requested: str = "auto") -> dict:
     checks.append({"check": "python", "ok": py_ok, "detail": platform.python_version() + bundled,
                    "fix": None if py_ok else "Install Python 3.11 or later."})
     engines = {}
-    for engine, module in (("pbi-doc-gen", "pbidocgen"), ("adf-doc-gen", "adfdocgen")):
+    for engine, module in (("pbi-doc-gen", "pbidocgen"), ("adf-doc-gen", "adfdocgen"),
+                           ("sqlagent-doc-gen", "sqlagentdocgen")):
         try:
             engines[engine] = __import__(module).__version__
             checks.append({"check": engine, "ok": True, "detail": engines[engine], "fix": None})
@@ -60,10 +61,14 @@ def diagnose(pbi_tools: str | None = None, requested: str = "auto") -> dict:
             checks.append({"check": engine, "ok": False, "detail": "not installed",
                            "fix": "Install the platform packages: pip install -r requirements.txt"})
     pbi_ok, adf_ok = "pbi-doc-gen" in engines and py_ok, "adf-doc-gen" in engines and py_ok
+    sqlagent_ok = "sqlagent-doc-gen" in engines and py_ok
     for kind in ("pbip", "tmdl", "bim", "pbir", "extracted"):
         ready[kind] = {"available": pbi_ok, "reason": None if pbi_ok else "pbi-doc-gen is not installed"}
     for kind in ("adf_git", "adf_arm", "adf_resources"):
         ready[kind] = {"available": adf_ok, "reason": None if adf_ok else "adf-doc-gen is not installed"}
+    for kind in ("agent_script", "agent_folder"):
+        ready[kind] = {"available": sqlagent_ok,
+                       "reason": None if sqlagent_ok else "sqlagent-doc-gen is not installed"}
 
     windows = platform.system() == "Windows"
     if pbi_ok:

@@ -33,7 +33,8 @@
   "document_type": {
    "enum": [
     "power_bi",
-    "adf"
+    "adf",
+    "sql_agent"
    ]
   },
   "classification": {
@@ -168,6 +169,8 @@
       "adf_git",
       "adf_arm",
       "adf_resources",
+      "agent_script",
+      "agent_folder",
       "legacy"
      ]
     },

@@ -22,6 +22,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from bidoc_contracts import SCHEMA_VERSION, Limits
+from bidoc_relationships import RULE_VERSION
 
 from . import __version__
 from .access import AccessPolicy, Principal, forbidden, load_session_secret
@@ -74,7 +75,7 @@ class Publication(BaseModel):
 
 class Document(BaseModel):
     document_id: str
-    document_type: Literal["power_bi", "adf"]
+    document_type: Literal["power_bi", "adf", "sql_agent"]
     classification: Classification
     title: str
     description: str
@@ -135,7 +136,7 @@ LEGACY_METADATA_HELP = ("JSON object with any of title, description, tags, busin
 
 class ImportPreview(BaseModel):
     input: Literal["envelope", "zip", "legacy"]
-    document_type: Literal["power_bi", "adf"]
+    document_type: Literal["power_bi", "adf", "sql_agent"]
     document_id: Optional[str] = Field(description="null for legacy input: a new stream identity is assigned")
     outcome: Literal["new_document", "new_version", "duplicate"]
     duplicate_of: Optional[dict[str, str]]
@@ -218,7 +219,7 @@ class SearchSection(BaseModel):
 class SearchDocument(BaseModel):
     document_id: str
     revision_id: str
-    document_type: Literal["power_bi", "adf"]
+    document_type: Literal["power_bi", "adf", "sql_agent"]
     classification: Classification
     title: str
     tags: list[str]
@@ -731,13 +732,13 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
                 "processing": jobs.processing()[0], "worker_status": jobs.processing()[1], "installer_available": bool(publishing.releases()), "search_available": True,
                 "search_mode": search_mode(),
                 "can_manage_relationships": p.can("publish"), "can_administer": p.can("admin"),
-                "relationship_schema_version": "rel-rules/1"}
+                "relationship_schema_version": RULE_VERSION}
 
     # ---- documents --------------------------------------------------------------
 
     @app.get(f"{PREFIX}/documents", response_model=DocumentPage, tags=["documents"], responses=ERRORS)
     def list_documents(q: Optional[str] = Query(None, max_length=200),
-                       document_type: Optional[Literal["power_bi", "adf"]] = None,
+                       document_type: Optional[Literal["power_bi", "adf", "sql_agent"]] = None,
                        business_area: Optional[str] = None, environment: Optional[str] = None,
                        owner: Optional[str] = None, tag: Optional[str] = None, archived: bool = False,
                        cursor: Optional[str] = None, limit: int = Query(50, ge=1, le=200),
@@ -905,7 +906,7 @@ def create_app(settings: Settings, store=None, session_secret: str | None = None
 
     @app.get(f"{PREFIX}/search", response_model=SearchResults, tags=["search"], responses=ERRORS)
     def search(q: Optional[str] = Query(None, max_length=500),
-               document_type: Optional[Literal["power_bi", "adf"]] = None, business_area: Optional[str] = None,
+               document_type: Optional[Literal["power_bi", "adf", "sql_agent"]] = None, business_area: Optional[str] = None,
                environment: Optional[str] = None, owner: Optional[str] = None, tag: Optional[str] = None,
                limit: int = Query(50, ge=1, le=500), p: Principal = Depends(reader)):
         """The same matching and ranking as the browser search (search semantics v1)."""

@@ -47,9 +47,19 @@ OUTPUTS_RECORD = ".outputs.json"
 _RECORD_SCHEMA = "bidoc-outputs/1"
 
 
-def _owned_names(stem: str) -> set:
-    """Every name an extra of the document <stem>.html can have, relative to its folder."""
-    return ({f"{stem}.json", f"{stem}.docx", f"{stem}.columns.csv", f"{stem}.agent.md"}
+def _owned_names(stem: str, adapter) -> set:
+    """Every name an extra of the document <stem>.html can have, relative to its folder.
+
+    The three single-file outputs are common to every engine; the CSV inventory's names are the
+    engine's own and are declared by its adapter (extra_owned_names), so the ownership record
+    always covers exactly what the engine can write — never names it does not know.
+    """
+    common = {f"{stem}.json", f"{stem}.docx", f"{stem}.agent.md"}
+    declared = getattr(adapter, "extra_owned_names", None)
+    if declared is not None:
+        return common | set(declared(stem))
+    # an adapter that predates the declaration rule: the two historical inventories
+    return (common | {f"{stem}.columns.csv"}
             | {f"{stem}-csv/{n}.csv" for n in ("objects", "usage", "edges", "issues")})
 
 
@@ -139,7 +149,7 @@ def _write_extras_unguarded(adapter, payload: dict, path: Path, kinds, result, p
     folder = path.parent
     record = folder / f"{path.stem}{OUTPUTS_RECORD}"
     earlier = _read_record(record, path)
-    owned = _owned_names(path.stem)
+    owned = _owned_names(path.stem, adapter)
     previous = {o for o in (earlier or {}).get("outputs") or [] if isinstance(o, str) and o in owned}
     current, failed = [], []
     for kind in kinds:
@@ -210,7 +220,9 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"), "adf": ("adf_git", "adf_arm", "adf_resources")}
+ENGINE_KINDS = {"power_bi": ("abf", "pbix", "pbip", "tmdl", "bim", "pbir", "extracted"),
+                "adf": ("adf_git", "adf_arm", "adf_resources"),
+                "sql_agent": ("agent_script", "agent_folder")}
 STAGES = ("validating", "analysing", "rendering", "completed")
 
 
@@ -451,7 +463,7 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
 
     adapter = ADAPTERS.get(request.engine)
     if adapter is None:
-        return fail("INVALID_INPUT", f"unknown engine {request.engine!r}; use power_bi or adf")
+        return fail("INVALID_INPUT", f"unknown engine {request.engine!r}; use power_bi, adf or sql_agent")
     result.tool_versions = {"generator": __version__, adapter.ENGINE: adapter.ENGINE_VERSION}
     if request.source_kind not in ENGINE_KINDS[request.engine]:
         return fail("INVALID_INPUT", f"{request.engine} does not accept {request.source_kind!r} inputs; "
@@ -462,6 +474,13 @@ def generate(request: GenerateRequest, progress=None, cancellation=None) -> Gene
     if unknown:
         return fail("INVALID_INPUT", f"unknown output {', '.join(map(repr, unknown))}; use any of {', '.join(EXTRAS)}")
     also = tuple(dict.fromkeys(request.also))
+    if request.profile == "shared":
+        from .projection import MACHINE_PATHS  # noqa: PLC0415
+        if request.engine not in MACHINE_PATHS:
+            # An engine without a projection registration cannot produce a shared document:
+            # refuse cleanly here rather than fail deep inside the projection walk.
+            return fail("INVALID_INPUT", f"shared publication is not available for {request.engine} documents "
+                                         "in this version; generate with the local profile")
     source = Path(request.source_path)
     try:
         stage("validating")

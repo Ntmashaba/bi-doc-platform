@@ -43,6 +43,8 @@ InfoBeforeFile=install-notes.txt
 [Files]
 ; ignoreversion + a full replacement of the program folder on upgrade (see [InstallDelete]).
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The MIT notice travels with every binary copy.
+Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [InstallDelete]
 ; Remove the previous version's program files before copying the new ones, so no stale
