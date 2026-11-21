@@ -53,6 +53,7 @@ h3{font-size:.92rem;font-weight:650;margin:1rem 0 .4rem}
 .card.stat.link:hover{border-color:var(--accent)}
 .card.stat.link .big{color:var(--accent)}
 .nav-toggle{display:none}
+main:focus{outline:none}  /* focused only as the landing point after choosing a section from the menu */
 table.t{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:.82rem}
 table.t th{font-family:var(--mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);background:var(--panel2)}
 table.t td{padding:.44rem .7rem;border-bottom:1px solid var(--line2);vertical-align:top}
@@ -107,12 +108,15 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
 @media (max-width:860px){
   .layout{grid-template-columns:1fr}
   nav{position:static;height:auto}
-  .nav-btn{display:none}
-  nav.open .nav-btn{display:flex;margin-top:.2rem}
+  #nav-sections{display:none}
+  nav.open #nav-sections{display:block}
+  #nav-sections .nav-btn{margin-top:.2rem}
   .nav-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;
     border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.5rem .55rem;
     border-radius:6px;cursor:pointer;margin-top:.5rem}
   main{padding:1rem}
+  /* A table wider than the screen scrolls inside its own box rather than pushing the page sideways. */
+  table.t{display:block;max-width:100%;overflow-x:auto}
 }
 @media print{nav{display:none}.layout{grid-template-columns:1fr}}
 </style>
@@ -185,16 +189,44 @@ const SECTIONS = [
 
 function buildNav(){
   let html = `<div class="brand">SQL Agent Doc Gen</div><div class="doc-title">${esc(DATA.title)}</div>`;
-  html += `<button class="nav-toggle" id="navtoggle" aria-expanded="false"><span class="nt-label">Overview</span><span aria-hidden="true">▾</span></button>`;
+  html += `<button class="nav-toggle" id="navtoggle" aria-expanded="false" aria-controls="nav-sections"><span class="nt-label">Overview</span><span aria-hidden="true">▾</span></button><div id="nav-sections">`;
   for(const sec of SECTIONS){
     const n = sec.count ? sec.count() : null;
     html += `<button class="nav-btn" id="sec-${sec.id}" data-go="section" data-arg="${sec.id}">${sec.label}${n?`<span class="n">${n}</span>`:""}</button>`;
   }
   const nav = document.getElementById("nav");
-  nav.innerHTML = html;
-  document.getElementById("navtoggle").addEventListener("click", () => {
-    const open = nav.classList.toggle("open");
-    document.getElementById("navtoggle").setAttribute("aria-expanded", String(open));
+  nav.innerHTML = html + "</div>";
+  document.getElementById("navtoggle").addEventListener("click", () => toggleNav());
+}
+function toggleNav(open){
+  const nav = document.getElementById("nav"), btn = document.getElementById("navtoggle");
+  const next = open ?? !nav.classList.contains("open");
+  nav.classList.toggle("open", next);
+  if(btn) btn.setAttribute("aria-expanded", String(next));
+}
+// The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
+// the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
+// a click outside closes it. On wide screens the button is hidden and none of this applies.
+const navNarrow = () => { const b = document.getElementById("navtoggle"); return !!b && b.offsetParent !== null; };
+function focusMain(){
+  const main = document.getElementById("main");
+  main.setAttribute("tabindex","-1"); main.focus({preventScroll:true});
+}
+function navKeys(){
+  const nav = document.getElementById("nav");
+  let chosenFromMenu = false;
+  nav.addEventListener("click", e => {          // capture: before the section handler closes the menu
+    chosenFromMenu = nav.classList.contains("open") && navNarrow() && !!e.target.closest("#nav-sections button");
+  }, true);
+  nav.addEventListener("click", () => { if(chosenFromMenu){ chosenFromMenu = false; focusMain(); } });
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape" || !nav.classList.contains("open") || !navNarrow()) return;
+    const inside = nav.contains(document.activeElement);
+    toggleNav(false);
+    if(inside) document.getElementById("navtoggle").focus();
+  });
+  document.addEventListener("click", e => {
+    if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
   });
 }
 let CURRENT = null;
@@ -208,9 +240,9 @@ function openSection(id){
   });
   const toggle = document.getElementById("navtoggle");
   if(toggle){
-    toggle.querySelector(".nt-label").textContent = sec.label;
-    toggle.setAttribute("aria-expanded", "false");
-    document.getElementById("nav").classList.remove("open");
+    // Section labels are HTML (e.g. "&amp;"): name the section as its own nav button reads.
+    toggle.querySelector(".nt-label").textContent = document.getElementById("sec-"+id).childNodes[0].textContent;
+    toggleNav(false);
   }
   document.getElementById("main").innerHTML = RENDER[id]();
   CURRENT = id;
@@ -598,6 +630,7 @@ function secJobMeta(){
 const RENDER = {overview:secOverview, jobs:secJobs, job:secJob, processing:secProcessing,
                 schedules:secSchedules, issues:secIssues, coverage:secCoverage, jobmeta:secJobMeta};
 buildNav();
+navKeys();
 openSection("overview");
 </script>
 </body>

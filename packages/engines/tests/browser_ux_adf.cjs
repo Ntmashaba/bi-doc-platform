@@ -7,6 +7,7 @@ const {chromium}=require('playwright');
 const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),os=require('node:os');
 const {pathToFileURL}=require('node:url');
 const step=name=>console.log('  ok '+name);
+const {checkMobileNav}=require('./ux_mobile_nav.cjs');
 (async()=>{
  const browser=await chromium.launch(process.env.CHROMIUM_PATH?{headless:true,executablePath:process.env.CHROMIUM_PATH}:{headless:true});
  const errors=[];
@@ -104,14 +105,18 @@ function send(m){document.getElementById('f').contentWindow.postMessage(Object.a
   const phone=await open({width:390,height:844});
   await phone.goto(url);
   for(const id of sections){
+   await phone.click('#navtoggle');
    await phone.click('#sec-'+id);
-   assert.ok(await phone.evaluate(id=>TABS.find(t=>t.id===CURRENT).section===id,id),'section '+id+' opens at 390 px');
+   assert.ok(await phone.evaluate(id=>TABS.find(t=>t.id===CURRENT).section===id,id),'section '+id+' opens from the menu at 390 px');
   }
+  await phone.click('#navtoggle');
   await phone.click('#sec-overview');
   const width=await phone.evaluate(()=>document.documentElement.scrollWidth);
   assert.ok(width<=390,'no sideways scroll on the overview at 390 px: '+width);
-  step('at 390 px every section opens and the overview does not scroll sideways');
+  step('at 390 px every section opens from the menu and the overview does not scroll sideways');
 
+  const widths=await checkMobileNav(browser,url,{toggle:'#navtoggle',label:'#navtoggle .nt-label',sectionButtons:'.nav-btn',section:page=>page.evaluate(()=>document.querySelector('#nav-sections [aria-current]').childNodes[0].textContent.trim())});
+  step('the narrow-screen menu works by keyboard, Escape and focus at '+widths.join(' and ')+' px, and stays out of the way on a wide screen');
   assert.deepEqual(errors,[],'no page errors');
   step('no page errors');
  }finally{ await browser.close(); }

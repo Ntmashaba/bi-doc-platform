@@ -42,6 +42,10 @@ nav{background:var(--panel);border-right:1px solid var(--line);padding:1.1rem .8
 .nav-btn:hover{background:var(--panel2);color:var(--ink)}
 .nav-btn.active{background:var(--ink);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 var(--snk)}
 .nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.nav-toggle{display:none;align-items:center;gap:.4rem;border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.45rem .7rem;border-radius:6px;cursor:pointer;max-width:55vw}
+.nav-toggle .nt-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-toggle:focus-visible{outline:2px solid #818CF8;outline-offset:2px}
+main:focus{outline:none}  /* focused only as the landing point after choosing a section from the menu */
 .nav-btn .n{font-family:var(--mono);font-size:.68rem;color:inherit;opacity:.65}
 .nav-btn.disabled{opacity:.38;cursor:not-allowed}
 /* ---------------- content ---------------- */
@@ -127,7 +131,7 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
 .legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.76rem;color:var(--ink2);margin:.4rem 0 .8rem}
 .legend span{display:flex;align-items:center;gap:.35rem}
 .dot{width:9px;height:9px;border-radius:2px;display:inline-block}
-@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:static;height:auto;display:flex;flex-wrap:wrap;gap:.2rem;border-right:0;border-bottom:1px solid var(--line)}.doc-title,.brand,.nav-group{width:100%}main{padding:1rem}.conveyor{flex-direction:column}.conveyor .joint{width:auto;height:22px;border:1.5px solid var(--ink);border-top:0;border-bottom:0}.conveyor .cell:first-child{border-radius:8px 8px 0 0;border-right-width:1.5px}.conveyor .cell:last-child{border-radius:0 0 8px 8px;border-left-width:1.5px}}
+@media (max-width:860px){.layout{grid-template-columns:1fr}nav{position:sticky;top:0;z-index:40;height:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:.6rem;padding:.7rem 1rem;border-right:0;border-bottom:1px solid var(--line)}nav .brand{display:none}nav .doc-title{margin:0;font-size:.95rem}.nav-toggle{display:inline-flex}#nav-sections{display:none;grid-column:1/-1;padding-top:.5rem}nav.open #nav-sections{display:block}#nav-sections .nav-btn{margin-top:.15rem}main{padding:1rem}.conveyor{flex-direction:column}.conveyor .joint{width:auto;height:22px;border:1.5px solid var(--ink);border-top:0;border-bottom:0}.conveyor .cell:first-child{border-radius:8px 8px 0 0;border-right-width:1.5px}.conveyor .cell:last-child{border-radius:0 0 8px 8px;border-left-width:1.5px}}
 @media print{nav{display:none}.layout{grid-template-columns:1fr}}
 /* Modern palette shared with pbi-doc-gen: slate neutrals, indigo accent.
    Every text/background pair below meets WCAG AA (4.5:1). */
@@ -376,13 +380,45 @@ const LAST_VIEW = {};   // the view last open in each section
 
 function buildNav(){
   const nav = document.getElementById("nav");
-  let html = `<div class="brand">ADF Doc Gen</div><div class="doc-title">${esc(DATA.title)}</div>`;
+  let html = `<div class="brand">ADF Doc Gen</div><div class="doc-title">${esc(DATA.title)}</div>
+    <button class="nav-toggle" id="navtoggle" aria-expanded="false" aria-controls="nav-sections"><span class="nt-label">${esc(SECTIONS[0].label)}</span><span aria-hidden="true">▾</span></button><div id="nav-sections">`;
   for(const sec of SECTIONS){
-    const views = TABS.filter(t=>t.section===sec.id);
     const n = sec.id==="issues" ? (DATA.issues||[]).length : null;
     html += `<button class="nav-btn" id="sec-${sec.id}" data-go="section" data-arg="${sec.id}">${sec.label}${n?`<span class="n">${n}</span>`:""}</button>`;
   }
-  nav.innerHTML = html;
+  nav.innerHTML = html + "</div>";
+  document.getElementById("navtoggle").addEventListener("click", () => toggleNav());
+}
+function toggleNav(open){
+  const nav = document.getElementById("nav"), btn = document.getElementById("navtoggle");
+  const next = open ?? !nav.classList.contains("open");
+  nav.classList.toggle("open", next);
+  if(btn) btn.setAttribute("aria-expanded", String(next));
+}
+// The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
+// the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
+// a click outside closes it. On wide screens the button is hidden and none of this applies.
+const navNarrow = () => { const b = document.getElementById("navtoggle"); return !!b && b.offsetParent !== null; };
+function focusMain(){
+  const main = document.getElementById("main");
+  main.setAttribute("tabindex","-1"); main.focus({preventScroll:true});
+}
+function navKeys(){
+  const nav = document.getElementById("nav");
+  let chosenFromMenu = false;
+  nav.addEventListener("click", e => {          // capture: before the section handler closes the menu
+    chosenFromMenu = nav.classList.contains("open") && navNarrow() && !!e.target.closest("#nav-sections button");
+  }, true);
+  nav.addEventListener("click", () => { if(chosenFromMenu){ chosenFromMenu = false; focusMain(); } });
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape" || !nav.classList.contains("open") || !navNarrow()) return;
+    const inside = nav.contains(document.activeElement);
+    toggleNav(false);
+    if(inside) document.getElementById("navtoggle").focus();
+  });
+  document.addEventListener("click", e => {
+    if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
+  });
 }
 function subtabs(sectionId, activeId){
   const views = TABS.filter(t=>t.section===sectionId);
@@ -408,6 +444,9 @@ function switchTab(id){
     b.classList.toggle("active", on);
     if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
   });
+  const label = document.querySelector("#navtoggle .nt-label");
+  if(label) label.textContent = SECTIONS.find(s=>s.id===tab.section).label;
+  toggleNav(false);
   const main = document.getElementById("main");
   if(CURRENT) VIEW_STATE[CURRENT] = {
     q: [...main.querySelectorAll("input.search")].map(i=>i.value),
@@ -1338,6 +1377,7 @@ const RENDER = {overview:rOverview, orchestration:rOrchestration, lineage:rLinea
   triggers:rTriggers, warnings:rWarnings, objects:rObjects, impact:rImpact,
   issues:rIssues, details:rDetails};
 buildNav();
+navKeys();
 switchTab("overview");
 const _render = RENDER.details;
 RENDER.details = () => { const h = _render(); requestAnimationFrame(captureDetails); return h; };

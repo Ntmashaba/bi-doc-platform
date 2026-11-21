@@ -7,6 +7,7 @@ const {chromium}=require('playwright');
 const assert=require('node:assert/strict'),path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const step=name=>console.log('  ok '+name);
+const {checkMobileNav}=require('../../../packages/engines/tests/ux_mobile_nav.cjs');
 (async()=>{
  const browser=await chromium.launch(process.env.CHROMIUM_PATH?{headless:true,executablePath:process.env.CHROMIUM_PATH}:{headless:true});
  const errors=[];
@@ -170,6 +171,8 @@ const step=name=>console.log('  ok '+name);
   step('at 390 px the menu button opens and closes the sections and the page does not scroll sideways');
   await phone.context().close();
 
+  const widths=await checkMobileNav(browser,url,{toggle:'#nav-toggle',label:'#nav-current',sectionButtons:'.nav-btn',section:page=>page.evaluate(()=>document.querySelector('#nav-sections [aria-current]').childNodes[0].textContent.trim())});
+  step('the narrow-screen menu works by keyboard, Escape and focus at '+widths.join(' and ')+' px, and stays out of the way on a wide screen');
   assert.deepEqual(errors,[],'no page errors');
   step('no page errors');
  }finally{ await browser.close(); }

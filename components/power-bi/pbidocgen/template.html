@@ -40,6 +40,7 @@ nav{background:var(--panel);border-right:1px solid var(--line);padding:1.1rem .8
 .nav-btn .n{font-size:.75rem;color:inherit;font-variant-numeric:tabular-nums}
 .nav-btn.disabled{opacity:.5;cursor:not-allowed}
 .nav-toggle{display:none}
+main:focus{outline:none}  /* focused only as the landing point after choosing a section from the menu */
 /* ---------------- content ---------------- */
 main{padding:1.4rem 2rem 4rem;max-width:1240px}
 main{min-width:0}
@@ -360,6 +361,32 @@ function toggleNav(open){
   nav.classList[next?"add":"remove"]("open");
   if(btn) btn.setAttribute("aria-expanded", String(next));
 }
+// The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
+// the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
+// a click outside closes it. On wide screens the button is hidden and none of this applies.
+const navNarrow = () => { const b = document.getElementById("nav-toggle"); return !!b && b.offsetParent !== null; };
+function focusMain(){
+  const main = document.getElementById("main");
+  main.setAttribute("tabindex","-1"); main.focus({preventScroll:true});
+}
+(function navKeys(){
+  const nav = document.getElementById("nav");
+  if(!nav || !nav.addEventListener || !document.addEventListener) return;   // script-only test harnesses
+  let chosenFromMenu = false;
+  nav.addEventListener("click", e => {          // capture: before the button's own handler closes the menu
+    chosenFromMenu = nav.classList.contains("open") && navNarrow() && !!e.target.closest("#nav-sections button");
+  }, true);
+  nav.addEventListener("click", () => { if(chosenFromMenu){ chosenFromMenu = false; focusMain(); } });
+  document.addEventListener("keydown", e => {
+    if(e.key !== "Escape" || !nav.classList.contains("open") || !navNarrow()) return;
+    const inside = nav.contains(document.activeElement);
+    toggleNav(false);
+    if(inside) document.getElementById("nav-toggle").focus();
+  });
+  document.addEventListener("click", e => {
+    if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
+  });
+})();
 function subTabs(id){
   const section = sectionOf(id), tabs = sectionTabs(section);
   if(section.utility || tabs.length<2) return "";
