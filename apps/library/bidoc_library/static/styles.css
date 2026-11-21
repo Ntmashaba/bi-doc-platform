@@ -27,7 +27,7 @@ textarea{width:100%;min-height:4rem}
 .actions{display:flex;gap:.5rem;flex-wrap:wrap}
 .button,button{font:inherit;padding:.45rem .9rem;border-radius:6px;border:1px solid var(--accent);background:var(--accent);
 color:var(--accent-fg);text-decoration:none;cursor:pointer;display:inline-block}
-button.secondary{background:transparent;color:var(--accent)}
+.button.secondary,button.secondary{background:transparent;color:var(--accent)}
 button:disabled{opacity:.5;cursor:not-allowed}
 ol.documents,ol.hits,ul.links{list-style:none;padding:0;margin:0}
 ol.documents li,ol.hits li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.75rem 1rem;margin:.5rem 0}
@@ -63,3 +63,12 @@ input.secret { width: 100%; font-family: ui-monospace, Consolas, monospace; }
 #upload-progress { width: 100%; max-width: 32rem; margin-left: .75rem; vertical-align: middle; }
 .job-error { color: var(--bad); }
 table.settings th { width: 14rem; }
+
+/* Page heading with its main action; management pages as quiet links (primary content first). */
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap;margin-bottom:.5rem}
+.page-head h1{margin:.5rem 0}
+.page-actions{display:flex;align-items:center;gap:.5rem 1rem;flex-wrap:wrap}
+.manage{display:flex;gap:.25rem 1rem;flex-wrap:wrap;font-size:.92rem}
+.manage a{color:var(--muted)}
+.manage a:hover,.manage a:focus-visible{color:var(--accent)}
+dl.kv{margin-top:1rem}

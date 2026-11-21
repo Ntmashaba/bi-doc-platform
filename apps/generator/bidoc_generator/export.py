@@ -154,7 +154,9 @@ input[type=search] { width:100%; max-width:640px; padding:8px 10px; border:1px s
 nav.types a { margin-right:14px; } nav.types a[aria-current=page] { font-weight:700; }
 ol.hits { padding-left:1.2rem; } ol.hits li { margin:.5rem 0; } .snippet { margin:.2rem 0 0; color:var(--muted); }
 .badge { font-size:.75rem; border:1px solid var(--line); border-radius:4px; padding:0 5px; margin-right:6px; }
-.toolbar { display:flex; gap:12px; align-items:center; margin-bottom:8px; }
+.breadcrumbs { color:var(--muted); margin:.2rem 0 .1rem; }
+h1.doc-heading { font-size:1.25rem; margin:.1rem 0 .5rem; }
+.toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
 .split { display:grid; grid-template-columns:1fr 320px; gap:14px; }
 iframe.viewer { width:100%; height:78vh; border:1px solid var(--line); border-radius:8px; background:#fff; }
 aside.related { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 14px; overflow:auto; max-height:78vh; }

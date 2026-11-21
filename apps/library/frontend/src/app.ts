@@ -188,16 +188,21 @@ async function homeView(type: string | null, params: URLSearchParams): Promise<v
       filterSelect("owner", "Owner", values((d) => [d.classification.owner])),
       filterSelect("tag", "Tag", values((d) => d.tags)),
       caps?.can_publish ? h("label", { class: "check" }, h("input", { type: "checkbox", checked: archived,
-        onchange: (e: Event) => setParam("archived", (e.target as HTMLInputElement).checked ? "1" : null) }), "Archived") : null),
-    h("div", { class: "actions" },
-      caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null,
-      caps?.can_publish ? h("a", { class: "button secondary", href: "#/processing" }, "Process PBIX") : null,
-      caps?.can_publish ? h("a", { class: "button secondary", href: "#/tokens" }, "Publishing tokens") : null,
-      h("a", { class: "button secondary", href: "#/downloads" }, "Download generator"),
-      h("a", { class: "button secondary", href: "#/settings" }, "Settings")));
+        onchange: (e: Event) => setParam("archived", (e.target as HTMLInputElement).checked ? "1" : null) }), "Archived") : null));
+  // Primary content first: the documents follow search and filters directly. Import is the one main action,
+  // beside the heading; the other management pages are quiet links.
+  const pageHead = h("div", { class: "page-head" },
+    h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"),
+    h("div", { class: "page-actions" },
+      h("nav", { class: "manage", "aria-label": "Manage the library" },
+        caps?.can_publish ? h("a", { href: "#/processing" }, "Process PBIX") : null,
+        caps?.can_publish ? h("a", { href: "#/tokens" }, "Publishing tokens") : null,
+        h("a", { href: "#/downloads" }, "Download generator"),
+        h("a", { href: "#/settings" }, "Settings")),
+      caps?.can_publish ? h("a", { class: "button", href: "#/import" }, "Import documentation") : null));
 
   const results = h("section", { id: "results", "aria-live": "polite" });
-  mount(h("h1", {}, type ? `${TYPE_LABEL[type]} documentation` : "All documentation"), header,
+  mount(pageHead, header,
         idx.state !== "ready" ? notice("warn", "Search results may be out of date: the index is being updated.") : null,
         results);
 
@@ -691,9 +696,16 @@ async function detailsView(id: string): Promise<void> {
       render();
     } catch (e) { status.replaceChildren(notice("error", errorText(e))); }
   };
-  mount(h("p", {}, h("a", { href: "#/" }, "← Library")),
+  // The same trail as the viewer; the actions come before the metadata.
+  mount(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" },
+      h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, TYPE_LABEL[d.document_type]),
+      " › ", h("span", { "aria-current": "page" }, d.title)),
     h("h1", {}, d.title, " ", typeBadge(d.document_type), d.archived ? h("span", { class: "badge archived" }, "Archived") : null),
     d.description ? h("p", {}, d.description) : null,
+    h("p", { class: "actions" },
+      h("a", { class: "button", href: href(["view", d.document_id, d.current_revision_id]) }, "Open current version"),
+      caps?.can_publish ? h("button", { type: "button", class: "secondary", onclick: toggle }, d.archived ? "Restore" : "Archive") : null),
+    status,
     h("dl", { class: "kv" },
       h("dt", {}, "Business area"), h("dd", {}, d.classification.business_area || "—"),
       h("dt", {}, "Environment"), h("dd", {}, d.classification.environment || "—"),
@@ -701,10 +713,6 @@ async function detailsView(id: string): Promise<void> {
       h("dt", {}, "Tags"), h("dd", {}, d.tags.join(", ") || "—"),
       h("dt", {}, "Generated"), h("dd", {}, date(revs[0]?.generated_at)),
       h("dt", {}, "Published to the library"), h("dd", {}, date(revs[0]?.published_at))),
-    h("p", { class: "actions" },
-      h("a", { class: "button", href: href(["view", d.document_id, d.current_revision_id]) }, "Open current version"),
-      caps?.can_publish ? h("button", { type: "button", class: "secondary", onclick: toggle }, d.archived ? "Restore" : "Archive") : null),
-    status,
     h("h2", {}, "Versions"),
     h("table", { class: "table" },
       h("thead", {}, h("tr", {}, ...["Published", "Generated", "Publisher", "Size", ""].map((c) => h("th", { scope: "col" }, c)))),

@@ -4,7 +4,7 @@
 // the overview keeps its reading guide and review-first list, and the 390 px menu opens, reports its
 // state and closes when a section is chosen, with no sideways scroll.
 const {chromium}=require('playwright');
-const assert=require('node:assert/strict'),path=require('node:path');
+const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),os=require('node:os');
 const {pathToFileURL}=require('node:url');
 const step=name=>console.log('  ok '+name);
 const {checkMobileNav}=require('./ux_mobile_nav.cjs');
@@ -70,6 +70,19 @@ const {checkMobileNav}=require('./ux_mobile_nav.cjs');
 
   const widths=await checkMobileNav(browser,url,{toggle:'#navtoggle',label:'#navtoggle .nt-label',sectionButtons:'.nav-btn',section:page=>page.evaluate(()=>document.querySelector('#nav-sections [aria-current]').childNodes[0].textContent.trim())});
   step('the narrow-screen menu works by keyboard, Escape and focus at '+widths.join(' and ')+' px, and stays out of the way on a wide screen');
+  // Framed by a host (library or offline export), the wide sidebar leaves the title to the host's trail.
+  const host=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'sql-ux-')),'host.html');
+  fs.writeFileSync(host,`<!DOCTYPE html><iframe src="${url}" style="width:1200px;height:800px"></iframe>`);
+  const framed=await open({width:1300,height:900});
+  await framed.goto(pathToFileURL(host).href);
+  await framed.waitForLoadState('load');
+  const doc=framed.frame({url});
+  await doc.waitForSelector('#nav-sections');
+  assert.ok(await doc.evaluate(()=>document.documentElement.classList.contains('framed')));
+  assert.equal(await doc.locator('nav .doc-title').isVisible(),false);
+  assert.ok(await doc.locator('#sec-overview').isVisible(),'the document keeps its navigation');
+  assert.ok(await page.locator('nav .doc-title').isVisible(),'unframed, the title stays');
+  step('framed by a host, the sidebar leaves the title to the host; unframed it keeps it');
   assert.deepEqual(errors,[],'no page errors');
   step('no page errors');
  }finally{ await browser.close(); }

@@ -277,6 +277,9 @@ main{overflow-wrap:anywhere}
   .badge{white-space:normal;overflow-wrap:anywhere}
   pre.code{max-width:100%}
 }
+/* Framed by a host (the library or an offline export), which names the document in its own trail: the
+   sidebar drops its brand and title on wide screens. On narrow screens the title shares the menu row. */
+@media (min-width:861px){html.framed nav .brand,html.framed nav .doc-title{display:none}}
 </style>
 </head>
 <body>
@@ -286,6 +289,8 @@ main{overflow-wrap:anywhere}
 </div>
 <!--__DETAILS__-->
 <script>
+// A host that frames this document names it in its own trail; see html.framed in the styles.
+if(window.parent!==window && document.documentElement && document.documentElement.classList) document.documentElement.classList.add("framed");
 const DATA = /*__DATA__*/null;
 /* ============================================================ helpers */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

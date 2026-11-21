@@ -48,6 +48,18 @@ const index = (dir) => pathToFileURL(path.join(dir, "index.html")).href;
   assert.strictEqual(probe, "blocked");
   step("documents stay sandboxed from the index page");
 
+  // The hosted viewer's hierarchy: a trail to the type; the framed document drops its own sidebar title.
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+  assert.deepStrictEqual(await crumbs.getByRole("link").allInnerTexts(), ["All documentation", "Data Factory"]);
+  await crumbs.getByRole("link", { name: "Data Factory" }).click();
+  await page.waitForFunction(() => location.hash.includes("type=adf"));
+  await page.goBack();
+  await page.locator("#nav-status", { hasText: "Showing" }).waitFor({ timeout: 15000 });
+  const doc = page.frames().find((f) => f !== page.mainFrame());
+  assert.ok(await doc.evaluate(() => document.documentElement.classList.contains("framed")));
+  assert.strictEqual(await doc.locator("nav .doc-title").isVisible(), false, "the host names the document");
+  step("breadcrumbs lead to the type; the framed document leaves its title to the host");
+
   await page.goto(index(process.env.PARTIAL_DIR) + `#/doc/${process.env.ADF_ID}`);
   await page.getByText("Not included in this export", { exact: false }).first().waitFor();
   step("links outside the export say Not included");

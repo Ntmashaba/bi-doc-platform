@@ -200,6 +200,9 @@ table.t td a,table.t td .xl,table.t td b,table.t td .ref{overflow-wrap:anywhere}
 table.source-list{table-layout:fixed}table.source-list th:nth-child(1){width:34%}
 table.t td button.xl,table.t tbody th button.xl,table.t tbody th a,table.t tbody th b{white-space:normal;text-align:left;overflow-wrap:anywhere}
 table.source-list .badge{white-space:normal}
+/* Framed by a host (the library or an offline export), which names the document in its own trail: the
+   sidebar drops its brand and title on wide screens. On narrow screens the title shares the menu row. */
+@media (min-width:861px){html.framed nav .brand,html.framed nav .doc-title{display:none}}
 </style>
 </head>
 <body>
@@ -212,6 +215,8 @@ table.source-list .badge{white-space:normal}
 </div>
 <!--__DOCUMENTATION_METADATA__-->
 <script>
+// A host that frames this document names it in its own trail; see html.framed in the styles.
+if(window.parent!==window && document.documentElement && document.documentElement.classList) document.documentElement.classList.add("framed");
 const DATA = /*__DATA__*/null;
 // Worked out from DATA when this page was rendered (the search index); never part of the extract itself.
 const DERIVED = /*__DERIVED__*/null;

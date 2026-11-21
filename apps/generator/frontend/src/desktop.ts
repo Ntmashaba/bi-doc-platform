@@ -76,7 +76,7 @@ const ALSO: [string, string][] = [["json", "JSON extract (Compare extracts reads
   ["csv", "CSV"], ["agent", "Agent context (.agent.md)"]];
 
 async function startView(): Promise<void> {
-  const inputs = h("textarea", { id: "inputs", spellcheck: "false", placeholder: "One path per line" }) as HTMLTextAreaElement;
+  const inputs = h("textarea", { id: "inputs", spellcheck: "false", placeholder: "One path per line", "aria-describedby": "inputs-hint" }) as HTMLTextAreaElement;
   inputs.value = form.inputs;
   const output = h("input", { type: "text", id: "output", value: form.output_dir, placeholder: "Folder for the generated HTML" }) as HTMLInputElement;
   const profile = h("select", { id: "profile" }, h("option", { value: "local" }, "Local (keeps everything, including query code)"),
@@ -154,15 +154,39 @@ async function startView(): Promise<void> {
         "Inputs that cannot be used are recorded as failed so you can fix and retry them."), run);
   };
 
+  // The main task first: inputs, where the output goes, which output, Review. The detail of which inputs are
+  // read, and the less common options, are one click away; More options opens by itself when one is already set.
+  const codeRow = h("div", { id: "code-option" },
+    h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")),
+    h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +
+      "When on, it is shared as written; obvious credentials are cleaned, but that is not a guarantee."));
+  const showCode = () => { codeRow.hidden = profile.value !== "shared"; };
+  profile.addEventListener("change", showCode);
+  showCode();
+  const more = h("details", { class: "more", id: "more-options" }, h("summary", {}, "More options"),
+    codeRow,
+    h("fieldset", { class: "also" }, h("legend", {}, "Also write, beside each document"),
+      ...ALSO.map(([k, label], i) => h("p", { class: "check" }, also[i], h("label", { for: `also-${k}` }, label))),
+      h("p", { class: "muted small" }, "Each is made from the same content as its document: for shared output, as filtered " +
+        "for sharing. Only the document can be published to the library.")),
+    h("fieldset", { class: "details-fields" }, h("legend", {}, "Document details (optional)"),
+      h("div", { class: "row" },
+        h("div", {}, h("label", { for: "environment" }, "Environment"), fields[0]),
+        h("div", {}, h("label", { for: "business_area" }, "Business area"), fields[1]),
+        h("div", {}, h("label", { for: "owner" }, "Owner"), fields[2])))) as HTMLDetailsElement;
+  more.open = form.include_query_code || form.also.length > 0 || fields.some(f => f.value.trim() !== "");
+
   mount(h("h1", {}, "New batch"),
     h("div", { class: "card" },
       h("label", { for: "inputs" }, "Inputs"),
-      h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
+      h("p", { class: "muted small", id: "inputs-hint" }, "Files or folders, one path per line: Power BI, Data Factory and SQL Server Agent inputs."),
+      h("details", { class: "help", id: "inputs-help" }, h("summary", {}, "Which inputs are read"),
+       h("p", { class: "muted small" }, "PBIX files, complete PBIP project folders, TMDL or PBIR folders, model.bim, pbi-tools extracts, " +
         "Data Factory Git folders, ARM exports or resource JSON. Any other folder is searched, including its subfolders, for " +
         ".pbix and .abf files, .bim models and project folders; a folder you add that holds only Data Factory resource JSON " +
         "(saved from \u201cview code\u201d) is one Data Factory input. An SSMS CREATE script of a tabular database (.xmla) is read when you add the file itself. " +
         "A SQL Server Agent job script (.sql from \u201cScript Job as \u2192 CREATE To\u201d) is read when you add the file itself, and a folder you add " +
-        "that holds job scripts is one SQL Agent input; other .sql files are not inputs. A .pbip file alone is only a pointer: choose its project folder."),
+        "that holds job scripts is one SQL Agent input; other .sql files are not inputs. A .pbip file alone is only a pointer: choose its project folder.")),
       inputs,
       bridge ? h("p", { class: "actions" },
         h("button", { type: "button", onclick: async () => add(await bridge.pick_files()) }, "Add files…"),
@@ -171,17 +195,7 @@ async function startView(): Promise<void> {
       bridge ? h("p", { class: "actions" }, h("button", { type: "button", onclick: async () => {
         const f = await bridge.pick_folder(); if (f[0]) { output.value = f[0]; save(); stale(); } } }, "Choose…")) : null,
       h("label", { for: "profile" }, "Output"), profile,
-      h("p", { class: "check" }, code, h("label", { for: "code" }, "Shared output: include query code (M and SQL)")),
-      h("p", { class: "muted small" }, "Off by default. When off, query code is removed from shared output and its search text. " +
-        "When on, it is shared as written; obvious credentials are cleaned, but that is not a guarantee."),
-      h("fieldset", { class: "also" }, h("legend", {}, "Also write, beside each document"),
-        ...ALSO.map(([k, label], i) => h("p", { class: "check" }, also[i], h("label", { for: `also-${k}` }, label))),
-        h("p", { class: "muted small" }, "Each is made from the same content as its document: for shared output, as filtered " +
-          "for sharing. Only the document can be published to the library.")),
-      h("div", { class: "row" },
-        h("div", {}, h("label", { for: "environment" }, "Environment"), fields[0]),
-        h("div", {}, h("label", { for: "business_area" }, "Business area"), fields[1]),
-        h("div", {}, h("label", { for: "owner" }, "Owner"), fields[2])),
+      more,
       h("p", {}, h("button", { class: "primary", type: "button", onclick: review }, "Review inputs"))),
     out);
 }
@@ -277,22 +291,24 @@ async function libraryView(): Promise<void> {
       s.url ? h("p", {}, h("button", { type: "button", onclick: async () => { show(await api<LibraryState>("/api/library", "DELETE")); } },
         "Disconnect")) : "");
     if (s.url) url.value = s.url;
+    // Connected: nothing to enter until Disconnect. Otherwise (including a rejected token) the form is the task.
+    form.hidden = s.state === "connected";
   };
+  const form = h("div", { class: "card", id: "library-form" },
+    h("label", { for: "library-url" }, "Library address"), url,
+    h("label", { for: "library-token" }, "Publishing token"), token,
+    h("p", { class: "muted small" }, "Only https:// addresses are accepted (http:// only for this computer)."));
   const connect = h("button", { class: "primary", type: "button", onclick: async () => {
     connect.disabled = true;
     try { show(await api<LibraryState>("/api/library", "POST", { url: url.value.trim(), token: token.value.trim() })); token.value = ""; }
     catch (e) { status.replaceChildren(notice("error", (e as Error).message)); }
     connect.disabled = false;
   } }, "Connect");
+  form.append(h("p", {}, connect));
   mount(h("h1", {}, "Library"),
     h("p", { class: "muted" }, "Publish generated documents straight to your team's library. Create a publishing token in the " +
       "library (Publishing tokens), then paste it here. It is valid for 1 to 30 days and can be revoked there at any time."),
-    status,
-    h("div", { class: "card" },
-      h("label", { for: "library-url" }, "Library address"), url,
-      h("label", { for: "library-token" }, "Publishing token"), token,
-      h("p", { class: "muted small" }, "Only https:// addresses are accepted (http:// only for this computer)."),
-      h("p", {}, connect)));
+    status, form);
   show(await api<LibraryState>("/api/library"));
 }
 

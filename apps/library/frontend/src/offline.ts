@@ -122,9 +122,12 @@ function view(id: string, params: URLSearchParams): void {
     ...doc.objects.filter((o) => o.view).map((o) => h("option", { value: o.object_id, selected: o.object_id === objectId },
       `${o.kind}: ${o.label}`))) as HTMLSelectElement;
   picker.addEventListener("change", () => { location.hash = docHref(id, picker.value ? { object: picker.value } : {}); });
+  // The hosted viewer's hierarchy: a trail to the type, then a compact title (the document names itself inside).
   main().replaceChildren(
-    h("p", {}, h("a", { href: "#/" }, "← All documentation")),
-    h("h1", {}, doc.title), h("div", { class: "toolbar" }, picker, status),
+    h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" },
+      h("a", { href: "#/" }, "All documentation"), " › ",
+      h("a", { href: "#/?type=" + encodeURIComponent(doc.document_type) }, TYPE_LABEL[doc.document_type] || doc.document_type)),
+    h("h1", { class: "doc-heading" }, doc.title), h("div", { class: "toolbar" }, picker, status),
     h("div", { class: "split" }, frame, related(doc, objectId)));
   channel?.close();
   channel = new ViewerChannel(frame, doc.revision_id, () => {

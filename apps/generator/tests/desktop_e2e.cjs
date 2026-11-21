@@ -23,6 +23,21 @@ const step = (name) => console.log("  ok " + name);
   await page.getByRole("cell", { name: "SQL Agent job scripts (folder)", exact: true }).waitFor();
   assert.equal(await page.getByRole("cell", { name: /^agent_(script|folder)$/ }).count(), 0);
   await page.goto(URL + "/#/");
+  // New batch leads with the task: one line on inputs, the full list of formats one click away; options that
+  // matter only for shared output appear only when it is chosen; the rest wait under More options.
+  await page.getByLabel("Inputs").waitFor();
+  assert.equal(await page.locator("#inputs-help").getAttribute("open"), null);
+  assert.equal(await page.getByText("A .pbip file alone is only a pointer", { exact: false }).isVisible(), false);
+  await page.locator("#inputs-help > summary").click();
+  await page.getByText("A .pbip file alone is only a pointer", { exact: false }).waitFor();
+  assert.equal(await page.locator("#more-options").getAttribute("open"), null);
+  await page.locator("#more-options > summary").click();
+  assert.equal(await page.locator("#code-option").isVisible(), false, "local output keeps query code anyway");
+  await page.getByLabel("Output", { exact: true }).selectOption("shared");
+  assert.ok(await page.locator("#code-option").isVisible(), "shared output offers the query code choice");
+  await page.getByLabel("Output", { exact: true }).selectOption("local");
+  await page.locator("#more-options > summary").click();
+  step("New batch leads with inputs, output and Review; format detail and options are one click away");
   await page.getByLabel("Inputs").fill([process.env.JOBS, process.env.JOBS_DIR].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
   await page.getByRole("button", { name: "Review inputs" }).click();
@@ -65,6 +80,9 @@ const step = (name) => console.log("  ok " + name);
   await page.goto(URL + "/#/");
   await page.getByLabel("Inputs").fill([process.env.FACTORY, process.env.MISSING, process.env.PBIX].join("\n"));
   await page.getByLabel("Output folder").fill(process.env.OUT_DIR);
+  // The extra outputs are under More options, closed until one is chosen.
+  assert.equal(await page.locator("#more-options").getAttribute("open"), null);
+  await page.locator("#more-options > summary").click();
   await page.getByRole("group", { name: "Also write, beside each document" }).waitFor();
   await page.getByLabel("Agent context (.agent.md)").check();
   await page.getByRole("button", { name: "Review inputs" }).click();
@@ -101,6 +119,19 @@ const step = (name) => console.log("  ok " + name);
   await page.getByRole("link", { name: "History" }).first().click();
   await page.getByText("2 of 3 succeeded").waitFor();
   step("history lists the batch");
+
+  // Back on New batch, More options is open: an option in it (the agent context) is still chosen.
+  await page.getByRole("link", { name: "New batch" }).first().click();
+  await page.getByLabel("Inputs").waitFor();
+  assert.notEqual(await page.locator("#more-options").getAttribute("open"), null);
+  assert.ok(await page.getByLabel("Agent context (.agent.md)").isChecked());
+  step("More options opens by itself while one of its options is chosen");
+
+  // Library: not connected, so the connection form is the task (it is hidden only while connected).
+  await page.goto(URL + "/#/library");
+  await page.getByText("Not connected.").waitFor();
+  assert.ok(await page.locator("#library-form").isVisible());
+  step("Library shows the connection form while not connected");
 
   assert.deepStrictEqual(errors, []);
   step("no console errors");
