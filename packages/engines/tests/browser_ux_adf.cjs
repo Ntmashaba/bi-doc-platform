@@ -23,6 +23,34 @@ const {checkMobileNav}=require('./ux_mobile_nav.cjs');
   const page=await open({width:1440,height:900});
   await page.goto(url);
   assert.equal(await current(page),'overview');
+  // ---- step 4 overview: title and summary, Review first, how work starts, grouped counts, then collapsed details
+  const order=await page.evaluate(()=>[...document.querySelectorAll('#main > *')].map(e=>e.id||['overview-summary','review-first','count-group','table-wrap'].find(c=>e.classList.contains(c))||e.tagName).filter((x,i,a)=>x!==a[i-1]));
+  const at=x=>order.indexOf(x);
+  assert.ok(at('H1')===0&&at('overview-summary')===1&&at('review-first')===2,'title, summary, then Review first: '+order);
+  assert.ok(at('review-first')<at('contents')&&at('contents')<at('count-group')&&at('count-group')<at('coverage-details')&&at('coverage-details')<at('doc-details'),'then Contents and the collapsed details: '+order);
+  const limit=await page.locator('.reading-limit').innerText();
+  for(const kept of [/no run history/,/never value/,/outside ADF/]) assert.match(limit,kept,'the short reading limit keeps '+kept);
+  for(const id of ['coverage-details','doc-details']) assert.equal(await page.locator('#'+id).getAttribute('open'),null,id+' starts collapsed');
+  assert.equal(await page.locator('#doc-details #generated-line').count(),1);
+  const gaps=await page.evaluate(()=>coverageGaps());
+  if(gaps.length){
+   assert.match(await page.locator('#coverage-details > summary').textContent(),new RegExp(gaps[0].replace(/[()]/g,'\\$&')),'the closed coverage summary still names the gaps');
+   await page.locator('.coverage-gaps button').click();
+   assert.notEqual(await page.locator('#coverage-details').getAttribute('open'),null,'Review first opens the coverage table');
+  }
+  // Counts that look like links are links, open their view, and match its own count; the rest are plain.
+  for(const id of await page.locator('#main .stat-link').evaluateAll(els=>els.map(e=>e.id.replace('count-','')))){
+   await page.evaluate(()=>switchTab('overview'));
+   const n=Number((await page.locator('#count-'+id+' .big').innerText()).replace(/,/g,''));
+   await page.click('#count-'+id);
+   assert.equal(await current(page),id,'the count opens '+id);
+   assert.equal(await page.evaluate(id=>TABS.find(t=>t.id===id).count(),id),n,id+' shows the number it counted');
+  }
+  await page.evaluate(()=>switchTab('overview'));
+  assert.equal(await page.locator('#main .stat:not(.stat-link) button, #main div.stat[data-go]').count(),0,'a plain figure is not clickable');
+  step('the overview reads review-first, keeps the reading limits, and its counts open the lists they count');
+  await page.goto(url);   // a fresh document: the counts above set each section's last view
+
   // ---- sections and their views
   const sections=await page.evaluate(()=>SECTIONS.map(s=>s.id));
   for(const id of sections){

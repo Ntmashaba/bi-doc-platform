@@ -106,6 +106,16 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:"▸";color:var(--ink3);font-size:.8rem;transition:transform .12s}
 details[open]>summary::before{transform:rotate(90deg)}
 details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
+.overview-summary{margin-bottom:1rem}
+.review-first .note{margin-bottom:.6rem}
+.count-group h3{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:.9rem 0 .45rem}
+.stat-link{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
+.stat-link .big{color:var(--accent)}
+.stat-link:hover{border-color:var(--accent)}
+.stat-link:hover .lbl{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.stat-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card-details{margin-top:.9rem}
+.card-details>summary .mut,.card-details>summary .badge{font-weight:400}
 .mut{color:var(--ink2);font-size:.8rem}
 .pill-list{display:flex;flex-wrap:wrap;gap:.3rem}
 .hl{background:var(--snkBg)!important}
@@ -489,8 +499,7 @@ function coverageCard(){
   const c = DATA.coverage; if(!c) return "";
   const row = (label, value, tone, note) => `<tr><td>${label}</td><td><span class="badge ${tone}">${esc(value)}</span></td><td class="mut">${note}</td></tr>`;
   const n = x => x||0;
-  return `<h2>What this document can and cannot see</h2>
-  <div class="table-wrap"><table class="t"><thead><tr><th>Check</th><th>Result</th><th>Meaning</th></tr></thead><tbody>
+  return `<div class="table-wrap"><table class="t"><thead><tr><th>Check</th><th>Result</th><th>Meaning</th></tr></thead><tbody>
   ${row("Input", (c.inputFormats||[]).join(", ")||"unknown", "b-info", MODE==="selection"?"Individually exported objects: other pipelines may use them.":`${n(c.jsonFiles)} JSON file(s) read.`)}
   ${row("Unreadable files", n(c.skippedFiles), c.skippedFiles?"b-bad":"b-ok", c.skippedFiles?"Skipped, so the document cannot claim to be complete. See Warnings.":"Every file was read.")}
   ${row("Missing references", n(c.unresolvedReferences), c.unresolvedReferences?"b-bad":"b-ok", c.unresolvedReferences?"Objects referenced but not supplied, listed below.":"Every reference resolved.")}
@@ -503,25 +512,52 @@ function coverageCard(){
   ${row("Run history", "not available", "b-info", "Generated from definitions, so nothing here shows whether loads succeed.")}
   </tbody></table></div>`;
 }
+// What the coverage table would flag, in a phrase each: the collapsed coverage summary and Review first use it,
+// so incomplete or failed coverage is never hidden behind a closed disclosure.
+function coverageGaps(){
+  const c = DATA.coverage || {}, n = x => x||0, gaps = [];
+  if(n(c.skippedFiles)) gaps.push(`${n(c.skippedFiles)} unreadable file(s)`);
+  if(n(c.unresolvedReferences)) gaps.push(`${n(c.unresolvedReferences)} missing reference(s)`);
+  if(n(c.opaqueActivities)) gaps.push(`${n(c.opaqueActivities)} of ${n(c.activities)} activities opaque`);
+  if(n(c.dynamicActivities)) gaps.push(`${n(c.dynamicActivities)} resolved at runtime`);
+  if(n(c.unknownFootprints)) gaps.push(`${n(c.unknownFootprints)} unknown footprint(s)`);
+  if((c.duplicates||[]).length) gaps.push(`${c.duplicates.length} defined twice`);
+  return gaps;
+}
+function openCoverage(){
+  const d = document.getElementById("coverage-details");
+  if(d){ d.open = true; d.scrollIntoView({block:"start"}); }
+}
+// The limit of what any reading of definitions can say, shortened but with every limit kept.
+function readingLimit(){
+  if(MODE==="factory") return `<b>Design-time only.</b> Read from the factory's JSON definitions, with no run history: nothing here shows whether anything runs, fails or is used. Parameters and secrets appear by <i>name</i>, never value, and a pipeline without a trigger here may still be started from outside ADF.`;
+  if(MODE==="selection") return `<b>Selected objects.</b> Exported one by one: every reference between them resolved, but other pipelines may use the same objects. Design-time only: no run history.`;
+  return `<b>Partial input.</b> ${missing.length} referenced object(s) were not supplied${(DATA.coverage||{}).skippedFiles?` and ${DATA.coverage.skippedFiles} input file(s) could not be read`:""}, so parts of this analysis are incomplete. What to export next is listed below. Design-time only: no run history, parameter and secret names never values, and starts from outside ADF are invisible.`;
+}
+// Counts grouped by what they describe. Each opens the view it counts, using that view's own count, so the
+// number cannot differ from the list; activities have no list of their own and are a plain figure.
+const OVERVIEW_GROUPS = [
+  ["Orchestration", [["pipelines","Pipelines"],[null,"Activities",()=>F.activityCount],["dataflows","Data flows"],["triggers","Triggers"]]],
+  ["Data", [["datasets","Datasets"],["linked","Linked services"],["objects","Data entities"],["lineage","Lineage edges"]]],
+];
+function overviewCounts(){
+  return OVERVIEW_GROUPS.map(([label, items])=>`<div class="count-group"><h3>${label}</h3><div class="grid c4">${items.map(([tab, lbl, n])=>{
+    const t = tab && TABS.find(x=>x.id===tab);
+    if(t && t.avail()) return `<button type="button" class="card stat stat-link" id="count-${tab}" data-go="view" data-arg="${tab}" aria-label="${num(t.count())} ${lbl}: open the list"><span class="big">${num(t.count())}</span><span class="lbl">${lbl}</span></button>`;
+    const v = t ? t.count() : n();
+    return `<div class="card stat stat-plain"><div class="big">${num(v)}</div><div class="lbl">${lbl}</div></div>`;
+  }).join("")}</div></div>`).join("");
+}
 function rOverview(){
-  const stats = [
-    ["Pipelines", F.pipelineCount], ["Activities", F.activityCount],
-    ["Data flows", F.dataflowCount], ["Datasets", F.datasetCount],
-    ["Linked services", F.linkedServiceCount], ["Triggers", F.triggerCount],
-    ["Data entities", F.entityCount], ["Lineage edges", F.lineageEdgeCount],
-  ];
-  const modeNote = MODE==="factory"
-    ? `<div class="card note"><b>Design-time truth.</b> This document is derived statically from the factory's JSON definitions. It has no run history: nothing here can be called "working", "failing", or "actively used". Parameterised connections show the parameter or Key Vault secret <i>name</i>, never a value. A pipeline with no trigger here may still be invoked externally (REST API, Synapse, Logic Apps).</div>`
-    : MODE==="selection"
-    ? `<div class="card note"><b>Selected objects.</b> These objects were exported one by one. Every reference between them resolved, but a selection cannot show that the whole factory was supplied: other pipelines may use the same objects. Design-time truth only: no run history.</div>`
-    : `<div class="card note"><b>Partial input.</b> ${missing.length} referenced object(s) were not supplied${(DATA.coverage||{}).skippedFiles?` and ${DATA.coverage.skippedFiles} input file(s) could not be read`:""}, so parts of this analysis are incomplete — see the checklist below for exactly which JSON files to go back and export. Everything else stated is design-time truth: no run history, parameter/secret names never values, and external invocation invisible.</div>`;
-
+  const p = DATA.pipelines.length, a = F.activityCount, df = DATA.dataflows.length;
+  const summary = `Design-time documentation of ${num(p)} pipeline(s), ${num(a)} activit${a===1?"y":"ies"}${df?` and ${num(df)} data flow(s)`:""}, generated from the factory's definitions.`;
+  const gaps = coverageGaps();
   const checklist = !missing.length ? "" : `
-  <h2>Input completeness — what to export next</h2>
+  <h3>Input completeness: what to export next</h3>
   <p class="sub">Referenced by the supplied objects but not included in the input. Pull each object's JSON from ADF Studio (or run against the full repo folder) and regenerate.</p>
-  <table class="t"><thead><tr><th>Kind</th><th>Missing object</th><th>Impact on this document</th><th>Referenced by</th></tr></thead><tbody>
+  <div class="table-wrap"><table class="t"><thead><tr><th>Kind</th><th>Missing object</th><th>Impact on this document</th><th>Referenced by</th></tr></thead><tbody>
   ${missing.map(r=>`<tr><td><span class="badge b-bad">${esc(r.kind)}</span></td><td><span class="ref">${esc(r.name)}</span></td><td class="mut">${esc(r.impact)}</td><td class="mut">${r.referencedBy.slice(0,4).map(esc).join("<br>")}${r.referencedBy.length>4?`<br>+${r.referencedBy.length-4} more`:""}</td></tr>`).join("")}
-  </tbody></table>`;
+  </tbody></table></div>`;
 
   const extSystems = {};
   for(const ls of DATA.linkedServices){
@@ -536,22 +572,28 @@ function rOverview(){
       ${ls.unreferenced?'<span class="badge b-muted">unreferenced</span>':""}
       <div class="mut">${esc([ls.server, ls.database, ls.url].filter(Boolean).join(" · ")||"target parameterised or not stated")}</div></div>`).join("")}
     </div>`).join("");
-
-  return `${conveyor()}
-  <h1>${esc(DATA.title)}</h1>
-  <p class="sub">Generated ${esc(DATA.generated)} by adf-doc-gen · mode: <b>${MODE}</b></p>
-  ${modeNote}
-  ${(()=>{ const d = DETAILS, bits = [["Environment",d.environment],["Owner",d.owner],["Source",d.sourceLocation],["Runbook",d.runbook]].filter(([,v])=>v);
+  const details = (()=>{ const d = DETAILS, bits = [["Environment",d.environment],["Owner",d.owner],["Source",d.sourceLocation],["Runbook",d.runbook]].filter(([,v])=>v);
     return bits.length ? `<div class="card kvl">${bits.map(([k,v])=>`<div class="k">${k}</div><div>${esc(v)}</div>`).join("")}</div>`
-                       : `<p class="mut">No owner or runbook recorded yet. ${go("section","details","Add factory details")}</p>`; })()}
-  <div class="grid c4" style="margin-top:1rem">
-    ${stats.map(([l,v])=>`<div class="card stat"><div class="big">${num(v)}</div><div class="lbl">${l}</div></div>`).join("")}
-  </div>
-  ${coverageCard()}
+                       : `<p class="mut">No owner or runbook recorded yet. ${go("section","details","Add factory details")}</p>`; })();
+
+  return `<h1>${esc(DATA.title)}</h1>
+  <p class="sub overview-summary">${summary}</p>
+  <section class="review-first" aria-labelledby="review-first"><h2 id="review-first">Review first</h2>
+  <div class="card note reading-limit">${readingLimit()}</div>
+  ${gaps.length?`<div class="card note coverage-gaps"><b>Coverage gaps:</b> ${esc(gaps.join(" · "))}. <button class="xl" onclick="openCoverage()">See what this document can and cannot see</button></div>`:""}
+  ${priorityIssues()}
   ${checklist}
-  ${DATA.linkedServices.length?`<h2>External systems this factory touches</h2><div class="grid c3">${sysCards}</div>`:""}
+  </section>
   ${journeys()}
-  ${priorityIssues()}`;
+  <h2 id="contents">Contents</h2>
+  ${overviewCounts()}
+  ${DATA.linkedServices.length?`<details class="card-details" id="systems-details"><summary>External systems this factory touches <span class="mut">${num(Object.keys(extSystems).length)} system(s)</span></summary><div class="body"><div class="grid c3">${sysCards}</div></div></details>`:""}
+  <details class="card-details" id="coverage-details"><summary>What this document can and cannot see <span class="${gaps.length?"badge b-warn":"mut"}">${gaps.length?esc(gaps.join(" · ")):"every file read, every reference resolved"}</span></summary><div class="body">${coverageCard()}</div></details>
+  <details class="card-details" id="doc-details"><summary>Documentation details</summary><div class="body">
+  <p class="sub" id="generated-line">Generated ${esc(DATA.generated)} by adf-doc-gen · mode: <b>${MODE}</b></p>
+  ${conveyor()}
+  ${details}
+  </div></details>`;
 }
 function journeys(){
   // Each way work starts: a trigger or an entry-point pipeline, and what the run reads and writes.
@@ -573,9 +615,8 @@ function journeys(){
 function priorityIssues(){
   const top = (DATA.issues||[]).filter(i=>i.priority!=="low").slice(0,5);
   const n = (DATA.issues||[]).length;
-  if(!n) return `<h2>Review issues</h2><div class="card"><b>No issues to review.</b> <span class="mut">See Review issues › All findings and notes for the limits of static analysis.</span></div>`;
-  return `<h2>Review first</h2>
-  ${top.map(i=>`<div class="card issue"><div class="issue-head"><span class="badge ${PRIO[i.priority]}">${esc(i.priority)}</span> <b>${esc(i.category)}</b> ${i.resource?"· "+resourceLink(i.resource):""}</div><p class="mut" style="margin-top:.3rem">${esc(i.action)}</p></div>`).join("")||'<p class="mut">No high or medium priority issues.</p>'}
+  if(!n) return `<div class="card"><b>No issues to review.</b> <span class="mut">See Review issues › All findings and notes for the limits of static analysis.</span></div>`;
+  return `${top.map(i=>`<div class="card issue"><div class="issue-head"><span class="badge ${PRIO[i.priority]}">${esc(i.priority)}</span> <b>${esc(i.category)}</b> ${i.resource?"· "+resourceLink(i.resource):""}</div><p class="mut" style="margin-top:.3rem">${esc(i.action)}</p></div>`).join("")||'<p class="mut">No high or medium priority issues.</p>'}
   <p>${go("section","issues",`All ${n} review issue(s)`)}</p>`;
 }
 

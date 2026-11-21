@@ -5,7 +5,7 @@ const assert=require('node:assert/strict'),path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {checkOverviewCounts,OPENS}=require('./overview_counts.cjs');
 const step=name=>console.log('  ok '+name);
-const SECTIONS=[['overview','Overview',/^Overview\. A summary of this file/],
+const SECTIONS=[['overview','Overview',/^Overview\. Start here: what to review first/],
  ['sources','Data Sources',/^Data Sources\. Data source settings in Power BI Desktop/],
  ['power-query','Power Query',/^Power Query\. The Power Query Editor in Power BI Desktop/],
  ['table','Table view',/^Table view\. Table view in Power BI Desktop: each table of the model with its columns\. No data rows/],
@@ -81,8 +81,12 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
   // ---- Overview: each number is a link, and equals the number of items in the list it opens
   await page.evaluate(()=>switchTab('overview'));
   const shown=await page.locator('.stat-link').evaluateAll(els=>els.map(el=>el.id.replace('count-','')));
-  assert.deepEqual(shown,Object.keys(OPENS),'the Overview shows these counts, in this order');
-  assert.match(await page.locator('.stat-link').first().innerText(),/^\d+\s*Source tables$/,'"Source tables" is the headline');
+  // Warnings lead Review first; Contents groups the rest as Model, Data sources and Report.
+  assert.deepEqual(shown,['warnings','source-tables','calc-tables','calc-groups','other-tables','columns','calc-columns','measures',
+   'relationships','roles','queries','sources','pages','visuals','filters','bookmarks'],'the Overview shows these counts, in this order');
+  assert.deepEqual(new Set(shown),new Set(Object.keys(OPENS)),'every count the Overview can show is checked');
+  assert.deepEqual(await page.locator('.count-group h3').allInnerTexts(),['MODEL','DATA SOURCES','REPORT']);
+  assert.match(await page.locator('.count-group .stat-link').first().innerText(),/^\d+\s*Source tables$/,'"Source tables" leads Contents');
   // a selected report page must not change what the numbers count
   await page.evaluate(()=>setPageScope('p2'));
   const ids=await checkOverviewCounts(page,{before:()=>page.evaluate(()=>{pageScope='p2';})});

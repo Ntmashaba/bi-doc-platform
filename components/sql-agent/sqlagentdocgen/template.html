@@ -84,6 +84,11 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:"▸";color:var(--ink3);font-size:.8rem;transition:transform .12s}
 details[open]>summary::before{transform:rotate(90deg)}
 details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
+.reading-guide{margin-top:.8rem}
+.reading-guide>summary{font-weight:500;flex-wrap:nowrap;align-items:baseline}
+.reading-guide>.body{padding-top:.6rem;color:var(--ink2)}
+.count-group h3{font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:.9rem 0 .45rem}
+.coverage-line{margin-top:1rem;color:var(--ink2)}
 .mut{color:var(--ink2);font-size:.8rem}
 .kv{display:grid;grid-template-columns:170px 1fr;gap:.15rem .8rem;margin:.3rem 0}
 .kv .k{color:var(--ink3);font-size:.74rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;padding-top:.1rem}
@@ -107,13 +112,17 @@ details>.body{padding:.2rem .9rem .9rem;border-top:1px solid var(--line2)}
 .sw{width:16px;height:0;border-top:2.4px solid;display:inline-block}
 @media (max-width:860px){
   .layout{grid-template-columns:1fr}
-  nav{position:static;height:auto}
-  #nav-sections{display:none}
+  /* Title and menu button share the top row, as in the Power BI and ADF documents. */
+  nav{position:sticky;top:0;z-index:40;height:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:.6rem;padding:.7rem 1rem}
+  nav .brand{display:none}
+  nav .doc-title{margin:0;font-size:.95rem}
+  #nav-sections{display:none;grid-column:1/-1;padding-top:.5rem}
   nav.open #nav-sections{display:block}
   #nav-sections .nav-btn{margin-top:.2rem}
-  .nav-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;
-    border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.5rem .55rem;
-    border-radius:6px;cursor:pointer;margin-top:.5rem}
+  .nav-toggle{display:inline-flex;align-items:center;gap:.4rem;max-width:55vw;
+    border:0;background:#1E293B;color:#fff;font:inherit;font-weight:600;padding:.45rem .7rem;
+    border-radius:6px;cursor:pointer}
+  .nav-toggle .nt-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   main{padding:1rem}
   /* A table wider than the screen scrolls inside its own box rather than pushing the page sideways. */
   table.t{display:block;max-width:100%;overflow-x:auto}
@@ -265,14 +274,12 @@ function secOverview(){
   <h1>${esc(DATA.title)}</h1>
   <p class="sub">Static analysis of scripted SQL Server Agent jobs. No server was contacted;
      everything here is derived from the scripts. Generation details are in Coverage.</p>
-  <div class="card note">
-    <b>How to read this document.</b>
-    Findings are <i>evidence, not instructions</i>: each review issue states what the scripts say,
-    never what to change. Schedules are reported as <i>coinciding</i> — the scripts contain start
-    times but no durations, so a coincidence does not show the jobs running at the same time. Where a script could not be
-    parsed completely, the Coverage section says so; nothing is silently dropped.
-  </div>
-  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
+  <details class="reading-guide" id="reading-guide"><summary>How to read this document: findings are evidence, not instructions</summary><div class="body">
+    Each review issue states what the scripts say, never what to change. Schedules are reported as <i>coinciding</i> — the
+    scripts contain start times but no durations, so a coincidence does not show the jobs running at the same time. Where a
+    script could not be parsed completely, the Coverage section says so; nothing is silently dropped.
+  </div></details>
+  ${WARNINGS.length ? `<h2>Warnings</h2><div class="card note"><ul>${WARNINGS.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
   ${top.length ? `<h2>Review first — most severe findings</h2><div class="card">
     <table class="t"><thead><tr><th>severity</th><th>finding</th><th>job</th></tr></thead><tbody>
     ${top.map(i=>`<tr><td><span class="badge ${sevBadge(i.severity)}">${esc(i.severity)}</span></td>
@@ -280,16 +287,19 @@ function secOverview(){
     </tbody></table>
     <p style="margin-top:.5rem">${go("section","issues","Open all review issues →")}</p></div>` : ""}
   <h2>Document summary</h2>
-  <div class="grid c4">
+  <div class="count-group"><h3>Jobs</h3><div class="grid c4">
     ${stat("jobs", num(JOBS.length), "jobs scripted")}
     ${stat("jobs", num(steps), "steps")}
     ${stat("schedules", num(schedNames.size), `schedules (${num((DATA.sharedSchedules||[]).length)} shared)`)}
     ${stat("processing", num(ssasOps), "SSAS operations")}
-    ${stat("jobmeta", num((DATA.entities||[]).length), "referenced objects")}
+  </div></div>
+  <div class="count-group"><h3>Review</h3><div class="grid c4">
     ${stat("issues", num(ISSUES.length), `review issues <span class="mut">${bySev.alert||0} alert · ${bySev.warning||0} warning · ${bySev.info||0} info</span>`)}
-    ${stat("coverage", num(cov.unrecognisedStatements||0), "unrecognised statements")}
-    ${stat("coverage", num(DATA.redactions||0), "secret values withheld")}
-  </div>`;
+    ${stat("jobmeta", num((DATA.entities||[]).length), "referenced objects")}
+  </div></div>
+  <p class="coverage-line${cov.unrecognisedStatements?" note card":""}" id="coverage-line"><b>Coverage:</b>
+    ${num(cov.unrecognisedStatements||0)} unrecognised statement(s) · ${num(DATA.redactions||0)} secret value(s) withheld ·
+    ${go("section","coverage","Open Coverage")}</p>`;
 }
 function jobIdByName(n){ const j = JOBS.find(j=>j.name===n); return j?j.identity:""; }
 

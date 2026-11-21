@@ -93,6 +93,45 @@ const {checkMobileNav}=require('../../../packages/engines/tests/ux_mobile_nav.cj
   assert.match(await page.locator('#finder-note').innerText(),/does not contain/);
   step('object links open their object; a missing one says so on the overview');
 
+  // ---- step 4 overview: start here, in this order
+  await page.goto(url+'#overview');
+  const order=await page.evaluate(()=>[...document.querySelectorAll('#main > h1, #main > .overview-summary, #main > .review-first, #main > .journeys, #main > #contents, #main > .count-group, #main > details')]
+   .map(e=>e.id||['overview-summary','review-first','journeys','count-group'].find(c=>e.classList.contains(c))||e.tagName));
+  assert.deepEqual(order.filter((x,i)=>x!==order[i-1]),['H1','overview-summary','review-first','journeys','contents','count-group','full-inventory','doc-details']);
+  assert.equal(await page.locator('#full-inventory').getAttribute('open'),null,'the full inventory starts collapsed');
+  assert.equal(await page.locator('#doc-details').getAttribute('open'),null,'documentation details start collapsed');
+  assert.equal(await page.locator('#doc-details #generated-line').count(),1,'generation and producer details are in documentation details');
+  assert.equal(await page.locator('#doc-details .coupler').count(),1,'so is the input coupling');
+  step('the overview reads: title and summary, Review first, Start reviewing, Contents, then collapsed inventory and details');
+  // Review first: the deletion candidates are the ones Cleanup review lists with that assessment
+  const del=await page.evaluate(()=>deletionCandidates());
+  assert.ok(del.total>0,'the fixture has deletion candidates');
+  assert.match(await page.locator('.review-first').innerText(),new RegExp(del.total+' deletion candidates'));
+  await page.click('#review-deletion');
+  assert.equal(await active(page),'cleanup');
+  assert.equal(await page.inputValue('#cleanup-decision'),'Deletion candidate');
+  const cleanupListed=await page.evaluate(()=>{
+   const main=document.getElementById('main').innerText;
+   const n=re=>Number((re.exec(main)||[0,0])[1]);
+   const tables=document.querySelector('#main .card b')?.textContent==='Whole tables with no detected use'
+    ?document.querySelector('#main .card p').innerHTML.split('<br>').length:0;
+   return {columns:n(/(\d+) distinct columns/),measures:n(/(\d+) measures? ·/),tables};
+  });
+  assert.deepEqual(cleanupListed,{columns:del.columns,measures:del.measures,tables:del.tables},'Cleanup review lists what Review first counted');
+  await page.goto(url+'#overview');
+  await page.click('#count-warnings');
+  assert.equal(await active(page),'warnings');
+  await page.goto(url+'#overview');
+  await page.locator('.review-first button',{hasText:'See documentation coverage'}).click();
+  assert.notEqual(await page.locator('#full-inventory').getAttribute('open'),null,'the documentation coverage opens in Full inventory');
+  step('Review first counts deletion candidates as Cleanup review lists them, and each item opens its list');
+  for(const id of await page.locator('.journey').evaluateAll(els=>els.map(e=>e.id.replace('journey-','')))){
+   await page.goto(url+'#overview');
+   await page.click('#journey-'+id);
+   assert.equal(await active(page),id,'Start reviewing opens '+id);
+  }
+  step('each Start reviewing link opens its view');
+
   // ---- step 2 chrome: no standalone breadcrumb or catalogue link, the page selection only where it acts
   await page.goto(url+'#overview');
   assert.equal(await page.locator('.breadcrumb').count(),0,'no breadcrumb');

@@ -300,7 +300,7 @@ const reportManifest = () => (has.linked ? L.manifest : (R?.manifest||[])).map(e
    that shows the same things. `view` is the line every tab of the section opens with. */
 const SECTIONS = [
   {id:"overview", label:"Overview", tabs:["overview","warnings","cleanup"],
-   view:"A summary of this file: what it contains, how completely it was read and what to check first. Power BI Desktop has no view like it."},
+   view:"Start here: what to review first, where to begin, and what the file contains. Power BI Desktop has no view like it."},
   {id:"sources", label:"Data Sources", tabs:["sources","table-sources","primary-sources","source-objects"],
    view:"Data source settings in Power BI Desktop: the databases, files and services this model reads."},
   {id:"power-query", label:"Power Query", tabs:["power-query"],
@@ -575,55 +575,126 @@ function producerLine(){
   const known = v => typeof v==="string" && v.trim() ? esc(v.trim()) : '<span class="not-recorded">not recorded</span>';
   return `bidoc ${known(p.bidoc)} · ${esc(p.engine||"pbi-doc-gen")} ${known(p.engineVersion)}`;
 }
+const tabOn = id => TABS.some(t=>t.id===id&&t.avail);
+// One sentence: what was read. The inputs themselves are in Documentation and extraction details.
+function overviewSummary(){
+  const model = has.model ? `semantic model <b>${esc(M.name)}</b> (${plural(countedTables().length,"table")} · ${plural(M.measures.length,"measure")})` : "";
+  const report = has.report ? `report <b>${esc(R.name)}</b> (${plural(R.pages.length,"page")} · ${plural(R.pages.reduce((a,p)=>a+p.visuals.length,0),"visual")})` : "";
+  if(model && report) return `Documents the ${model} and the ${report}, read together.`;
+  if(model) return `Documents the ${model}, without a report.`;
+  if(report) return `Documents the ${report}, without its semantic model.`;
+  return "Documents this file.";
+}
+// Deletion candidates, counted exactly as Cleanup review lists them with that assessment chosen.
+function deletionCandidates(){
+  if(!tabOn("cleanup") || !DATA.columns) return {columns:0, measures:0, tables:0, total:0};
+  const is = r => r.decision === "Deletion candidate";
+  const columns = new Set((DATA.columns.rows||[]).filter(is).map(r=>nodeId('c',r.table,r.column))).size;
+  const measures = (DATA.columns.measures||[]).filter(is).length;
+  const tables = (DATA.columns.tables||[]).filter(is).length;
+  return {columns, measures, tables, total: columns+measures+tables};
+}
+function openDeletionCandidates(){ cleanupDecision = "Deletion candidate"; pageScope = "*"; switchTab("cleanup"); }
+function openInventory(id){
+  const d = document.getElementById(id);
+  if(d){ d.open = true; d.scrollIntoView({block:"start"}); }
+}
+// Review first: what a reviewer should look at before anything else. Limitations of the reading come first,
+// then findings. Each item says what it is and opens the list it is about.
+function reviewItems(){
+  const items = [], act = (label, call, id) => `<button type="button" class="xl ri-act"${id?` id="${id}"`:""} onclick="${call}">${esc(label)}</button>`;
+  const add = (kind, title, detail, action="") => items.push({kind, title, detail, action});
+  if(MODE==="semantic-only") add("limit","No report was supplied",
+    `Nothing here can be called unused. The most this document can say is that a column or table has <i>no internal references</i> within the model; external reports, Excel connections or composite models may still depend on it.`);
+  if(MODE==="report-only") add("limit","No semantic model was supplied",
+    `${(R&&R.liveConnection)?`This report has a live connection to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there. `:""}Field references are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, tell measures from columns, or trace them to a source.`);
+  if(DATA.livePairing) add("limit","External model pairing",
+    `${esc(DATA.livePairing.note)} Field resolution uses the supplied snapshot; server identity and backup freshness have not been verified.`);
+  const x = DATA.extraction, xNotes = x ? [...(x.warnings||[]),...(x.limitations||[])] : [];
+  if(x && (!x.complete || xNotes.length)) add("limit", x.complete ? "Extraction notes" : "Partial metadata: review required",
+    xNotes.map(w=>esc(w)).join("<br>") || `The ${esc(x.inputKind.toUpperCase())} extraction did not read every supported part of the file.`);
+  const gaps = DATA.columns?.issues || [];
+  if(gaps.length) add("limit", `${plural(gaps.length,"analysis issue")}`, `Usage and deletion assessments may be incomplete: ${gaps.map(esc).join("; ")}`,
+    tabOn("columns") ? act("Open Columns", "switchTab('columns')") : "");
+  const warnings = allWarnings(), serious = warnings.filter(w=>w.severity==="warning").length;
+  if(warnings.length) items.push({kind: serious ? "warn" : "info", count:
+    `<button type="button" class="stat-link ri-count" id="count-warnings" onclick="openCount('warnings')" aria-label="${num(warnings.length)} Warnings: open the list"><span class="big">${num(warnings.length)}</span><span class="lbl">Warnings</span></button>`,
+    detail: serious ? `${plural(serious,"warning")} ${serious===1?"needs":"need"} attention${warnings.length>serious?`; the other ${num(warnings.length-serious)} ${warnings.length-serious===1?"is":"are"} informational`:""}.` : "All informational."});
+  const del = deletionCandidates();
+  if(del.total) add("warn", `${plural(del.total,"deletion candidate")}`,
+    [del.tables&&plural(del.tables,"whole table"), del.columns&&plural(del.columns,"column"), del.measures&&plural(del.measures,"measure")].filter(Boolean).join(", ") + " with no detected use. Check the evidence before removing anything.",
+    act("Open Cleanup review", "openDeletionCandidates()", "review-deletion"));
+  const dup = DATA.quality?.duplicateMeasures || [];
+  if(dup.length) add("warn", `${plural(dup.length,"set")} of duplicate measures`, "The same DAX saved under different names.",
+    tabOn("cleanup") ? act("Open Cleanup review", "switchTab('cleanup')") : "");
+  const d = DATA.quality?.documentation;
+  if(d && d.measures && d.measuresDescribed < d.measures) add("info", `${num(d.measures-d.measuresDescribed)} of ${num(d.measures)} measures have no description`,
+    "Descriptions show as tooltips in Power BI and in this document.", act("See documentation coverage", "openInventory('full-inventory')"));
+  return items;
+}
+function rReviewFirst(){
+  const items = reviewItems();
+  const body = items.length
+    ? `<ul class="review-list">${items.map(i=>`<li class="ri ri-${i.kind}">${i.count||`<b class="ri-title">${i.title}</b>`}<p>${i.detail}</p>${i.action||""}</li>`).join("")}</ul>`
+    : `<p class="card review-clear">Nothing flagged: no warnings, extraction limits, analysis issues or deletion candidates.</p>`;
+  return `<section class="review-first" aria-labelledby="review-first"><h2 id="review-first">Review first</h2>${body}</section>`;
+}
+// Where to start, offered only where the destination exists in this document.
+function rJourneys(){
+  const j = [["warnings","Review warnings",allWarnings().length>0],["impact","Inspect dependencies",tabOn("impact")],
+    ["pages","Browse report pages",tabOn("pages")],["sources","Check data sources",tabOn("sources")],["rels","Explore relationships",tabOn("rels")]]
+    .filter(x=>x[2]);
+  return j.length ? `<h2>Start reviewing</h2><div class="journeys">${j.map(([id,label])=>`<button type="button" class="journey" id="journey-${id}" onclick="switchTab('${id}')">${esc(label)} <span aria-hidden="true">→</span></button>`).join("")}</div>` : "";
+}
+const COUNT_GROUPS = [
+  ["Model", ["source-tables","calc-tables","calc-groups","other-tables","columns","calc-columns","measures","relationships","roles"]],
+  ["Data sources", ["queries","sources"]],
+  ["Report", ["pages","visuals","filters","bookmarks"]],
+];
 function rOverview(){
   const counts = OVERVIEW_COUNTS.filter(c=>c.when());
   const auto = has.model ? tablesDefinedBy("Automatic date table") : [];
   const srcTypes = has.model ? [...new Set(countedTables().flatMap(t=>t.partitions.map(p=>(p.source.label||p.source.sourceType))))] : [];
   const unused = has.linked ? L.tableUsage.filter(u=>u.usage==="none"&&!AUTO_DATE_NAMES.has(u.table)) : [];
-  const warnCount = allWarnings().filter(w=>w.severity==="warning").length;
-
-  let modeNote = "";
-  if(MODE==="semantic-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Semantic-only mode.</b> No report was supplied, so nothing here can be called "unused" — the most this document can say is that a column or table has <i>no internal references</i> within the model itself. External reports, Excel connections, or composite models may still depend on it.</div>`;
-  if(MODE==="report-only") modeNote = `<div class="card" style="border-left:3px solid var(--poss)"><b>Report-only mode.</b> ${(R&&R.liveConnection)?`This report has a live connection to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there, not in this file. `:""}No semantic model was supplied, so field references below are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, distinguish measures from columns, or trace them to a data source.</div>`;
-
-  return `${coupler()}
-  <h1>${esc(DATA.title)}</h1>
-  <p class="sub" id="generated-line">Generated ${esc(DATA.generated)} · ${producerLine()} · mode: <b>${MODE}</b></p>
-  ${modeNote}
-  ${DATA.livePairing ? `<div class="card" style="border-left:3px solid var(--poss)"><h3>External model pairing</h3><p>${esc(DATA.livePairing.note)}</p><p>Field resolution uses the supplied snapshot. Server identity and backup freshness have not been verified.</p></div>` : ""}
-  ${DATA.extraction ? `<div class="card"><h3>Extraction coverage</h3><p>${esc(DATA.extraction.inputKind.toUpperCase())} · ${esc(DATA.extraction.backend)} ${esc(DATA.extraction.version)} · ${DATA.extraction.complete ? "Supported metadata extracted" : "Partial metadata — review required"}</p>${[...(DATA.extraction.warnings||[]),...(DATA.extraction.limitations||[])].map(w=>`<p>${esc(w)}</p>`).join("")}</div>` : ""}
-  <h2 id="contents">What this file contains</h2>
-  <p class="mut" style="margin:-.3rem 0 .6rem">Each number opens the list it counts.${auto.length?` ${plural(auto.length,"automatic date table")} that Power BI adds for date columns ${auto.length===1?"is":"are"} in none of these numbers; ${auto.length===1?"it is":"they are"} listed at the end of <button class="xl" onclick="openTableGroup('auto')">Table view</button>.`:""}</p>
-  <div class="grid c4 stat-grid">
-    ${counts.map(c=>`<button type="button" class="card stat stat-link" id="count-${c.id}" onclick="openCount('${c.id}')" aria-label="${num(c.n())} ${esc(c.label)}: open the list"><span class="big">${num(c.n())}</span><span class="lbl">${esc(c.label)}</span></button>`).join("")}
-  </div>
-  ${M ? `<details class="card-details"><summary>Storage modes by table</summary><div class="body"><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${countedTables().map(t=>`<tr><td>${tblLink(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
-  ${has.model?`<h2>Data sources at a glance</h2>
-  <div class="card">
+  const stat = c => `<button type="button" class="card stat stat-link" id="count-${c.id}" onclick="openCount('${c.id}')" aria-label="${num(c.n())} ${esc(c.label)}: open the list"><span class="big">${num(c.n())}</span><span class="lbl">${esc(c.label)}</span></button>`;
+  const groups = COUNT_GROUPS.map(([label,ids])=>[label, counts.filter(c=>ids.includes(c.id))]).filter(g=>g[1].length);
+  const x = DATA.extraction;
+  return `<h1>${esc(DATA.title)}</h1>
+  <p class="sub overview-summary">${overviewSummary()}</p>
+  ${rReviewFirst()}
+  ${rJourneys()}
+  <h2 id="contents">Contents</h2>
+  <p class="mut" style="margin:-.3rem 0 .6rem">Each number opens the list it counts, for the whole file.${auto.length?` ${plural(auto.length,"automatic date table")} that Power BI adds for date columns ${auto.length===1?"is":"are"} in none of these numbers; ${auto.length===1?"it is":"they are"} listed at the end of <button class="xl" onclick="openTableGroup('auto')">Table view</button>.`:""}</p>
+  ${groups.map(([label,cs])=>`<div class="count-group"><h3>${esc(label)}</h3><div class="grid c4 stat-grid">${cs.map(stat).join("")}</div></div>`).join("")}
+  <details class="card-details" id="full-inventory"><summary>Full inventory</summary><div class="body">
+  ${has.model?`<h3>Data sources at a glance</h3>
     ${srcTypes.length?`<div class="pill-list">${srcTypes.map(s=>`<span class="ref">${esc(s)}</span>`).join("")}</div>`:`<div class="mut">No sources detected</div>`}
-    <div class="mut" style="margin-top:.5rem">Full breakdown in <button class="xl" onclick="switchTab('sources')">Data Sources</button>.</div>
-  </div>`:""}
-  ${has.linked?`<h2>Usage verdict</h2>
-  <div class="card">
-    ${["direct","via measures","possible","none"].map(u=>{
+    <div class="mut" style="margin-top:.5rem">Full breakdown in <button class="xl" onclick="switchTab('sources')">Data Sources</button>.</div>`:""}
+  ${has.linked?`<h3>Usage verdict</h3>
+    <div>${["direct","via measures","possible","none"].map(u=>{
       const n = L.tableUsage.filter(x=>x.usage===u&&!AUTO_DATE_NAMES.has(x.table)).length;
       return `${usageBadge(u)} <b style="margin-right:1.1rem">${n}</b>`;
-    }).join("")}
-    ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Table usage</button>.</div>`:""}
-  </div>`:""}
-  ${rQualityOverview(warnCount)}`;
+    }).join("")}</div>
+    ${unused.length?`<div class="mut" style="margin-top:.5rem">Tables with no report references: ${unused.map(u=>tblLink(u.table)).join(", ")} — details in <button class="xl" onclick="switchTab('usage')">Table usage</button>.</div>`:""}`:""}
+  ${rQualityOverview()}
+  ${M ? `<h3>Storage modes by table</h3><table class="t"><thead><tr><th>Table</th><th>Storage mode</th></tr></thead><tbody>${countedTables().map(t=>`<tr><td>${tblLink(t.name)}${t.isHidden ? " (hidden)" : ""}</td><td>${esc([...new Set((t.partitions||[]).map(p=>p.mode))].join(", ") || "Unknown")}</td></tr>`).join("")}</tbody></table>` : ""}
+  </div></details>
+  <details class="card-details" id="doc-details"><summary>Documentation and extraction details</summary><div class="body">
+  <p class="sub" id="generated-line">Generated ${esc(DATA.generated)} · ${producerLine()} · mode: <b>${MODE}</b></p>
+  ${coupler()}
+  ${x ? `<h3>Extraction coverage</h3><p>${esc(x.inputKind.toUpperCase())} · ${esc(x.backend)} ${esc(x.version)} · ${x.complete ? "Supported metadata extracted" : "Partial metadata — review required"}</p>${[...(x.warnings||[]),...(x.limitations||[])].map(w=>`<p>${esc(w)}</p>`).join("")}` : ""}
+  </div></details>`;
 }
-/* Documentation coverage and duplicates (review item D). Static facts only. */
-function rQualityOverview(warnCount){
-  const q = DATA.quality, d = q?.documentation, dup = q?.duplicateMeasures||[];
+/* Documentation coverage (review item D). Static facts only; duplicates and warnings are in Review first. */
+function rQualityOverview(){
+  const d = DATA.quality?.documentation;
+  if(!d) return "";
   const part = (n,total,label) => `<div class="card stat"><div class="big">${num(n)}<span class="of"> of ${num(total)}</span></div><div class="lbl">${label}</div></div>`;
-  const noFormat = d?.measuresWithoutFormat||[];
-  return `<h2>Documentation and quality</h2>
-  ${d?`<div class="grid c4">${part(d.measuresDescribed,d.measures,"measures described")}${part(d.measures-noFormat.length,d.measures,"measures with a format string")}${part(d.measuresInFolders,d.measures,"measures in display folders")}${part(d.columnsDescribed,d.columns,"columns described")}${part(d.tablesDescribed,d.tables,"tables described")}</div>
+  const noFormat = d.measuresWithoutFormat||[];
+  return `<h3>Documentation and quality</h3>
+  <div class="grid c4">${part(d.measuresDescribed,d.measures,"measures described")}${part(d.measures-noFormat.length,d.measures,"measures with a format string")}${part(d.measuresInFolders,d.measures,"measures in display folders")}${part(d.columnsDescribed,d.columns,"columns described")}${part(d.tablesDescribed,d.tables,"tables described")}</div>
   ${noFormat.length?`<details><summary>${noFormat.length} ${noFormat.length===1?"measure has":"measures have"} no format string</summary><div class="body"><div class="pill-list">${noFormat.map(l=>`<span class="ref">${esc(l)}</span>`).join("")}</div></div></details>`:""}
-  <p class="mut">${esc(d.scope)} Refresh health, performance and real usage are not available from a static extract.</p>`:""}
-  <div class="card">${dup.length?`<b>${dup.length} ${dup.length===1?"set":"sets"} of duplicate measures</b> (the same DAX saved under different names): ${dup.map(g=>g.measures.map(esc).join(" = ")).join("; ")}. See <button class="xl" onclick="switchTab('cleanup')">Cleanup review</button>.<br>`:has.model?"No duplicate measures detected.<br>":""}
-  ${warnCount?`${warnCount} warning${warnCount>1?"s":""} flagged — see <button class="xl" onclick="switchTab('warnings')">Warnings</button>.`:"No warnings flagged."}</div>`;
+  <p class="mut">${esc(d.scope)} Refresh health, performance and real usage are not available from a static extract.</p>`;
 }
 
 /* ============================================================ lineage */
