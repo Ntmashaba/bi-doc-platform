@@ -54,6 +54,26 @@ const step=name=>console.log('  ok '+name);
   }
   step('an object chosen elsewhere opens on Objects, selected, with its detail beside the list');
 
+  // ---- step 2: no empty detail panel; the list takes the width until an object is chosen
+  await page.evaluate(()=>{SEL_OBJ=null;switchTab('objects');});
+  assert.equal(await page.locator('#obj-panel').count(),0,'no panel without a selection');
+  assert.equal(await page.locator('#obj-table tr.sel').count(),0,'nothing is chosen for the reader');
+  const full=await page.locator('#obj-table').boundingBox(),split=await page.locator('#obj-split').boundingBox();
+  assert.ok(full.width>=split.width-2,'the list fills the width: '+full.width+' of '+split.width);
+  await page.locator('#obj-table button[data-go=obj]').first().click();
+  assert.equal(await page.locator('#obj-panel').count(),1,'choosing inserts the panel');
+  assert.ok((await page.locator('#obj-table').boundingBox()).width<full.width-200,'the list makes room for it');
+  assert.match(await page.locator('#obj-status').textContent(),/^Showing /,'the change is announced');
+  assert.equal(await page.locator('#obj-status').getAttribute('aria-live'),'polite');
+  await page.locator('#obj-panel [data-go=closeobj]').click();
+  assert.equal(await page.locator('#obj-panel').count(),0,'Close removes the panel');
+  assert.equal(await page.evaluate(()=>SEL_OBJ),null);
+  assert.equal(await page.locator('#obj-status').textContent(),'Detail closed');
+  assert.ok(await page.evaluate(()=>document.activeElement?.closest('#obj-table')!==null),'focus returns to the list');
+  await page.evaluate(k=>goEnt(k),key);
+  assert.equal(await page.locator('#obj-panel').count(),1,'a link from elsewhere still opens the detail');
+  step('Objects shows the full-width list until an object is chosen, then its detail; Close restores the list');
+
   // ---- the library viewer protocol, from a framing page
   const host=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'adf-ux-')),'host.html');
   fs.writeFileSync(host,`<!DOCTYPE html><iframe id="f" src="${url}" style="width:1200px;height:800px"></iframe>

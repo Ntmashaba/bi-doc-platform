@@ -36,7 +36,8 @@ const MIGRATION={overview:'overview',warnings:'overview',cleanup:'overview',
    assert.equal(await page.locator('#sec-'+id).getAttribute('aria-current'),'true',label+' is marked in the sidebar');
    assert.equal(await page.locator('nav .nav-btn[aria-current]').count(),1);
    assert.match(await page.locator('#view-line').innerText(),line);
-   assert.equal(await page.locator('#main > *').nth(1).getAttribute('id'),'view-line',label+' opens with the line, right under the breadcrumb');
+   assert.equal(await page.locator('#main > *').nth(0).getAttribute('id'),'view-line',label+' opens with the line, first in the view');
+   assert.equal(await page.locator('#main .breadcrumb').count(),0,'a standalone document draws no breadcrumb');
    // every tab of the section opens with the same line
    for(const tab of await page.evaluate(id=>sectionTabs(SECTIONS.find(s=>s.id===id)).filter(t=>t.avail).map(t=>t.id),id)){
     await page.evaluate(t=>switchTab(t),tab);

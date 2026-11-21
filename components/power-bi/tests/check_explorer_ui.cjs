@@ -42,7 +42,8 @@ run(`switchTab(${JSON.stringify(routeTarget)})`);assert.equal(historyEntries.len
 browserWindow.location.hash='#overview';listeners.popstate();
 assert.equal(run('activeTab'),'overview');assert.equal(historyEntries.length,historyCount);
 browserWindow.location.hash='#does-not-exist';listeners.popstate();assert.equal(run('activeTab'),'overview');
-assert.match(node('nav').innerHTML,/href="pbi-home.html#reports"/);
+// A document rendered on its own links to no catalogue: none was written beside it.
+assert.doesNotMatch(node('nav').innerHTML,/pbi-home|library-back/);
 // Compare extracts is an action on the document, outside the seven sections.
 assert.equal(run("sectionOf('compare').utility"),true);
 assert.ok(!run("SECTIONS.some(s=>s.tabs.includes('compare')||s.tabs.includes('report-details'))"));

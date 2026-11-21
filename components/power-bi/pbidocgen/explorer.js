@@ -39,26 +39,43 @@ function restoreView(id){
   for(const key of state?.details||[]){const el=document.getElementById(key);if(el) el.open=true;}
   {const el=document.getElementById('global-page');if(el) el.value=pageScope;}
 }
+// Views whose rows, counts, diagrams or exports follow the Report page selection, each checked against its
+// renderer (and measured in browser_ux_contract.cjs). Only these offer the selection; elsewhere it is kept, not shown.
+const PAGE_SCOPED_VIEWS = new Set(['matrix','impact','sources','table-sources','primary-sources','source-objects',
+  'tables','columns','lineage','usage','measures','visuals','filters','manifest','compare']);
+// Sub-tab counts that follow the selection (shown beside Pages and Bookmarks too).
+const PAGE_SCOPED_COUNTS = new Set(['visuals','filters','manifest']);
+// Views whose content rests on the column analysis: where its gaps are reported.
+const ANALYSIS_VIEWS = new Set([...PAGE_SCOPED_VIEWS, 'overview', 'cleanup']);
+const scopeName = id => id==='*' ? 'All pages' : id==='' ? 'No specific page' : ((R?.pages||[]).find(p=>p.id===id)?.name || id);
 function scopeBar(id){
-  const globalViews=['overview','rels','rel-list','security','warnings','cleanup','report-details','power-query','calc-columns','calc-tables','calc-groups','bookmarks'];
+  if(id==='report-details') return '';
+  const issues=DATA.columns?.issues||[];
+  // Only gaps are reported; full coverage needs no badge on every view.
+  const coverage=issues.length && ANALYSIS_VIEWS.has(id)
+    ?`<details class="coverage"><summary><span class="badge b-warn">${issues.length} analysis ${issues.length===1?'issue':'issues'}</span></summary><div class="coverage-pop"><b>Analysis coverage</b><p>${listText(issues)}</p></div></details>`
+    :'';
+  const bar = inner => inner ? `<div class="scope-bar">${inner}</div>` : '';
+  // Pages chooses its page in the page list; the Report page selection is for the usage views.
+  if(id==='pages') return bar(`<span class="mut scope-note">Choose a page in the list below</span>${scopedCountNote(id)}${coverage}`);
+  if(!R || !PAGE_SCOPED_VIEWS.has(id)) return bar(scopedCountNote(id)+coverage);
   const pages=[...(R?.pages||[])];
   if(id==='compare') for(const p of comparison?.report?.pages||[]) if(!pages.some(x=>x.id===p.id)) pages.push(p);
-  if(id==='report-details') return '';
-  const whole=globalViews.includes(id);
   const dupes=new Set(pages.map(p=>p.name).filter((n,i,a)=>a.indexOf(n)!==i));
-  const note=whole?'This view covers the whole extract':
-    id==='compare'?'Page changes follow the selected page':
+  const note=id==='compare'?'Page changes follow the selected page':
     'Usage and exports follow the selected page; deletion assessments cover the whole extract';
-  const issues=DATA.columns?.issues||[];
-  const coverage=!DATA.columns?'':issues.length
-    ?`<details class="coverage"><summary><span class="badge b-warn">${issues.length} analysis ${issues.length===1?'issue':'issues'}</span></summary><div class="coverage-pop"><b>Analysis coverage</b><p>${listText(issues)}</p></div></details>`
-    :'<span class="badge b-direct">Full analysis coverage</span>';
-  // Pages chooses its page in the page list; the Report page selection is for the usage views.
-  if(id==='pages') return `<div class="scope-bar"><span class="mut scope-note">Choose a page in the list below</span>${coverage}</div>`;
-  const select=R?`<label class="scope-page">Report page <select id="global-page" onchange="setPageScope(this.value)"${whole?' title="Retained for page-level views"':''}>
+  const select=`<label class="scope-page">Report page <select id="global-page" onchange="setPageScope(this.value)">
     <option value="*">All pages</option><option value="">No specific page</option>
-    ${pages.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}${dupes.has(p.name)?` [${esc(p.id)}]`:''}${esc(pageFlagsText(p))}</option>`).join('')}</select></label>`:'';
-  return `<div class="scope-bar">${select}<span class="mut scope-note">${esc(note)}</span>${coverage}</div>`;
+    ${pages.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}${dupes.has(p.name)?` [${esc(p.id)}]`:''}${esc(pageFlagsText(p))}</option>`).join('')}</select></label>`;
+  return bar(`${select}<span class="mut scope-note">${esc(note)}</span>${coverage}`);
+}
+// A view without the selection whose sub-tabs still show page-scoped counts says which page they follow.
+function scopedCountNote(id){
+  if(!R || pageScope==='*') return '';
+  const shown=sectionTabs(sectionOf(id)).filter(t=>t.avail&&t.id!==id&&PAGE_SCOPED_COUNTS.has(t.id));
+  if(!shown.length) return '';
+  return `<span class="mut scope-note">${esc(shown.map(t=>t.label).join(', ').replace(/, ([^,]*)$/,' and $1'))} counts follow the page <b>${esc(scopeName(pageScope))}</b></span>
+    <button class="xl" onclick="setPageScope('*')">Show all pages</button>`;
 }
 function setPageScope(id){
   pageScope=id;

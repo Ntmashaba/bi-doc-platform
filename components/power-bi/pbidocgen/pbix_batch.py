@@ -303,7 +303,7 @@ def run_batch(input_path, output_dir=None, recursive=False, tool=None, timeout=6
                 # Write on the target filesystem, then replace in one operation.
                 # A failed extraction/render never destroys a previous HTML.
                 with tempfile.TemporaryDirectory(prefix='.pbi-stage-', dir=output) as stage:
-                    rendered = render_html(payload, Path(stage) / name)
+                    rendered = render_html(payload, Path(stage) / name, catalog_href=home.name + '#reports')
                     os.replace(rendered, target)
                 warnings = [w['message'] for w in report['warnings']]
                 row.update(status='generated', mode=payload['mode'], warnings=warnings,

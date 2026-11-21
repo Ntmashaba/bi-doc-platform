@@ -91,6 +91,65 @@ const step=name=>console.log('  ok '+name);
   assert.equal(await active(page),'overview');
   assert.match(await page.locator('#finder-note').innerText(),/does not contain/);
   step('object links open their object; a missing one says so on the overview');
+
+  // ---- step 2 chrome: no standalone breadcrumb or catalogue link, the page selection only where it acts
+  await page.goto(url+'#overview');
+  assert.equal(await page.locator('.breadcrumb').count(),0,'no breadcrumb');
+  assert.equal(await page.locator('a[href*="pbi-home"], .library-back').count(),0,'no link to a catalogue that was not written');
+  // Measured, not listed: a view offers the selection exactly when its content changes with it.
+  const measured=await page.evaluate(()=>{
+   const res={},scopes=['*','',...R.pages.map(p=>p.id)];
+   for(const t of TABS.filter(t=>t.avail&&t.id!=='pages'&&t.id!=='report-details')){
+    const seen=new Set();let select=false;
+    for(const s of scopes){
+     pageScope=s;switchTab(t.id,false,true);
+     select=select||!!document.getElementById('global-page');
+     const c=document.getElementById('main').cloneNode(true);
+     c.querySelector('.scope-bar')?.remove();c.querySelector('.subtabs')?.remove();
+     seen.add(c.innerHTML);
+    }
+    res[t.id]={changes:seen.size>1,select};
+   }
+   pageScope='*';return res;
+  });
+  for(const [id,{changes,select}] of Object.entries(measured)){
+   if(changes) assert.ok(select,id+' changes with the page and offers the selection');
+   else if(select) assert.ok(await page.evaluate(id=>PAGE_SCOPED_VIEWS.has(id),id),id+' offers the selection without using it');
+  }
+  for(const id of ['overview','rels','rel-list','security','warnings','cleanup','bookmarks','power-query']) if(measured[id]) assert.equal(measured[id].select,false,id+' has no page selection');
+  step('the report page selection shows only on views whose content follows it');
+  // The choice is kept where it is not shown, and a sibling count that follows it says so.
+  await page.goto(url+'#visuals');
+  await page.selectOption('#global-page',pages[0]);
+  await page.evaluate(()=>switchTab('bookmarks'));
+  assert.equal(await page.locator('#global-page').count(),0);
+  assert.equal(await page.evaluate(()=>pageScope),pages[0],'the selection is retained');
+  assert.match(await page.locator('.scope-bar').innerText(),/Visuals, Filters and Field manifest counts follow the page/);
+  await page.locator('.scope-bar button',{hasText:'Show all pages'}).click();
+  assert.equal(await page.evaluate(()=>pageScope),'*');
+  assert.equal(await page.locator('.scope-bar').count(),0,'with all pages, Bookmarks has no bar at all');
+  await page.evaluate(()=>switchTab('visuals'));
+  assert.equal(await page.inputValue('#global-page'),'*');
+  step('a hidden selection is retained, named where sibling counts follow it, and can be cleared there');
+  // Coverage: no success badge anywhere; analysis gaps stay reachable where the analysis is used.
+  assert.equal(await page.getByText('Full analysis coverage').count(),0);
+  const gaps=await page.evaluate(()=>(DATA.columns?.issues||[]).length);
+  for(const id of ['overview','columns','cleanup']){
+   await page.evaluate(id=>switchTab(id),id);
+   assert.equal(await page.locator('.scope-bar .coverage').count(),gaps?1:0,id+(gaps?' reports the analysis gaps':' shows no coverage badge'));
+  }
+  await page.evaluate(()=>switchTab('rels'));
+  assert.equal(await page.locator('.coverage').count(),0,'the relationship diagram does not depend on the column analysis');
+  // With a gap recorded, the warning is on the analysis views and opens to the gap itself.
+  await page.evaluate(()=>{DATA.columns.issues=['Unresolved report binding Sales[Ghost]'];switchTab('columns');});
+  await page.locator('.scope-bar .coverage summary').click();
+  assert.match(await page.locator('.coverage-pop').innerText(),/Unresolved report binding Sales\[Ghost\]/);
+  await page.evaluate(()=>switchTab('overview'));
+  assert.equal(await page.locator('.scope-bar .coverage').count(),1,'the overview reports it too');
+  await page.evaluate(()=>switchTab('security'));
+  assert.equal(await page.locator('.coverage').count(),0);
+  await page.evaluate(()=>{DATA.columns.issues=[];});
+  step('no repeated coverage badge; analysis gaps stay on the views that use the analysis');
   await page.context().close();
 
   // ---- the mobile menu: a toggle that reports its state, closes on choosing a view
@@ -100,6 +159,8 @@ const step=name=>console.log('  ok '+name);
   assert.ok(await toggle.isVisible(),'the menu button shows at 390 px');
   assert.equal(await toggle.getAttribute('aria-expanded'),'false');
   assert.equal(await toggle.getAttribute('aria-controls'),'nav-sections');
+  const [title,button]=[await phone.locator('nav .doc-title').boundingBox(),await toggle.boundingBox()];
+  assert.ok(button.y<title.y+title.height&&title.y<button.y+button.height,'the menu button sits beside the title: '+JSON.stringify({title,button}));
   await toggle.click();
   assert.equal(await toggle.getAttribute('aria-expanded'),'true');
   await phone.evaluate(()=>switchTab('measures'));

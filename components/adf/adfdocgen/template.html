@@ -229,6 +229,9 @@ p,h1,h2,h3,li{overflow-wrap:anywhere}
 .subtab.disabled{opacity:.55;cursor:not-allowed}.subtab .n{font-size:.75rem;color:var(--ink2)}
 .subtab:focus-visible,.chip:focus-visible,.primary-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,400px);gap:1rem;align-items:start}
+.split.solo{grid-template-columns:minmax(0,1fr)}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .panel{position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;box-shadow:0 1px 2px #0f172a0d,0 4px 12px #0f172a0a}
 .panel h3{margin-top:1rem}
 tr.sel td{background:var(--accentSoft)}
@@ -305,6 +308,7 @@ const goTrg  = n => goTo("triggers","trg-",n);
 const GO = {pipe:goPipe, ent:goEnt, df:goDf, ds:goDs, ls:goLs, trg:goTrg,
             section: openSection, view: switchTab,
             obj: k => { SEL_OBJ = k; renderObjectPanel(); },
+            closeobj: () => closeObject(),
             impact: k => { IMPACT = k; switchTab("impact"); },
             csv: name => downloadCsv(name),
             issuefilter: p => { ISSUE_FILTER = p; switchTab("issues"); },
@@ -1069,10 +1073,11 @@ function rObjects(){
   <div class="filter-row">${kinds.map(([k,l])=>`<button class="chip ${OBJ_KIND===k?"on":""}" data-go="objkind" data-arg="${k}">${l}</button>`).join("")}
     <span style="flex:1"></span>${csvBtn("objects","objects")} ${csvBtn("usage","usage")}</div>
   <input class="search" placeholder="Filter by name, server, database, pipeline…" oninput="fObjects(this.value)" aria-label="Filter objects">
-  <div class="split">
+  <p class="sr-only" id="obj-status" aria-live="polite"></p>
+  <div class="split${EIDX[SEL_OBJ]?"":" solo"}" id="obj-split">
     <div class="table-wrap"><table class="t" id="obj-table"><thead><tr><th>Object</th><th>Where</th><th>Kind</th><th>Operations</th><th>Pipelines</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="5" class="mut">Nothing of this kind in the input.</td></tr>'}</tbody></table></div>
-    <aside class="panel" id="obj-panel" aria-live="polite">${objectPanel()}</aside>
+    ${EIDX[SEL_OBJ]?`<aside class="panel" id="obj-panel" tabindex="-1" aria-label="Object detail">${objectPanel()}</aside>`:""}
   </div>`;
 }
 function fObjects(q){
@@ -1084,23 +1089,41 @@ function fObjects(q){
   });
 }
 const EIDX_KEYS = new Set(Object.keys(EIDX));
+// The detail panel exists only while an object is selected: with none, the list has the full width
+// (nothing is chosen for the reader just to fill the space). The status line announces each change.
 function renderObjectPanel(){
-  const p = document.getElementById("obj-panel");
-  if(!p){ switchTab("objects"); return; }
-  p.innerHTML = objectPanel();
-  document.querySelectorAll("#obj-table tbody tr").forEach(tr=>tr.classList.toggle("sel", tr.id==="obj-"+slug(SEL_OBJ)));
-  p.focus && p.scrollTo(0,0);
+  const split = document.getElementById("obj-split");
+  if(!split){ switchTab("objects"); return; }
+  const e = EIDX[SEL_OBJ];
+  let p = document.getElementById("obj-panel");
+  if(e && !p){
+    p = document.createElement("aside");
+    p.className = "panel"; p.id = "obj-panel"; p.tabIndex = -1; p.setAttribute("aria-label", "Object detail");
+    split.appendChild(p);
+  }
+  if(!e && p) p.remove();
+  split.classList.toggle("solo", !e);
+  if(e){ p.innerHTML = objectPanel(); p.scrollTo && p.scrollTo(0,0); }
+  document.querySelectorAll("#obj-table tbody tr").forEach(tr=>tr.classList.toggle("sel", !!e && tr.id==="obj-"+slug(SEL_OBJ)));
+  const status = document.getElementById("obj-status");
+  if(status) status.textContent = e ? `Showing ${e.label}` : "Detail closed";
+}
+function closeObject(){
+  const row = SEL_OBJ && document.getElementById("obj-"+slug(SEL_OBJ));
+  SEL_OBJ = null; renderObjectPanel();
+  const back = row && row.querySelector("button");
+  if(back) back.focus();
 }
 function objectPanel(){
   const e = EIDX[SEL_OBJ];
-  if(!e) return `<div class="mut">Select an object to see its detail.</div>`;
+  if(!e) return "";
   const ep = e.endpoint;
   const where = [["System",ep.system],["Server / account",ep.server||ep.url],["Database",ep.database],["Container",ep.container],
     ["Schema",ep.schema],["Object",ep.object],["Path",ep.path]].filter(([,v])=>v);
   const dsSources = e.aliases.filter(a=>DSIDX[a]).map(a=>`${dsLink(a)}${DSIDX[a].source?` <span class="mut">${esc(DSIDX[a].source)}</span>`:""}`);
   const usage = (e.usage||[]).map(u=>`<tr><td>${opBadge(u.operation)}</td><td>${u.pipeline?pipeLink(u.pipeline):(u.dataflow?dfLink(u.dataflow):"—")}<div class="mut">${esc(u.activity||"")}${u.type?` · ${esc(u.type)}`:""}</div></td>
     <td>${u.dynamic?'<span class="badge b-warn">dynamic</span>':""}${u.opaque?'<span class="badge b-info">opaque</span>':""}</td></tr>`).join("");
-  return `<div class="eyebrow">${esc(KIND_LABEL[e.kind]||e.kind)}</div>
+  return `<div class="panel-head"><div class="eyebrow">${esc(KIND_LABEL[e.kind]||e.kind)}</div><button class="chip" data-go="closeobj" aria-label="Close the detail for ${esc(e.label)}">Close</button></div>
   <h2 style="margin-top:.2rem">${esc(e.label)}</h2>
   ${e.dynamic?`<p><span class="badge b-warn">dynamic</span> <span class="mut">Resolved at runtime; this is what can be known before the run.</span></p>`:""}
   ${where.length?`<div class="kvl">${where.map(([k,v])=>`<div class="k">${k}</div><div>${esc(v)}</div>`).join("")}</div>`:`<p class="mut">Location not stated in the definitions.</p>`}

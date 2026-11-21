@@ -133,13 +133,11 @@ nav .doc-title{color:#fff;font-size:18px;margin:8px 8px 26px 0;line-height:1.4}
 .nav-btn{color:#c6d1df;padding:12px;margin:4px 0;border-radius:8px}
 .nav-btn:hover{background:#24364a;color:white}.nav-btn.active{background:#2b3e53}
 .library-back{display:block;color:#e1e9f2;text-decoration:none;font-size:13px;padding:8px 0}.library-back:hover{color:white;text-decoration:underline}
-.breadcrumb{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-bottom:24px}
-.breadcrumb a{color:#355679;text-decoration:none}.breadcrumb strong{font-weight:500}
 main{padding:28px 36px 48px;max-width:1480px}h1{font-size:28px;letter-spacing:-.025em}
 .card{border-radius:12px;padding:20px;box-shadow:0 3px 12px #17243405}.stat .big{font-size:30px}
 .coupler{margin-bottom:22px}.coupler .half{border-color:var(--line)}.coupler .joint{border-color:var(--line)}
-@media(max-width:860px){.layout{grid-template-columns:1fr}nav{padding:12px 18px}.library-back{grid-column:1/-1;padding:0 0 6px}nav .brand{display:none}nav .doc-title{font-size:15px;margin:0}.nav-toggle{grid-row:2}main{padding:20px}.breadcrumb{margin-bottom:16px}}
-@media print{.breadcrumb{display:none}.layout{grid-template-columns:1fr}}
+@media(max-width:860px){.layout{grid-template-columns:1fr}nav{padding:12px 18px}.library-back{grid-column:1/-1;padding:0 0 6px}nav .brand{display:none}nav .doc-title{font-size:15px;margin:0}.nav-toggle{grid-row:1}.library-back~.nav-toggle{grid-row:2}main{padding:20px}}
+@media print{.layout{grid-template-columns:1fr}}
 
 /* Contrast pass: the earlier palette read as washed out (hairline borders, grey-on-grey
    text, invisible shadows, 11-12px labels). Stronger lines, darker secondary text, larger labels. */
@@ -152,7 +150,7 @@ table.t{font-size:.875rem}
 table.t thead th{font-size:.8rem;color:var(--ink);background:#E3E8EE;border-bottom:1px solid var(--line)}
 table.t td,table.t tbody th{border-bottom-color:var(--line2)}
 .badge{font-size:.78rem}
-.mut,.eyebrow,.stat .lbl,.coupler .tag,.legend,.breadcrumb{color:var(--ink2)}
+.mut,.eyebrow,.stat .lbl,.coupler .tag,.legend{color:var(--ink2)}
 .mut{font-size:.84rem}
 .chip{color:var(--ink);border-color:var(--line)}
 .ref{border-color:var(--line);color:var(--ink)}
@@ -191,7 +189,6 @@ nav{background:#0F172A}
 .nav-btn.active{background:#1E293B;color:#fff;box-shadow:inset 3px 0 0 #818CF8}
 nav .brand{color:#94A3B8}
 .library-back{color:#C7D2FE}
-.breadcrumb a{color:var(--accent)}
 .coupler .joint{background:var(--accentSoft);color:var(--accent)}
 .subtab.active{color:var(--ink);border-bottom-color:var(--accent)!important}
 .search:focus,.nav-btn:focus-visible,.xl:focus-visible{outline-color:var(--accent)}
@@ -217,6 +214,8 @@ table.source-list .badge{white-space:normal}
 const DATA = /*__DATA__*/null;
 // Worked out from DATA when this page was rendered (the search index); never part of the extract itself.
 const DERIVED = /*__DERIVED__*/null;
+// UI-only render context, set only by a writer that puts a catalogue beside this document (never in DATA).
+const RENDER_CONTEXT = /*__RENDER_CONTEXT__*/null || {};
 /* ============================================================ helpers */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const M = DATA.model, R = DATA.report, L = DATA.linked, MODE = DATA.mode;
@@ -341,7 +340,9 @@ function openSection(sid){
 function buildNav(){
   const nav = document.getElementById("nav");
   // On narrow screens the sections collapse behind a menu button (B8).
-  let html = `<a class="library-back" href="pbi-home.html#reports">← Report library</a><div class="brand">${DATA.extraction?.inputKind === "abf" && !R ? "Analysis Services documentation" : "Power BI documentation"}</div><div class="doc-title">${esc(DATA.title)}</div>
+  // The way back to a report catalogue exists only when one was written beside this document.
+  const back = RENDER_CONTEXT.catalogHref ? `<a class="library-back" href="${esc(RENDER_CONTEXT.catalogHref)}">← Report library</a>` : "";
+  let html = `${back}<div class="brand">${DATA.extraction?.inputKind === "abf" && !R ? "Analysis Services documentation" : "Power BI documentation"}</div><div class="doc-title">${esc(DATA.title)}</div>
     <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-sections" onclick="toggleNav()"><span aria-hidden="true">☰</span> <span id="nav-current">Menu</span></button><div id="nav-sections">`;
   for(const s of SECTIONS){
     const avail = sectionTabs(s).some(t=>t.avail);
@@ -394,10 +395,9 @@ function switchTab(id, recordHistory=true, fresh=false){
   const current = document.getElementById("nav-current");
   if(current) current.textContent = section.label;
   toggleNav(false);
-  const crumb = section.utility || section.label===tab.label || sectionTabs(section).length<2
-    ? `<strong>${esc(section.label)}</strong>`
-    : `<span>${esc(section.label)}</span><span aria-hidden="true">/</span><strong>${esc(tab.label)}</strong>`;
-  document.getElementById("main").innerHTML = `<div class="breadcrumb"><a href="pbi-home.html#reports">Reports</a><span aria-hidden="true">/</span><span>${esc(DATA.title)}</span><span aria-hidden="true">/</span>${crumb}</div>`
+  // No breadcrumb: the navigation already names the section and the sub-tabs the view (a host such as the
+  // library draws its own trail around the document).
+  document.getElementById("main").innerHTML = ""
     + (section.view ? `<p class="view-line" id="view-line"><b>${esc(section.label)}.</b> ${esc(section.view)}</p>` : "")
     + subTabs(id) + scopeBar(id) + RENDER[id]();
   restoreView(id);
