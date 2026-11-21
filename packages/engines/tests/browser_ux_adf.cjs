@@ -29,7 +29,7 @@ const {checkMobileNav}=require('./ux_mobile_nav.cjs');
   assert.ok(at('H1')===0&&at('overview-summary')===1&&at('review-first')===2,'title, summary, then Review first: '+order);
   assert.ok(at('review-first')<at('contents')&&at('contents')<at('count-group')&&at('count-group')<at('coverage-details')&&at('coverage-details')<at('doc-details'),'then Contents and the collapsed details: '+order);
   const limit=await page.locator('.reading-limit').innerText();
-  for(const kept of [/no run history/,/never value/,/outside ADF/]) assert.match(limit,kept,'the short reading limit keeps '+kept);
+  for(const kept of [/no run history/,/runs, fails or is used/,/never value/,/outside ADF \(REST API, Synapse, Logic Apps\)/]) assert.match(limit,kept,'the short reading limit keeps '+kept);
   for(const id of ['coverage-details','doc-details']) assert.equal(await page.locator('#'+id).getAttribute('open'),null,id+' starts collapsed');
   assert.equal(await page.locator('#doc-details #generated-line').count(),1);
   const gaps=await page.evaluate(()=>coverageGaps());

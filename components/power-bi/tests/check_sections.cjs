@@ -72,6 +72,12 @@ assert.ok(warned,'the warnings count is in Review first');
 // With no report, the reading's limit is the first thing Review first says.
 const review=text(overview.slice(overview.indexOf('<section class="review-first"'),overview.indexOf('</section>')));
 assert.match(review,/^Review first No report was supplied Nothing here can be called unused\./);
+// An incomplete extraction limits everything else, so it comes first, even before the missing report.
+run("DATA.extraction={inputKind:'abf',backend:'pbixray',version:'1',complete:false,warnings:['Partitions could not be read'],limitations:[]}");
+const partial=show('overview');
+const reviewPartial=text(partial.slice(partial.indexOf('<section class="review-first"'),partial.indexOf('</section>')));
+assert.match(reviewPartial,/^Review first Partial metadata: review required Partitions could not be read No report was supplied/);
+run("delete DATA.extraction");
 assert.equal(Number(warned[1]),(show('warnings').match(/<tr/g)||[]).length-1);
 // (the coverage ratios under "Documentation and quality", in Full inventory, are shares of the visible objects, and say so)
 const contains=overview.slice(overview.indexOf('id="contents"'),overview.indexOf('<details',overview.indexOf('id="contents"')));

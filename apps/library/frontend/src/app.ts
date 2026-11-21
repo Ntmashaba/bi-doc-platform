@@ -68,6 +68,8 @@ function notice(kind: "info" | "warn" | "error", text: string, ...extra: Child[]
   return h("p", { class: `notice ${kind}`, role: kind === "error" ? "alert" : "status" }, text, ...extra);
 }
 const TYPE_LABEL: Record<string, string> = { power_bi: "Power BI", adf: "Data Factory", sql_agent: "SQL Agent" };
+// A type this build does not know (a newer engine) reads as its own name, never "undefined".
+const typeLabel = (t: string): string => TYPE_LABEL[t] ?? t;
 function typeBadge(t: string): HTMLElement { return h("span", { class: `badge type-${t}` }, TYPE_LABEL[t] || t); }
 function date(s: string | null | undefined): string {
   if (!s) return "—";
@@ -698,7 +700,7 @@ async function detailsView(id: string): Promise<void> {
   };
   // The same trail as the viewer; the actions come before the metadata.
   mount(h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" },
-      h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, TYPE_LABEL[d.document_type]),
+      h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, typeLabel(d.document_type)),
       " › ", h("span", { "aria-current": "page" }, d.title)),
     h("h1", {}, d.title, " ", typeBadge(d.document_type), d.archived ? h("span", { class: "badge archived" }, "Archived") : null),
     d.description ? h("p", {}, d.description) : null,
@@ -760,7 +762,7 @@ async function viewerView(id: string, rev: string, params: URLSearchParams): Pro
   const isCurrent = rev === d.current_revision_id;
   mount(
     h("nav", { class: "breadcrumbs", "aria-label": "Breadcrumbs" },
-      h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, TYPE_LABEL[d.document_type]),
+      h("a", { href: "#/" }, "Library"), " › ", h("a", { href: href([d.document_type]) }, typeLabel(d.document_type)),
       " › ", h("a", { href: href(["documents", id]) }, d.title), " › ", isCurrent ? "Current version" : "Earlier version"),
     h("div", { class: "viewer-bar" }, select,
       h("a", { href: `${API}/documents/${encodeURIComponent(id)}/revisions/${encodeURIComponent(rev)}/download` }, "Download"),
@@ -854,7 +856,7 @@ function manualForm(id: string, rev: string, objectId: string | null, sequence: 
   const out = h("div", { "aria-live": "polite" });
   const targetDoc = h("select", { required: true, "aria-label": "Target document" }, h("option", { value: "" }, "Choose a document…"),
     ...(index?.documents || []).filter((d) => d.document_id !== id).map((d) =>
-      h("option", { value: `${d.document_id}|${d.revision_id}` }, `${TYPE_LABEL[d.document_type]}: ${d.title}`)));
+      h("option", { value: `${d.document_id}|${d.revision_id}` }, `${typeLabel(d.document_type)}: ${d.title}`)));
   const targetObj = h("select", { "aria-label": "Target object" }, h("option", { value: "" }, "Whole document"));
   targetDoc.addEventListener("change", async () => {
     const [doc, r] = targetDoc.value.split("|");

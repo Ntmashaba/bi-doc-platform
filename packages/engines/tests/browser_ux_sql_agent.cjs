@@ -67,6 +67,13 @@ const {checkMobileNav}=require('./ux_mobile_nav.cjs');
   const width=await phone.evaluate(()=>document.documentElement.scrollWidth);
   assert.ok(width<=390,'no sideways scroll at 390 px: '+width);
   step('at 390 px the menu opens, closes on choosing a section, names it, and nothing scrolls sideways');
+  // Wide tables scroll inside a wrapper; the table itself stays a table (screen readers keep its semantics).
+  await phone.click('#navtoggle');await phone.click('#sec-jobs');
+  const tables=await phone.evaluate(()=>[...document.querySelectorAll('#main table.t')].map(t=>({wrapped:t.parentElement.classList.contains('table-wrap'),display:getComputedStyle(t).display})));
+  assert.ok(tables.length>0);
+  assert.deepEqual(tables.filter(t=>!t.wrapped||t.display!=='table'),[],'every table is wrapped and displayed as a table');
+  assert.ok(await phone.evaluate(()=>{const w=document.querySelector('#main .table-wrap');return w.scrollWidth>w.clientWidth;}),'the jobs table scrolls in its own box at 390 px');
+  step('at 390 px wide tables scroll in their own box and stay tables');
 
   const widths=await checkMobileNav(browser,url,{toggle:'#navtoggle',label:'#navtoggle .nt-label',sectionButtons:'.nav-btn',section:page=>page.evaluate(()=>document.querySelector('#nav-sections [aria-current]').childNodes[0].textContent.trim())});
   step('the narrow-screen menu works by keyboard, Escape and focus at '+widths.join(' and ')+' px, and stays out of the way on a wide screen');

@@ -3,7 +3,8 @@
 // At 390 and 375 px: the menu starts collapsed and names the current section; the button has aria-expanded and
 // aria-controls; it works by keyboard (Enter and Space); opening leaves focus on the button; Tab reaches the
 // sections; Escape closes it and returns focus to the button; choosing a section by keyboard closes it, names the
-// new section and moves focus to the content; a click outside closes it; no section scrolls sideways. At desktop
+// new section and moves focus to the content; a click outside or crossing the breakpoint closes it; no section
+// scrolls sideways. At desktop
 // width the button is hidden, the sections show, and Escape changes nothing.
 const assert = require('node:assert/strict');
 
@@ -61,6 +62,16 @@ async function checkMobileNav(browser, url, o) {
     assert.equal(await expanded(), 'true');
     await page.locator('main').click({position: {x: 5, y: 5}});
     assert.equal(await expanded(), 'false', at('a click outside closes the menu'));
+    // Crossing the breakpoint while open (a rotated phone, a resized split screen) closes it.
+    await toggle.click();
+    assert.equal(await expanded(), 'true');
+    await page.setViewportSize({width: 1440, height: 800});
+    // media-query changes are delivered with the next rendering frame, not synchronously with the resize
+    await page.waitForFunction(sel => document.querySelector(sel).getAttribute('aria-expanded') === 'false', o.toggle, {timeout: 3000})
+      .catch(() => {});
+    await page.setViewportSize({width, height: 800});
+    assert.equal(await expanded(), 'false', at('widening past the breakpoint and back leaves the menu closed'));
+    assert.equal(await sections.isVisible(), false, at('the sections are hidden again'));
     // Every section, opened from the menu, fits the screen.
     const ids = await page.evaluate(([controls, selector]) => [...document.getElementById(controls).querySelectorAll(selector)]
       .filter(b => b.tabIndex >= 0 && b.getAttribute('aria-disabled') !== 'true').map(b => b.id), [controls, o.sectionButtons]);

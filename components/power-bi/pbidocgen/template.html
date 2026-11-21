@@ -368,7 +368,7 @@ function toggleNav(open){
 }
 // The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
 // the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
-// a click outside closes it. On wide screens the button is hidden and none of this applies.
+// a click outside, or crossing the breakpoint, closes it. On wide screens the button is hidden.
 const navNarrow = () => { const b = document.getElementById("nav-toggle"); return !!b && b.offsetParent !== null; };
 function focusMain(){
   const main = document.getElementById("main");
@@ -391,6 +391,13 @@ function focusMain(){
   document.addEventListener("click", e => {
     if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
   });
+  // Crossing the breakpoint (rotating a phone, resizing a split screen) closes the menu, so it never comes back
+  // open over the content.
+  if(window.matchMedia){
+    const wide = window.matchMedia("(min-width: 861px)");
+    const close = () => { if(nav.classList.contains("open")) toggleNav(false); };
+    if(wide.addEventListener) wide.addEventListener("change", close); else if(wide.addListener) wide.addListener(close);
+  }
 })();
 // Views that are another presentation of a tab share its sub-tab; the view offers the switch between them
 // (Relationships: Diagram / List). Both keep their own id, address, Back step and count.
@@ -614,15 +621,16 @@ function openInventory(id){
 function reviewItems(){
   const items = [], act = (label, call, id) => `<button type="button" class="xl ri-act"${id?` id="${id}"`:""} onclick="${call}">${esc(label)}</button>`;
   const add = (kind, title, detail, action="") => items.push({kind, title, detail, action});
+  // An extraction that did not read the whole file limits everything below it, so it comes first.
+  const x = DATA.extraction, xNotes = x ? [...(x.warnings||[]),...(x.limitations||[])] : [];
+  if(x && (!x.complete || xNotes.length)) add("limit", x.complete ? "Extraction notes" : "Partial metadata: review required",
+    xNotes.map(w=>esc(w)).join("<br>") || `The ${esc(x.inputKind.toUpperCase())} extraction did not read every supported part of the file.`);
   if(MODE==="semantic-only") add("limit","No report was supplied",
     `Nothing here can be called unused. The most this document can say is that a column or table has <i>no internal references</i> within the model; external reports, Excel connections or composite models may still depend on it.`);
   if(MODE==="report-only") add("limit","No semantic model was supplied",
     `${(R&&R.liveConnection)?`This report has a live connection to <b>${esc([R.liveConnection.kind,R.liveConnection.server,R.liveConnection.database].filter(Boolean).join(" · "))}</b>; its tables, measures and data sources live there. `:""}Field references are <i>unresolved requirements</i>: the report demands them, but this document cannot confirm they exist, tell measures from columns, or trace them to a source.`);
   if(DATA.livePairing) add("limit","External model pairing",
     `${esc(DATA.livePairing.note)} Field resolution uses the supplied snapshot; server identity and backup freshness have not been verified.`);
-  const x = DATA.extraction, xNotes = x ? [...(x.warnings||[]),...(x.limitations||[])] : [];
-  if(x && (!x.complete || xNotes.length)) add("limit", x.complete ? "Extraction notes" : "Partial metadata: review required",
-    xNotes.map(w=>esc(w)).join("<br>") || `The ${esc(x.inputKind.toUpperCase())} extraction did not read every supported part of the file.`);
   const gaps = DATA.columns?.issues || [];
   if(gaps.length) add("limit", `${plural(gaps.length,"analysis issue")}`, `Usage and deletion assessments may be incomplete: ${gaps.map(esc).join("; ")}`,
     tabOn("columns") ? act("Open Columns", "switchTab('columns')") : "");

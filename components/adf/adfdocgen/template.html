@@ -412,7 +412,7 @@ function toggleNav(open){
 }
 // The narrow-screen menu is a disclosure: opening leaves focus on its button; Escape closes it (focus back on
 // the button when it was in the menu); choosing a section closes it and moves focus to that section's content;
-// a click outside closes it. On wide screens the button is hidden and none of this applies.
+// a click outside, or crossing the breakpoint, closes it. On wide screens the button is hidden.
 const navNarrow = () => { const b = document.getElementById("navtoggle"); return !!b && b.offsetParent !== null; };
 function focusMain(){
   const main = document.getElementById("main");
@@ -434,6 +434,13 @@ function navKeys(){
   document.addEventListener("click", e => {
     if(nav.classList.contains("open") && navNarrow() && !nav.contains(e.target)) toggleNav(false);
   });
+  // Crossing the breakpoint (rotating a phone, resizing a split screen) closes the menu, so it never comes back
+  // open over the content.
+  if(window.matchMedia){
+    const wide = window.matchMedia("(min-width: 861px)");
+    const close = () => { if(nav.classList.contains("open")) toggleNav(false); };
+    if(wide.addEventListener) wide.addEventListener("change", close); else if(wide.addListener) wide.addListener(close);
+  }
 }
 function subtabs(sectionId, activeId){
   const views = TABS.filter(t=>t.section===sectionId);
@@ -535,9 +542,9 @@ function openCoverage(){
 }
 // The limit of what any reading of definitions can say, shortened but with every limit kept.
 function readingLimit(){
-  if(MODE==="factory") return `<b>Design-time only.</b> Read from the factory's JSON definitions, with no run history: nothing here shows whether anything runs, fails or is used. Parameters and secrets appear by <i>name</i>, never value, and a pipeline without a trigger here may still be started from outside ADF.`;
-  if(MODE==="selection") return `<b>Selected objects.</b> Exported one by one: every reference between them resolved, but other pipelines may use the same objects. Design-time only: no run history.`;
-  return `<b>Partial input.</b> ${missing.length} referenced object(s) were not supplied${(DATA.coverage||{}).skippedFiles?` and ${DATA.coverage.skippedFiles} input file(s) could not be read`:""}, so parts of this analysis are incomplete. What to export next is listed below. Design-time only: no run history, parameter and secret names never values, and starts from outside ADF are invisible.`;
+  if(MODE==="factory") return `<b>Design-time only.</b> Read from the factory's JSON definitions, with no run history: nothing here shows whether anything runs, fails or is used. Parameters and secrets appear by <i>name</i>, never value, and a pipeline without a trigger here may still be started from outside ADF (REST API, Synapse, Logic Apps).`;
+  if(MODE==="selection") return `<b>Selected objects.</b> Exported one by one: every reference between them resolved, but a selection cannot show that the whole factory was supplied, and other pipelines may use the same objects. Design-time only: no run history.`;
+  return `<b>Partial input.</b> ${missing.length} referenced object(s) were not supplied${(DATA.coverage||{}).skippedFiles?` and ${DATA.coverage.skippedFiles} input file(s) could not be read`:""}, so parts of this analysis are incomplete. What to export next is listed below. Design-time only: no run history, parameter and secret names never values, and starts from outside ADF (REST API, Synapse, Logic Apps) are invisible.`;
 }
 // Counts grouped by what they describe. Each opens the view it counts, using that view's own count, so the
 // number cannot differ from the list; activities have no list of their own and are a plain figure.

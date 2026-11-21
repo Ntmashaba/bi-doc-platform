@@ -52,7 +52,11 @@ const {surfaceProblems,pagesProblems}=require('../components/power-bi/tests/view
    if(['abf','pbix'].some(ext=>r.sample.endsWith('.'+ext))&&!r.sample.startsWith('live-connection')){
     // Extraction coverage sits in the collapsed documentation details; their summary shows its status.
     if(!(await page.locator('#doc-details').textContent()).includes('Extraction coverage'))throw Error('Missing extraction coverage: '+r.file);
-    if(!/(PBIX|ABF) · (supported metadata extracted|partial metadata)/.test(await page.locator('#doc-details > summary').innerText()))throw Error('Extraction status not in the details summary: '+r.file);
+    const extraction=(await page.locator('#doc-details > summary').innerText()).match(/(PBIX|ABF) · (supported metadata extracted|partial metadata)/);
+    if(!extraction)throw Error('Extraction status not in the details summary: '+r.file);
+    // A partial extraction must also be the always-visible first thing in Review first, not only in the details.
+    const firstReview=(await page.locator('.review-first .ri').first().innerText().catch(()=>''));
+    if(extraction[2]==='partial metadata'&&!/^Partial metadata: review required/.test(firstReview))throw Error('Partial extraction not leading Review first: '+r.file);
    }
    // Every object in the search index opens its view and is shown there, in every sample.
    const lost=await page.evaluate(()=>OBJECTS.filter(o=>{
